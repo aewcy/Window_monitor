@@ -117,8 +117,7 @@ if errorlevel 1 set REINSTALL=1
 
 if defined REINSTALL (
     echo [..] Installing packages...
-    pip install --quiet --disable-pip-version-check -r requirements.txt
-    pip install --quiet --disable-pip-version-check pywin32
+    pip install --quiet --disable-pip-version-check mss Pillow psutil requests pywin32
 
     python -c "import mss, requests, psutil, win32gui" >nul 2>&1
     if errorlevel 1 (
