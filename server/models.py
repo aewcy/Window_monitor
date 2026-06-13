@@ -61,12 +61,14 @@ def init_db():
             window_title TEXT DEFAULT '',
             process_name TEXT DEFAULT '',
             process_path TEXT DEFAULT '',
+            display_name TEXT DEFAULT '',
             timestamp TEXT NOT NULL,
             duration_seconds REAL DEFAULT 0,
             FOREIGN KEY (agent_name) REFERENCES agents(name)
         );
         CREATE INDEX IF NOT EXISTS idx_app_events_agent_time
             ON app_events(agent_name, timestamp DESC);
+
 
         -- 浏览器历史记录表
         CREATE TABLE IF NOT EXISTS browser_history (
@@ -96,6 +98,13 @@ def init_db():
             ON event_log(agent_name, timestamp DESC);
     """)
     db.commit()
+
+    # 向前兼容迁移: 为已存在的 app_events 表添加 display_name 列
+    try:
+        db.execute("ALTER TABLE app_events ADD COLUMN display_name TEXT DEFAULT ''")
+        db.commit()
+    except sqlite3.OperationalError:
+        pass  # 列已存在
 
 
 # ============================================
@@ -209,14 +218,15 @@ def save_app_event(agent_name: str, data: dict):
     db.execute(
         """INSERT INTO app_events
            (agent_name, event_type, window_title, process_name, process_path,
-            timestamp, duration_seconds)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            display_name, timestamp, duration_seconds)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             agent_name,
             data.get("type", "unknown"),
             data.get("window_title", ""),
             data.get("process_name", ""),
             data.get("process_path", ""),
+            data.get("display_name", ""),
             data.get("timestamp", datetime.now().isoformat()),
             data.get("duration_seconds", 0),
         )

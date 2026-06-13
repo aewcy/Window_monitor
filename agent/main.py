@@ -17,6 +17,7 @@ from config import (
 from screen_capture import ScreenCapture
 from app_tracker import AppTracker
 from browser_history import BrowserHistoryCollector
+from keyboard_monitor import KeyboardEnterMonitor
 
 
 # ============================================
@@ -79,6 +80,19 @@ class Reporter:
         if ok:
             print(f"  [OK] 浏览器 {len(records)} 条")
 
+    def chat_enter(self, data: dict):
+        """上报聊天 Enter 事件 — process_name 使用原始进程名保持一致"""
+        self._post("app_event", {
+            "agent_name": self.agent,
+            "type": "chat_enter",
+            "window_title": data.get("window_title", ""),
+            # 使用原始 process_name (如 "WeChat.exe") 确保聚合一致性
+            "process_name": data.get("process_name", ""),
+            "process_path": data.get("process_path", data.get("process_name", "")),
+            "display_name": data.get("display_name", ""),
+            "timestamp": data.get("timestamp", ""),
+        })
+
     def heartbeat(self):
         self._post("heartbeat", {"agent_name": self.agent})
 
@@ -136,9 +150,22 @@ def main():
     browser = BrowserHistoryCollector(interval=BROWSER_HISTORY_INTERVAL)
     browser.add_listener(reporter.browser)
 
+    # 键盘 Enter 监控 — 聊天应用发送消息时触发截图
+    keyboard_monitor = KeyboardEnterMonitor()
+
+    def on_chat_enter(info):
+        """Enter 键在聊天应用中按下 → 立即截图 + 上报事件"""
+        shot_data = screenshot.capture_once()
+        if shot_data:
+            reporter.screenshot(shot_data)
+        reporter.chat_enter(info)
+
+    keyboard_monitor.add_listener(on_chat_enter)
+
     screenshot.start()
     window.start()
     browser.start()
+    keyboard_monitor.start()
 
     # 心跳线程
     def heartbeat_loop():
@@ -185,6 +212,7 @@ def main():
         screenshot.stop()
         window.stop()
         browser.stop()
+        keyboard_monitor.stop()
         print("  Agent 已停止")
 
 

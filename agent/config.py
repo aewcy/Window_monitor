@@ -72,3 +72,46 @@ HEARTBEAT_INTERVAL = int(os.environ.get("HEARTBEAT_INTERVAL", "15"))
 # ============================================
 RETRY_TIMES = int(os.environ.get("RETRY_TIMES", "3"))
 RETRY_DELAY = int(os.environ.get("RETRY_DELAY", "5"))
+
+# ============================================
+# 键盘监控配置 — 检测聊天应用中的 Enter 键
+# 隐私安全: 仅检测 Enter 键，不记录按键内容
+# ============================================
+KEYBOARD_MONITOR_ENABLED = os.environ.get("KEYBOARD_MONITOR_ENABLED", "true").lower() in ("true", "1", "yes")
+KEYBOARD_MONITOR_COOLDOWN = float(os.environ.get("KEYBOARD_MONITOR_COOLDOWN", "0.5"))
+
+# 受监控的聊天应用 process_name → display_name
+if IS_WINDOWS:
+    CHAT_APPS = {
+        "WeChat.exe": "WeChat",
+        "Weixin.exe": "WeChat",
+        "QQ.exe": "QQ",
+        "TIM.exe": "QQ",
+        "DingTalk.exe": "DingTalk",
+        "DingTalkLauncher.exe": "DingTalk",
+        "Telegram.exe": "Telegram",
+        "slack.exe": "Slack",
+        "Teams.exe": "Microsoft Teams",
+        "Discord.exe": "Discord",
+        "Skype.exe": "Skype",
+        "WhatsApp.exe": "WhatsApp",
+        "Line.exe": "Line",
+        "Viber.exe": "Viber",
+        "Lark.exe": "Lark",
+        "LarkRt.exe": "Lark",
+        "Feishu.exe": "Feishu",
+        "FeishuRt.exe": "Feishu",
+    }
+elif IS_LINUX:
+    CHAT_APPS = {
+        "telegram-desktop": "Telegram",
+        "slack": "Slack",
+        "discord": "Discord",
+        "teams": "Microsoft Teams",
+        "whatsapp-nativefier": "WhatsApp",
+        "wechat": "WeChat",
+        "electronic-wechat": "WeChat",
+        "qq": "QQ",
+    }
+else:
+    CHAT_APPS = {}

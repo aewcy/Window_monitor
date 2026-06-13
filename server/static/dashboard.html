@@ -695,6 +695,7 @@ async function loadAppTimeline(agent) {
     }
     body.innerHTML = data.map(e => {
       const t = e.timestamp ? e.timestamp.split('T')[1].substring(0,8) : '-';
+      const isEnter = e.event_type === 'chat_enter';
       const hasShot = e.screenshot_id != null;
       const shotSrc = hasShot ? `/api/screenshots/image/${e.screenshot_id}` : '';
       const cls = 'timeline-entry' + (hasShot ? ' has-shot' : '');
@@ -704,11 +705,20 @@ async function loadAppTimeline(agent) {
       const clickAttr = hasShot
         ? ` data-shot-src="${escAttr(shotSrc)}" role="button" tabindex="0" aria-label="View screenshot at ${escAttr(e.timestamp)}"`
         : '';
+      // Visual distinction for chat Enter events
+      const icon = isEnter ? '↵' : '>';   // ↵ or >
+      const iconColor = isEnter ? 'var(--accent)' : 'var(--accent2)';
+      const displayTitle = isEnter
+        ? `[Enter] ${escHtml(e.process_name || '')}`
+        : escHtml((e.window_title || '-').substring(0, 60));
+      const displayApp = isEnter
+        ? escHtml(e.window_title || '')
+        : escHtml(e.process_name || '');
       return `<div class="${cls}"${clickAttr}>
-        <span style="color:var(--accent2);font-weight:bold;width:12px;font-size:0.75rem" aria-hidden="true">&gt;</span>
+        <span style="color:${iconColor};font-weight:bold;width:12px;font-size:0.75rem" aria-hidden="true">${icon}</span>
         <span style="font-size:0.72rem;color:var(--text-muted);min-width:55px">${escHtml(t)}</span>
-        <span style="font-size:0.82rem;flex:1">${escHtml((e.window_title||'-').substring(0,60))}</span>
-        <span style="font-size:0.72rem;color:var(--text-muted)">${escHtml(e.process_name||'')}</span>
+        <span style="font-size:0.82rem;flex:1">${displayTitle}</span>
+        <span style="font-size:0.72rem;color:var(--text-muted)">${displayApp}</span>
         ${indicator}
       </div>`;
     }).join('');
