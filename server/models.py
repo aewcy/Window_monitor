@@ -78,7 +78,8 @@ def init_db():
             last_visit TEXT NOT NULL,
             browser TEXT DEFAULT 'unknown',
             reported_at TEXT DEFAULT (datetime('now', 'localtime')),
-            FOREIGN KEY (agent_name) REFERENCES agents(name)
+            FOREIGN KEY (agent_name) REFERENCES agents(name),
+            UNIQUE(agent_name, url, last_visit)
         );
         CREATE INDEX IF NOT EXISTS idx_browser_history_agent_time
             ON browser_history(agent_name, last_visit DESC);
@@ -226,37 +227,23 @@ def save_app_event(agent_name: str, data: dict):
 def get_app_usage_summary(agent_name: str, date: str = None) -> list[dict]:
     """获取应用使用汇总（按进程聚合时长）"""
     db = get_db()
+    conditions = ["agent_name = ?"]
+    params = [agent_name]
     if date:
-        sql = """SELECT process_name,
-                        COUNT(*) as switch_count,
-                        SUM(duration_seconds) as total_seconds,
-                        MAX(window_title) as last_window_title
-                 FROM app_events
-                 WHERE agent_name = ? AND date(timestamp) = ?
-                   AND event_type IN ('app_heartbeat', 'app_start')
-                 GROUP BY process_name
-                 ORDER BY total_seconds DESC
-                 LIMIT 20"""
-        rows = db.execute(sql, (agent_name, date)).fetchall()
-    else:
-        sql = """SELECT process_name,
-                        COUNT(*) as switch_count,
-                        SUM(duration_seconds) as total_seconds,
-                        MAX(window_title) as last_window_title
-                 FROM app_events
-                 WHERE agent_name = ?
-                   AND event_type IN ('app_heartbeat', 'app_start')
-                 GROUP BY process_name
-                 ORDER BY total_seconds DESC
-                 LIMIT 20"""
-        rows = db.execute(sql, (agent_name,)).fetchall()
-
-    results = []
-    for r in rows:
-        d = dict(r)
-        d["total_minutes"] = round(d["total_seconds"] / 60, 1)
-        results.append(d)
-    return results
+        conditions.append("date(timestamp) = ?")
+        params.append(date)
+    where = " AND ".join(conditions)
+    sql = f"""SELECT process_name,
+                     COUNT(*) as switch_count,
+                     SUM(duration_seconds) as total_seconds,
+                     MAX(window_title) as last_window_title
+              FROM app_events
+              WHERE {where}
+              GROUP BY process_name
+              ORDER BY total_seconds DESC
+              LIMIT 20"""
+    rows = db.execute(sql, params).fetchall()
+    return [{**dict(r), "total_minutes": round(dict(r)["total_seconds"] / 60, 1)} for r in rows]
 
 
 def get_app_events(agent_name: str, limit: int = 50) -> list[dict]:
@@ -321,47 +308,28 @@ def get_browser_history(agent_name: str = None, limit: int = 100,
 # 统计
 # ============================================
 
+def _count(db, table: str, agent_name: str = None, extra_where: str = "", extra_params: list = None) -> int:
+    """通用计数辅助函数"""
+    conditions = []
+    params = []
+    if agent_name:
+        conditions.append("agent_name = ?")
+        params.append(agent_name)
+    if extra_where:
+        conditions.append(extra_where)
+        if extra_params:
+            params.extend(extra_params)
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    return db.execute(f"SELECT COUNT(*) FROM {table} {where}", params).fetchone()[0]
+
+
 def get_dashboard_stats(agent_name: str = None) -> dict:
     """获取仪表盘统计数据"""
     db = get_db()
-
-    stats = {}
-
-    # 截图总数
-    if agent_name:
-        stats["total_screenshots"] = db.execute(
-            "SELECT COUNT(*) FROM screenshots WHERE agent_name = ?", (agent_name,)
-        ).fetchone()[0]
-    else:
-        stats["total_screenshots"] = db.execute(
-            "SELECT COUNT(*) FROM screenshots"
-        ).fetchone()[0]
-
-    # 今日应用事件数
     today = datetime.now().strftime("%Y-%m-%d")
-    if agent_name:
-        stats["today_app_events"] = db.execute(
-            "SELECT COUNT(*) FROM app_events WHERE agent_name = ? AND date(timestamp) = ?",
-            (agent_name, today)
-        ).fetchone()[0]
-    else:
-        stats["today_app_events"] = db.execute(
-            "SELECT COUNT(*) FROM app_events WHERE date(timestamp) = ?", (today,)
-        ).fetchone()[0]
-
-    # 浏览器记录总数
-    if agent_name:
-        stats["total_browser_records"] = db.execute(
-            "SELECT COUNT(*) FROM browser_history WHERE agent_name = ?", (agent_name,)
-        ).fetchone()[0]
-    else:
-        stats["total_browser_records"] = db.execute(
-            "SELECT COUNT(*) FROM browser_history"
-        ).fetchone()[0]
-
-    # 在线 agent 数
-    stats["online_agents"] = db.execute(
-        "SELECT COUNT(*) FROM agents WHERE status = 'online'"
-    ).fetchone()[0]
-
-    return stats
+    return {
+        "total_screenshots": _count(db, "screenshots", agent_name),
+        "today_app_events": _count(db, "app_events", agent_name, "date(timestamp) = ?", [today]),
+        "total_browser_records": _count(db, "browser_history", agent_name),
+        "online_agents": db.execute("SELECT COUNT(*) FROM agents WHERE status = 'online'").fetchone()[0],
+    }

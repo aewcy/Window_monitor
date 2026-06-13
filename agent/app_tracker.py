@@ -10,8 +10,7 @@ from datetime import datetime
 
 import psutil
 
-IS_WINDOWS = sys.platform == "win32"
-IS_LINUX = sys.platform.startswith("linux")
+from config import IS_WINDOWS, IS_LINUX
 
 
 def get_active_window() -> dict | None:

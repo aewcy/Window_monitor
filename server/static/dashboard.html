@@ -489,7 +489,7 @@ function displayScreenshot() {
 
 function prevScreenshot() {
   if (screenshotList.length <= 1) return;
-  currentScreenshotIndex = (currentScreenshotIndex + 1) % screenshotList.length;
+  currentScreenshotIndex = (currentScreenshotIndex - 1 + screenshotList.length) % screenshotList.length;
   displayScreenshot();
 }
 
@@ -524,8 +524,8 @@ async function loadAppTimeline(agent) {
     }
     body.innerHTML = data.map(e => {
       const time = e.timestamp ? e.timestamp.split('T')[1].substring(0, 8) : '-';
-      const icon = e.event_type === 'app_start' ? '+' : (e.event_type === 'app_end' ? '-' : '|');
-      const color = e.event_type === 'app_start' ? 'var(--accent2)' : (e.event_type === 'app_end' ? 'var(--text-muted)' : 'var(--accent)');
+      const icon = '>';
+      const color = 'var(--accent2)';
       return `
         <div style="display:flex;align-items:center;gap:10px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.03)">
           <span style="color:${color};font-weight:bold;width:16px">${icon}</span>

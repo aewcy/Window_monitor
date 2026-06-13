@@ -64,7 +64,7 @@ class Reporter:
     def window(self, data: dict):
         self._post("app_event", {
             "agent_name": self.agent,
-            "type": "window",
+            "type": "app_switch",
             "window_title": data.get("window_title", ""),
             "process_name": data.get("process_name", ""),
             "process_path": data.get("process_path", ""),
