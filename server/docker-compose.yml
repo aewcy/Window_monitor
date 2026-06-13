@@ -2,8 +2,6 @@
 # Monitor Server - Docker Compose
 # 在 server/ 目录下运行: docker compose up -d
 # ============================================
-version: "3.8"
-
 services:
   monitor-server:
     build: .
