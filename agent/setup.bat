@@ -2,6 +2,8 @@
 chcp 65001 >nul
 title Monitor Agent - 初始化安装
 
+cd /d "%~dp0"
+
 echo ============================================
 echo   Monitor Agent - 一键安装
 echo ============================================
@@ -20,16 +22,16 @@ echo [1/3] Python 已找到
 python --version
 
 :: 创建虚拟环境
-if not exist "agent\venv" (
+if not exist "venv" (
     echo [2/3] 创建虚拟环境...
-    python -m venv agent\venv
+    python -m venv venv
 ) else (
     echo [2/3] 虚拟环境已存在，跳过
 )
 
 :: 安装依赖
 echo [3/3] 安装依赖...
-call agent\venv\Scripts\activate.bat
+call venv\Scripts\activate.bat
 pip install -r requirements.txt --quiet
 pip install pywin32 --quiet
 

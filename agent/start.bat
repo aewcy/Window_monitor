@@ -17,13 +17,13 @@ set SCREENSHOT_INTERVAL=30
 cd /d "%~dp0"
 
 :: 检查虚拟环境
-if not exist "agent\venv\Scripts\activate.bat" (
+if not exist "venv\Scripts\activate.bat" (
     echo [提示] 首次运行，请先双击 setup.bat 初始化
     pause
     exit /b 1
 )
 
 :: 激活虚拟环境并启动
-call agent\venv\Scripts\activate.bat
-python agent\main.py
+call venv\Scripts\activate.bat
+python main.py
 pause

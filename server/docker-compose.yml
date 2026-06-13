@@ -1,5 +1,6 @@
 # ============================================
 # Monitor Server - Docker Compose
+# 在 server/ 目录下运行: docker compose up -d
 # ============================================
 version: "3.8"
 
@@ -12,12 +13,11 @@ services:
       - "8899:8899"
     volumes:
       # 持久化数据 (截图 + 数据库)
-      - ./server/data:/app/server/data
+      - ./data:/app/data
     environment:
       - TZ=Asia/Shanghai
       - SERVER_HOST=0.0.0.0
       - SERVER_PORT=8899
-      # 可选: 数据保留天数
       - MAX_SCREENSHOT_AGE_DAYS=7
       - MAX_HISTORY_DAYS=30
     logging:

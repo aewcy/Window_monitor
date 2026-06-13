@@ -24,9 +24,8 @@
 ### 1. Linux 服务器 (核心) — Docker 部署 (推荐)
 
 ```bash
-# 克隆项目
 git clone git@github.com:aewcy/monitor-aewcy.git
-cd monitor-aewcy
+cd monitor-aewcy/server
 
 # 一键启动
 docker compose up -d
@@ -42,36 +41,27 @@ docker compose logs -f
 更新部署：
 
 ```bash
+cd monitor-aewcy/server
 git pull
 docker compose up -d --build
 ```
 
-数据持久化在 `./server/data/` 目录，容器重建不会丢失。
+数据持久化在 `./data/` 目录（容器重建不丢失）。
 
 ### 1-alt. 裸机部署 (无 Docker)
 
 ```bash
-cd monitor-aewcy
+cd monitor-aewcy/server
 pip install -r requirements.txt
-cd server
-
-# 直接启动
 python main.py
-
-# 或用 uvicorn 启动 (可从任意目录运行)
-# uvicorn server.main:app --host 0.0.0.0 --port 8899
 ```
-
-启动后：
-- 监控面板: `http://<服务器IP>:8899/`
-- API 文档: `http://<服务器IP>:8899/docs`
 
 ### 2. 试验机 (Agent)
 
 **Windows — 双击运行：**
 
 ```
-① 解压项目到任意目录
+① 进入 agent/ 目录
 ② 双击 setup.bat   ← 初始化（只需一次）
 ③ 双击 start.bat   ← 启动 Agent
 ```
@@ -86,8 +76,9 @@ set AGENT_NAME=试验机-01               ← 可自定义机器名
 
 ```bash
 sudo yum install xdotool   # 或 apt install xdotool
+cd agent
 pip install -r requirements.txt
-MONITOR_SERVER_HOST=<服务器IP> python agent/main.py
+MONITOR_SERVER_HOST=<服务器IP> python main.py
 ```
 
 ### 3. 跨网络
@@ -105,26 +96,28 @@ ngrok http 8899
 
 ```
 monitor-aewcy/
-├── agent/                    # 试验机 (精简Agent)
-│   ├── main.py               # 入口，采集循环
-│   ├── config.py             # 配置 (服务端地址、间隔等)
-│   ├── screen_capture.py     # 屏幕截图 (mss, 跨平台)
-│   ├── app_tracker.py        # 活动窗口追踪 (xdotool/win32gui)
-│   └── browser_history.py    # 浏览器历史 (Chrome/Edge/Firefox)
-├── server/                   # 服务端
-│   ├── main.py               # FastAPI 入口
-│   ├── config.py             # 服务端配置
-│   ├── models.py             # SQLite 数据层
-│   ├── routes.py             # REST API
-│   └── static/
-│       └── dashboard.html    # Web 监控面板
-├── setup.bat                 # Windows 一键安装
-├── start.bat                 # Windows 一键启动
-├── Dockerfile                # Docker 镜像
-├── docker-compose.yml        # Docker Compose 部署
-├── .dockerignore
+├── agent/                          # ← 被控端 (试验机)
+│   ├── main.py                     # Agent 主程序
+│   ├── config.py                   # 配置 (服务器地址等)
+│   ├── screen_capture.py           # 屏幕截图
+│   ├── app_tracker.py              # 窗口追踪
+│   ├── browser_history.py          # 浏览器历史
+│   ├── requirements.txt            # Agent 依赖
+│   ├── setup.bat                   # Windows 一键安装
+│   └── start.bat                   # Windows 一键启动
+├── server/                         # ← 服务端 (Linux 服务器)
+│   ├── main.py                     # FastAPI 入口
+│   ├── config.py                   # 服务端配置
+│   ├── models.py                   # SQLite 数据层
+│   ├── routes.py                   # REST API
+│   ├── static/
+│   │   └── dashboard.html          # Web 监控面板
+│   ├── requirements.txt            # 服务端依赖
+│   ├── Dockerfile                  # Docker 镜像
+│   ├── docker-compose.yml          # Docker 编排
+│   └── .dockerignore
 ├── .gitignore
-└── requirements.txt
+└── README.md
 ```
 
 ## 配置参数
