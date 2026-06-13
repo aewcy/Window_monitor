@@ -68,29 +68,26 @@ python main.py
 
 ### 2. 试验机 (Agent)
 
-**Linux 试验机:**
-```bash
-# 安装系统依赖
-sudo yum install xdotool    # CentOS/RHEL
-# sudo apt install xdotool  # Ubuntu/Debian
+**Windows — 双击运行：**
 
-# 安装 Python 依赖
-pip install -r requirements.txt
-
-# 修改服务端地址
-vim agent/config.py    # SERVER_HOST = "<服务器IP>"
-
-# 启动
-cd agent && python main.py
+```
+① 解压项目到任意目录
+② 双击 setup.bat   ← 初始化（只需一次）
+③ 双击 start.bat   ← 启动 Agent
 ```
 
-**Windows 试验机:**
-```bash
-pip install -r requirements.txt
-pip install pywin32
+首次运行前，右键编辑 `start.bat`，修改服务器地址：
+```batch
+set MONITOR_SERVER_HOST=你的服务器IP    ← 改成这个
+set AGENT_NAME=试验机-01               ← 可自定义机器名
+```
 
-# 修改 agent/config.py 中的 SERVER_HOST
-cd agent && python main.py
+**Linux 桌面 — 命令行：**
+
+```bash
+sudo yum install xdotool   # 或 apt install xdotool
+pip install -r requirements.txt
+MONITOR_SERVER_HOST=<服务器IP> python agent/main.py
 ```
 
 ### 3. 跨网络
@@ -121,6 +118,8 @@ monitor-aewcy/
 │   ├── routes.py             # REST API
 │   └── static/
 │       └── dashboard.html    # Web 监控面板
+├── setup.bat                 # Windows 一键安装
+├── start.bat                 # Windows 一键启动
 ├── Dockerfile                # Docker 镜像
 ├── docker-compose.yml        # Docker Compose 部署
 ├── .dockerignore
