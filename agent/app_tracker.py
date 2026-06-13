@@ -55,8 +55,16 @@ def get_active_window() -> dict | None:
                 "timestamp": datetime.now().isoformat(),
             }
         except FileNotFoundError:
+            # xdotool 未安装 — 仅首次输出警告
+            if not getattr(get_active_window, '_xdotool_warned', False):
+                print("[AppTracker] xdotool 未安装，Linux 窗口追踪不可用")
+                print("[AppTracker] 安装: sudo apt install xdotool")
+                get_active_window._xdotool_warned = True
             return None
-        except Exception:
+        except Exception as e:
+            if not getattr(get_active_window, '_linux_error_warned', False):
+                print(f"[AppTracker] Linux 窗口检测失败: {e}")
+                get_active_window._linux_error_warned = True
             return None
 
     # --- Windows: win32gui ---
@@ -83,12 +91,23 @@ def get_active_window() -> dict | None:
                 "process_path": proc_path,
                 "timestamp": datetime.now().isoformat(),
             }
-        except ImportError:
-            pass
-        except Exception:
-            pass
+        except ImportError as e:
+            if not getattr(get_active_window, '_pywin32_warned', False):
+                print(f"[AppTracker] pywin32 未安装，窗口检测不可用: {e}")
+                print("[AppTracker] 安装: pip install pywin32")
+                get_active_window._pywin32_warned = True
+        except Exception as e:
+            if not getattr(get_active_window, '_error_warned', False):
+                print(f"[AppTracker] 获取活动窗口失败: {e}")
+                get_active_window._error_warned = True
 
     return None
+
+# 附加属性用于抑制重复的 import/error 警告
+get_active_window._pywin32_warned = False
+get_active_window._error_warned = False
+get_active_window._xdotool_warned = False
+get_active_window._linux_error_warned = False
 
 
 class AppTracker:

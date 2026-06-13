@@ -82,7 +82,7 @@ class Reporter:
 
     def chat_enter(self, data: dict):
         """上报聊天 Enter 事件 — process_name 使用原始进程名保持一致"""
-        self._post("app_event", {
+        ok = self._post("app_event", {
             "agent_name": self.agent,
             "type": "chat_enter",
             "window_title": data.get("window_title", ""),
@@ -92,6 +92,8 @@ class Reporter:
             "display_name": data.get("display_name", ""),
             "timestamp": data.get("timestamp", ""),
         })
+        if ok:
+            print(f"  [OK] Enter事件 {data.get('display_name', '?')}")
 
     def heartbeat(self):
         self._post("heartbeat", {"agent_name": self.agent})

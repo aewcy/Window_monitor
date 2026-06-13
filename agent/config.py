@@ -75,7 +75,6 @@ RETRY_DELAY = int(os.environ.get("RETRY_DELAY", "5"))
 
 # ============================================
 # 键盘监控配置 — 检测聊天应用中的 Enter 键
-# 隐私安全: 仅检测 Enter 键，不记录按键内容
 # ============================================
 KEYBOARD_MONITOR_ENABLED = os.environ.get("KEYBOARD_MONITOR_ENABLED", "true").lower() in ("true", "1", "yes")
 KEYBOARD_MONITOR_COOLDOWN = float(os.environ.get("KEYBOARD_MONITOR_COOLDOWN", "0.5"))

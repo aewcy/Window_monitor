@@ -8,5 +8,5 @@ requests>=2.31.0
 
 pynput>=1.7.6
 
-# Windows 额外依赖 (setup.bat 会自动安装)
-# pywin32>=306
+# Windows 额外依赖
+pywin32>=306; sys_platform == 'win32'
