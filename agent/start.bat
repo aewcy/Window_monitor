@@ -5,7 +5,7 @@ title Monitor Agent
 :: ============================================
 ::  CONFIG - Edit your server info here
 :: ============================================
-set MONITOR_SERVER_HOST=127.0.0.1
+set MONITOR_SERVER_HOST=192.168.61.133
 set MONITOR_SERVER_PORT=8899
 set AGENT_NAME=PC-01
 set SCREENSHOT_INTERVAL=30
