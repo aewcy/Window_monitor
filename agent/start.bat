@@ -112,7 +112,7 @@ if not exist "venv\Scripts\python.exe" (
 :: ---- Step 4: Install dependencies ----
 call venv\Scripts\activate.bat >nul
 
-python -c "import mss, requests, psutil, win32gui" >nul 2>&1
+python -c "import mss, requests, psutil, win32gui, pynput" >nul 2>&1
 if errorlevel 1 set REINSTALL=1
 
 if defined REINSTALL (
@@ -123,10 +123,10 @@ if defined REINSTALL (
     pip config set global.trusted-host pypi.tuna.tsinghua.edu.cn >nul 2>&1
 
     :: Install core packages
-    pip install --disable-pip-version-check mss Pillow psutil requests
+    pip install --disable-pip-version-check mss Pillow psutil requests pynput
     if errorlevel 1 (
         :: Fallback: try aliyun mirror
-        pip install --disable-pip-version-check -i https://mirrors.aliyun.com/pypi/simple --trusted-host mirrors.aliyun.com mss Pillow psutil requests
+        pip install --disable-pip-version-check -i https://mirrors.aliyun.com/pypi/simple --trusted-host mirrors.aliyun.com mss Pillow psutil requests pynput
     )
 
     :: Install pywin32 (Windows-only, may need separate handling)
@@ -135,7 +135,7 @@ if defined REINSTALL (
         pip install --disable-pip-version-check -i https://mirrors.aliyun.com/pypi/simple --trusted-host mirrors.aliyun.com pywin32
     )
 
-    python -c "import mss, requests, psutil, win32gui" >nul 2>&1
+    python -c "import mss, requests, psutil, win32gui, pynput" >nul 2>&1
     if errorlevel 1 (
         echo   [X] Install failed. Check network.
         pause & exit /b 1
