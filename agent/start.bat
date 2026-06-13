@@ -53,7 +53,7 @@ if !PY_OK!==0 (
     winget --version >nul 2>&1
     if not errorlevel 1 (
         echo       Installing via winget...
-        winget install Python.Python.3.11 --silent --accept-package-agreements --accept-source-agreements
+        winget install Python.Python.3.11 --source winget --silent --accept-package-agreements --accept-source-agreements
         if not errorlevel 1 goto :recheck
     )
 
@@ -117,7 +117,23 @@ if errorlevel 1 set REINSTALL=1
 
 if defined REINSTALL (
     echo [..] Installing packages...
-    pip install --quiet --disable-pip-version-check -i https://pypi.tuna.tsinghua.edu.cn/simple mss Pillow psutil requests pywin32
+
+    :: Configure pip mirror for China
+    pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple >nul 2>&1
+    pip config set global.trusted-host pypi.tuna.tsinghua.edu.cn >nul 2>&1
+
+    :: Install core packages
+    pip install --disable-pip-version-check mss Pillow psutil requests
+    if errorlevel 1 (
+        :: Fallback: try aliyun mirror
+        pip install --disable-pip-version-check -i https://mirrors.aliyun.com/pypi/simple --trusted-host mirrors.aliyun.com mss Pillow psutil requests
+    )
+
+    :: Install pywin32 (Windows-only, may need separate handling)
+    pip install --disable-pip-version-check pywin32
+    if errorlevel 1 (
+        pip install --disable-pip-version-check -i https://mirrors.aliyun.com/pypi/simple --trusted-host mirrors.aliyun.com pywin32
+    )
 
     python -c "import mss, requests, psutil, win32gui" >nul 2>&1
     if errorlevel 1 (
