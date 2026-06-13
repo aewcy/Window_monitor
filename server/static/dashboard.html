@@ -11,11 +11,29 @@
     --accent2: #22c55e; --radius: 8px; --sidebar-w: 280px;
   }
 
-  * { margin:0; padding:0; box-sizing:border-box; }
+  *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
 
   body {
     font-family: -apple-system,'Segoe UI','Microsoft YaHei',sans-serif;
     background: var(--bg); color: var(--text); min-height: 100vh;
+  }
+
+  /* ========== Skip Link ========== */
+  .skip-link {
+    position: absolute; top: -100px; left: 10px;
+    background: var(--accent); color: #fff; padding: 8px 16px;
+    border-radius: 0 0 var(--radius) var(--radius); z-index: 200;
+    font-size: 0.85rem; text-decoration: none;
+  }
+  .skip-link:focus { top: 0; }
+
+  /* ========== Focus ========== */
+  :focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+  .btn:focus-visible, .agent-card:focus-visible, .panel-header:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: -1px;
+    border-color: var(--accent);
   }
 
   /* ========== Header ========== */
@@ -59,6 +77,8 @@
   .agent-card {
     padding:8px 10px; border:1px solid var(--border); border-radius:6px;
     margin-bottom:6px; cursor:pointer; transition:all .15s;
+    background: transparent; color: var(--text); font: inherit;
+    width: 100%; text-align: left; display: block;
   }
   .agent-card:hover { border-color:var(--accent); }
   .agent-card.active { border-color:var(--accent); background:rgba(79,140,255,.08); }
@@ -86,15 +106,35 @@
 
   /* ========== Screenshot ========== */
   .screenshot-viewer {
+    position: relative;
     display:flex; justify-content:center; background:#000;
     border-radius:4px; overflow:hidden;
-    max-height:55vh; min-height:200px; align-items:center;
+    min-height:200px; max-height:55vh; align-items:center;
   }
-  .screenshot-viewer img { max-width:100%; max-height:55vh; object-fit:contain; display:block; }
+  .screenshot-viewer img {
+    max-width:100%; max-height:55vh; object-fit:contain; display:block;
+    transition: opacity 0.25s ease;
+    opacity: 1;
+  }
+  .screenshot-viewer img.loading { opacity: 0; }
   .screenshot-viewer .no-data { color:var(--text-muted); font-size:0.85rem; }
+  .screenshot-viewer .loader {
+    position: absolute; inset: 0; display: flex;
+    align-items: center; justify-content: center;
+    pointer-events: none;
+  }
+  .screenshot-viewer .loader::after {
+    content: ''; width: 24px; height: 24px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
   .screenshot-info {
     display:flex; justify-content:space-between; align-items:center;
     margin-top:8px; font-size:0.78rem; color:var(--text-muted);
+    min-height: 20px;
   }
   .screenshot-nav { display:flex; gap:6px; }
   .screenshot-nav button { min-width:28px; }
@@ -108,12 +148,44 @@
   }
   td {
     padding:6px 10px; border-bottom:1px solid rgba(255,255,255,.03);
-    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:280px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:220px;
+    vertical-align: middle;
   }
   tr:hover td { background:rgba(255,255,255,.02); }
 
+  /* ========== Thumbnail in tables ========== */
+  .shot-thumb {
+    width: 80px; height: 45px; object-fit: cover;
+    border-radius: 3px; cursor: pointer; border: 1px solid var(--border);
+    transition: border-color .15s, transform .15s;
+    background: #000;
+  }
+  .shot-thumb:hover {
+    border-color: var(--accent);
+    transform: scale(1.05);
+  }
+  .shot-thumb-placeholder {
+    width: 80px; height: 45px; border-radius: 3px;
+    background: rgba(255,255,255,.03); border: 1px dashed var(--border);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 0.6rem; color: var(--text-muted);
+  }
+
+  /* ========== Screenshot Modal ========== */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,.85); z-index: 1000;
+    align-items: center; justify-content: center;
+    cursor: pointer;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal-overlay img {
+    max-width: 95vw; max-height: 95vh; object-fit: contain;
+    border-radius: 4px; box-shadow: 0 8px 40px rgba(0,0,0,.5);
+  }
+
   /* ========== Scrollable panels ========== */
-  .scroll-body { max-height:300px; overflow-y:auto; }
+  .scroll-body { max-height:350px; overflow-y:auto; }
 
   .tag { display:inline-block; padding:1px 7px; border-radius:10px; font-size:0.68rem; font-weight:600; }
   .tag-chrome { background:#4285f422; color:#4285f4; }
@@ -127,85 +199,105 @@
     font-size:0.78rem; transition:all .15s;
   }
   .btn:hover { border-color:var(--accent); color:var(--accent); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn:disabled:hover { border-color: var(--border); color: var(--text); }
   .btn-icon { padding:4px 8px; font-size:0.9rem; }
 
   /* ========== Scrollbar ========== */
   ::-webkit-scrollbar { width:5px; }
   ::-webkit-scrollbar-track { background:transparent; }
   ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+  * { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
 
+  /* ========== Responsive ========== */
   @media (max-width:768px) {
     .main-grid { grid-template-columns:1fr; }
+    .screenshot-viewer { min-height: 150px; }
+    .scroll-body { max-height: 250px; }
+    td { max-width: 120px; }
+  }
+
+  /* ========== Reduced Motion ========== */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+    .screenshot-viewer img { transition: none; }
   }
 </style>
 </head>
 <body>
 
-<div class="header">
+<!-- Skip to content (accessibility) -->
+<a href="#mainContent" class="skip-link" aria-label="Skip to main content">Skip to content</a>
+
+<div class="header" role="banner">
   <div class="header-left">
-    <button class="btn btn-icon" onclick="toggleSidebar()" title="Toggle sidebar" data-testid="sidebar-toggle">☰</button>
+    <button class="btn btn-icon" id="sidebarToggleBtn" title="Toggle sidebar" aria-label="Toggle sidebar" aria-expanded="true">☰</button>
     <h1>Monitor Dashboard</h1>
   </div>
   <div class="refresh-bar">
-    <input type="checkbox" id="autoRefresh" checked onchange="startAutoRefresh()">
+    <input type="checkbox" id="autoRefresh" checked aria-label="Auto refresh">
     <label for="autoRefresh">Auto</label>
-    <button class="btn" onclick="refreshAll()">Refresh</button>
+    <button class="btn" id="refreshBtn" aria-label="Refresh all data">Refresh</button>
   </div>
 </div>
 
 <div class="main-grid" id="mainGrid">
 
   <!-- Sidebar -->
-  <div class="sidebar" data-testid="sidebar" id="sidebar">
-    <div class="stats">
+  <div class="sidebar" id="sidebar" role="complementary" aria-label="Dashboard sidebar">
+    <div class="stats" role="region" aria-label="Statistics">
       <h3>Stats</h3>
       <div id="statsContent">Loading...</div>
     </div>
-    <div class="agent-list">
+    <div class="agent-list" role="region" aria-label="Agent list">
       <h3>Agents</h3>
       <div id="agentList">Loading...</div>
     </div>
   </div>
 
   <!-- Content -->
-  <div class="content">
+  <div class="content" id="mainContent" role="main">
 
     <!-- Screenshot Panel -->
-    <div class="panel" id="screenshotPanel">
-      <div class="panel-header" onclick="togglePanel('screenshotPanel')" data-testid="panel-toggle">
+    <div class="panel" id="screenshotPanel" role="region" aria-label="Screenshot viewer">
+      <div class="panel-header" role="button" tabindex="0" aria-expanded="true" data-panel="screenshotPanel">
         <h3>Screenshot <span id="screenshotAgentLabel" style="color:var(--accent)"></span></h3>
-        <span class="toggle-icon">▼</span>
+        <span class="toggle-icon" aria-hidden="true">▼</span>
       </div>
       <div class="panel-body">
-        <div class="screenshot-viewer" data-testid="screenshot-viewer" id="screenshotViewer">
+        <div class="screenshot-viewer" id="screenshotViewer">
           <span class="no-data">Select an agent</span>
         </div>
         <div class="screenshot-info">
           <span id="screenshotTime"></span>
           <div class="screenshot-nav">
-            <button class="btn" onclick="prevScreenshot()" id="btnPrev" disabled title="Previous">◀</button>
-            <button class="btn" onclick="nextScreenshot()" id="btnNext" disabled title="Next">▶</button>
+            <button class="btn" id="btnPrev" disabled title="Previous screenshot" aria-label="Previous screenshot">◀</button>
+            <button class="btn" id="btnNext" disabled title="Next screenshot" aria-label="Next screenshot">▶</button>
           </div>
         </div>
       </div>
     </div>
 
     <!-- Timeline Panel -->
-    <div class="panel" id="timelinePanel">
-      <div class="panel-header" onclick="togglePanel('timelinePanel')" data-testid="panel-toggle">
+    <div class="panel" id="timelinePanel" role="region" aria-label="Activity timeline">
+      <div class="panel-header" role="button" tabindex="0" aria-expanded="true" data-panel="timelinePanel">
         <h3>Activity <span style="color:var(--accent2);font-size:0.65rem">LIVE</span></h3>
-        <span class="toggle-icon">▼</span>
+        <span class="toggle-icon" aria-hidden="true">▼</span>
       </div>
-      <div class="panel-body scroll-body" data-testid="timeline-body" id="timelineBody">
+      <div class="panel-body scroll-body" id="timelineBody">
         <div style="color:var(--text-muted);padding:12px;text-align:center">Select an agent</div>
       </div>
     </div>
 
     <!-- App Usage Panel -->
-    <div class="panel" id="appUsagePanel">
-      <div class="panel-header" onclick="togglePanel('appUsagePanel')" data-testid="panel-toggle">
+    <div class="panel" id="appUsagePanel" role="region" aria-label="Application usage statistics">
+      <div class="panel-header" role="button" tabindex="0" aria-expanded="true" data-panel="appUsagePanel">
         <h3>App Usage</h3>
-        <span class="toggle-icon">▼</span>
+        <span class="toggle-icon" aria-hidden="true">▼</span>
       </div>
       <div class="panel-body scroll-body">
         <table>
@@ -216,20 +308,25 @@
     </div>
 
     <!-- Browser History Panel -->
-    <div class="panel" id="browserPanel">
-      <div class="panel-header" onclick="togglePanel('browserPanel')" data-testid="panel-toggle">
+    <div class="panel" id="browserPanel" role="region" aria-label="Browser history">
+      <div class="panel-header" role="button" tabindex="0" aria-expanded="true" data-panel="browserPanel">
         <h3>Browser History</h3>
-        <span class="toggle-icon">▼</span>
+        <span class="toggle-icon" aria-hidden="true">▼</span>
       </div>
-      <div class="panel-body scroll-body" data-testid="browser-body">
+      <div class="panel-body scroll-body" id="browserBodyWrap">
         <table>
-          <thead><tr><th>Browser</th><th>Title</th><th>URL</th><th>Time</th><th>#</th></tr></thead>
-          <tbody id="browserBody"><tr><td colspan="5" style="text-align:center;color:var(--text-muted)">Select an agent</td></tr></tbody>
+          <thead><tr><th>Screenshot</th><th>Browser</th><th>Title</th><th>URL</th><th>Time</th><th>#</th></tr></thead>
+          <tbody id="browserBody"><tr><td colspan="6" style="text-align:center;color:var(--text-muted)">Select an agent</td></tr></tbody>
         </table>
       </div>
     </div>
 
   </div>
+</div>
+
+<!-- Screenshot Modal -->
+<div class="modal-overlay" id="screenshotModal" role="dialog" aria-label="Screenshot preview" tabindex="-1">
+  <img src="" alt="Screenshot preview" id="modalImage">
 </div>
 
 <script>
@@ -241,18 +338,86 @@ let refreshTimer = null;
 
 // ============ Init ============
 document.addEventListener('DOMContentLoaded', () => {
+  bindEvents();
   refreshAll();
   startAutoRefresh();
 });
 
+// ============ Event Delegation (no inline onclick, XSS-safe) ============
+function bindEvents() {
+  // Sidebar toggle
+  document.getElementById('sidebarToggleBtn').addEventListener('click', toggleSidebar);
+
+  // Refresh button
+  document.getElementById('refreshBtn').addEventListener('click', refreshAll);
+
+  // Auto refresh checkbox
+  document.getElementById('autoRefresh').addEventListener('change', startAutoRefresh);
+
+  // Panel toggle (event delegation on all panel headers)
+  document.querySelectorAll('.panel-header').forEach(header => {
+    header.addEventListener('click', function() {
+      togglePanel(this.dataset.panel);
+    });
+    header.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        togglePanel(this.dataset.panel);
+      }
+    });
+  });
+
+  // Screenshot navigation buttons
+  document.getElementById('btnPrev').addEventListener('click', prevScreenshot);
+  document.getElementById('btnNext').addEventListener('click', nextScreenshot);
+
+  // Agent list (event delegation)
+  document.getElementById('agentList').addEventListener('click', function(e) {
+    const card = e.target.closest('.agent-card');
+    if (card && card.dataset.agent) {
+      selectAgent(card.dataset.agent);
+    }
+  });
+  document.getElementById('agentList').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      const card = e.target.closest('.agent-card');
+      if (card && card.dataset.agent) {
+        e.preventDefault();
+        selectAgent(card.dataset.agent);
+      }
+    }
+  });
+
+  // Screenshot thumbnail clicks → open modal
+  document.getElementById('browserBodyWrap').addEventListener('click', function(e) {
+    const thumb = e.target.closest('.shot-thumb');
+    if (thumb && thumb.dataset.src) {
+      openModal(thumb.dataset.src);
+    }
+  });
+
+  // Modal close
+  document.getElementById('screenshotModal').addEventListener('click', closeModal);
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeModal();
+  });
+}
+
 // ============ Sidebar Toggle ============
 function toggleSidebar() {
-  document.getElementById('mainGrid').classList.toggle('sidebar-collapsed');
+  const grid = document.getElementById('mainGrid');
+  const btn = document.getElementById('sidebarToggleBtn');
+  const collapsed = grid.classList.toggle('sidebar-collapsed');
+  btn.setAttribute('aria-expanded', !collapsed);
+  btn.setAttribute('aria-label', collapsed ? 'Expand sidebar' : 'Collapse sidebar');
 }
 
 // ============ Panel Toggle ============
 function togglePanel(id) {
-  document.getElementById(id).classList.toggle('collapsed');
+  const panel = document.getElementById(id);
+  const header = panel.querySelector('.panel-header');
+  const collapsed = panel.classList.toggle('collapsed');
+  header.setAttribute('aria-expanded', !collapsed);
 }
 
 // ============ Viewer Heartbeat ============
@@ -284,7 +449,10 @@ async function refreshLive() {
 // ============ API ============
 async function api(path) {
   const resp = await fetch(path);
-  if (!resp.ok) throw new Error(`${resp.status}`);
+  if (!resp.ok) {
+    const detail = await resp.json().catch(() => ({}));
+    throw new Error(detail.detail || `${resp.status}`);
+  }
   return resp.json();
 }
 
@@ -306,11 +474,11 @@ async function loadStats() {
   try {
     const d = await api('/api/dashboard/stats');
     document.getElementById('statsContent').innerHTML = `
-      <div class="stat-item"><span>Online</span><span class="val">${d.online_agents??0}</span></div>
-      <div class="stat-item"><span>Shots</span><span class="val">${d.total_screenshots??0}</span></div>
-      <div class="stat-item"><span>Events</span><span class="val">${d.today_app_events??0}</span></div>
-      <div class="stat-item"><span>URLs</span><span class="val">${d.total_browser_records??0}</span></div>`;
-  } catch(e) { console.error(e); }
+      <div class="stat-item"><span>Online</span><span class="val">${d.online_agents ?? 0}</span></div>
+      <div class="stat-item"><span>Shots</span><span class="val">${d.total_screenshots ?? 0}</span></div>
+      <div class="stat-item"><span>Events</span><span class="val">${d.today_app_events ?? 0}</span></div>
+      <div class="stat-item"><span>URLs</span><span class="val">${d.total_browser_records ?? 0}</span></div>`;
+  } catch(e) { console.error('Stats:', e); }
 }
 
 // ============ Agents ============
@@ -318,37 +486,71 @@ async function loadAgents() {
   try {
     const agents = await api('/api/agents');
     const el = document.getElementById('agentList');
-    if (!agents.length) { el.innerHTML = '<div style="color:var(--text-muted);font-size:0.82rem">No agents</div>'; return; }
+    if (!agents.length) {
+      el.innerHTML = '<div style="color:var(--text-muted);font-size:0.82rem">No agents</div>';
+      return;
+    }
     el.innerHTML = agents.map(a => `
-      <div class="agent-card ${selectedAgent===a.name?'active':''}" onclick="selectAgent('${esc(a.name)}')">
-        <div class="name"><span class="status-dot ${a.status==='online'?'online':'offline'}"></span>${esc(a.name)}</div>
-        <div class="meta">${a.status} | ${a.last_seen||'-'}</div>
-      </div>`).join('');
-  } catch(e) { console.error(e); }
+      <button class="agent-card ${selectedAgent===a.name?'active':''}"
+              type="button"
+              data-agent="${escAttr(a.name)}"
+              aria-pressed="${selectedAgent===a.name}">
+        <div class="name"><span class="status-dot ${a.status==='online'?'online':'offline'}" aria-hidden="true"></span>${escHtml(a.name)}</div>
+        <div class="meta">${escHtml(a.status)} | ${escHtml(a.last_seen||'-')}</div>
+      </button>`).join('');
+  } catch(e) { console.error('Agents:', e); }
 }
 
 async function selectAgent(name) {
   selectedAgent = name;
   document.getElementById('screenshotAgentLabel').textContent = ' - ' + name;
   currentScreenshotIndex = 0; screenshotList = [];
+
+  // Update agent card active states
   document.querySelectorAll('.agent-card').forEach(c => {
-    c.classList.toggle('active', c.querySelector('.name').textContent.trim() === name);
+    const isActive = c.dataset.agent === name;
+    c.classList.toggle('active', isActive);
+    c.setAttribute('aria-pressed', isActive);
   });
+
+  // Show loading state while fetching
+  const viewer = document.getElementById('screenshotViewer');
+  viewer.dataset.src = '';
+  viewer.innerHTML = '<div class="loader"></div>';
+  document.getElementById('screenshotTime').textContent = '';
+
   await Promise.all([
-    loadScreenshots(name), loadAppUsage(name),
-    loadBrowserHistory(name), loadAppTimeline(name),
+    loadScreenshots(name),
+    loadAppUsage(name),
+    loadBrowserHistory(name),
+    loadAppTimeline(name),
   ]);
 }
 
-// ============ Screenshots ============
+// ============ Screenshots (flicker-free image loading) ============
+let preloadCache = {};
+
+function preloadImage(src) {
+  if (preloadCache[src]) return Promise.resolve();
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => { preloadCache[src] = true; resolve(); };
+    img.onerror = () => resolve(); // resolve anyway to avoid blocking
+    img.src = src;
+  });
+}
+
 async function loadScreenshots(agent) {
   try {
     screenshotList = await api(`/api/screenshots?agent=${encodeURIComponent(agent)}&limit=50`);
-    currentScreenshotIndex = 0; displayScreenshot();
+    currentScreenshotIndex = 0;
+    displayScreenshot();
     document.getElementById('btnPrev').disabled = screenshotList.length <= 1;
     document.getElementById('btnNext').disabled = screenshotList.length <= 1;
   } catch(e) {
-    document.getElementById('screenshotViewer').innerHTML = '<span class="no-data">Load failed</span>';
+    const viewer = document.getElementById('screenshotViewer');
+    viewer.innerHTML = '<span class="no-data">Load failed</span>';
+    document.getElementById('screenshotTime').textContent = '';
   }
 }
 
@@ -358,21 +560,37 @@ async function loadScreenshotLatest(agent) {
     if (!data.id) return;
     const viewer = document.getElementById('screenshotViewer');
     const src = `/api/screenshots/image/${data.id}`;
-    if (viewer.dataset.src === src) return;
+    if (viewer.dataset.src === src) return; // already showing this image
+
+    // Preload image before swapping to prevent container collapse
+    const cacheBustSrc = `${src}?t=${Date.now()}`;
+    await preloadImage(cacheBustSrc);
+
     viewer.dataset.src = src;
-    viewer.innerHTML = `<img src="${src}?t=${Date.now()}" alt="Screenshot">`;
-    document.getElementById('screenshotTime').textContent = `LIVE - ${data.timestamp}`;
-  } catch(e) { /* ignore */ }
+    // Insert with loading class for fade-in transition
+    viewer.innerHTML = `<img src="${cacheBustSrc}" alt="Screenshot" class="loading">`;
+    const img = viewer.querySelector('img');
+    if (img) {
+      img.onload = () => img.classList.remove('loading');
+      // Safety fallback: remove loading class after 1s
+      setTimeout(() => { if (img) img.classList.remove('loading'); }, 1000);
+    }
+    document.getElementById('screenshotTime').textContent = 'LIVE - ' + data.timestamp;
+  } catch(e) { /* 404 or network error — keep existing image, don't flicker */ }
 }
 
 function displayScreenshot() {
   const viewer = document.getElementById('screenshotViewer');
   const timeEl = document.getElementById('screenshotTime');
   if (!screenshotList.length) {
-    viewer.innerHTML = '<span class="no-data">No screenshots</span>'; timeEl.textContent = ''; return;
+    viewer.innerHTML = '<span class="no-data">No screenshots</span>';
+    timeEl.textContent = '';
+    return;
   }
   const item = screenshotList[currentScreenshotIndex];
-  viewer.innerHTML = `<img src="/api/screenshots/image/${item.id}" alt="Screenshot">`;
+  const src = `/api/screenshots/image/${item.id}`;
+  viewer.dataset.src = src;
+  viewer.innerHTML = `<img src="${src}" alt="Screenshot ${item.timestamp}">`;
   timeEl.textContent = `${item.timestamp}  (${currentScreenshotIndex+1}/${screenshotList.length})`;
 }
 
@@ -387,15 +605,35 @@ function nextScreenshot() {
   displayScreenshot();
 }
 
+// ============ Screenshot Modal ============
+function openModal(src) {
+  const modal = document.getElementById('screenshotModal');
+  const img = document.getElementById('modalImage');
+  img.src = src;
+  modal.classList.add('open');
+  modal.focus();
+}
+function closeModal() {
+  document.getElementById('screenshotModal').classList.remove('open');
+}
+
 // ============ App Usage ============
 async function loadAppUsage(agent) {
   try {
     const data = await api(`/api/app_usage?agent=${encodeURIComponent(agent)}`);
     const tbody = document.getElementById('appUsageBody');
-    if (!data.length) { tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted)">No data</td></tr>'; return; }
+    if (!data.length) {
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted)">No data</td></tr>';
+      return;
+    }
     tbody.innerHTML = data.map(d => `
-      <tr><td><strong>${esc(d.process_name)}</strong></td><td>${d.total_minutes??0}</td><td>${d.switch_count??0}</td><td title="${esc(d.last_window_title||'')}">${esc((d.last_window_title||'').substring(0,50))}</td></tr>`).join('');
-  } catch(e) { console.error(e); }
+      <tr>
+        <td><strong>${escHtml(d.process_name)}</strong></td>
+        <td>${d.total_minutes ?? 0}</td>
+        <td>${d.switch_count ?? 0}</td>
+        <td title="${escAttr(d.last_window_title||'')}">${escHtml((d.last_window_title||'').substring(0,50))}</td>
+      </tr>`).join('');
+  } catch(e) { console.error('App Usage:', e); }
 }
 
 // ============ Timeline ============
@@ -403,45 +641,86 @@ async function loadAppTimeline(agent) {
   try {
     const data = await api(`/api/app_events?agent=${encodeURIComponent(agent)}&limit=20`);
     const body = document.getElementById('timelineBody');
-    if (!data.length) { body.innerHTML = '<div style="color:var(--text-muted);padding:12px;text-align:center">Waiting...</div>'; return; }
+    if (!data.length) {
+      body.innerHTML = '<div style="color:var(--text-muted);padding:12px;text-align:center">Waiting for events...</div>';
+      return;
+    }
     body.innerHTML = data.map(e => {
       const t = e.timestamp ? e.timestamp.split('T')[1].substring(0,8) : '-';
       return `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.02)">
-        <span style="color:var(--accent2);font-weight:bold;width:12px;font-size:0.75rem">></span>
-        <span style="font-size:0.72rem;color:var(--text-muted);min-width:55px">${t}</span>
-        <span style="font-size:0.82rem;flex:1">${esc((e.window_title||'-').substring(0,60))}</span>
-        <span style="font-size:0.72rem;color:var(--text-muted)">${esc(e.process_name||'')}</span>
+        <span style="color:var(--accent2);font-weight:bold;width:12px;font-size:0.75rem" aria-hidden="true">&gt;</span>
+        <span style="font-size:0.72rem;color:var(--text-muted);min-width:55px">${escHtml(t)}</span>
+        <span style="font-size:0.82rem;flex:1">${escHtml((e.window_title||'-').substring(0,60))}</span>
+        <span style="font-size:0.72rem;color:var(--text-muted)">${escHtml(e.process_name||'')}</span>
       </div>`;
     }).join('');
-  } catch(e) { console.error(e); }
+  } catch(e) {
+    console.error('Timeline:', e);
+    // Show error state instead of silently failing
+    const body = document.getElementById('timelineBody');
+    body.innerHTML = '<div style="color:var(--text-muted);padding:12px;text-align:center">Timeline unavailable</div>';
+  }
 }
 
-// ============ Browser History ============
+// ============ Browser History (with screenshot thumbnails) ============
 async function loadBrowserHistory(agent) {
   try {
-    const data = await api(`/api/browser_history?agent=${encodeURIComponent(agent)}&limit=100`);
+    // Request with screenshots correlation
+    const data = await api(`/api/browser_history?agent=${encodeURIComponent(agent)}&limit=100&with_screenshots=true`);
     const tbody = document.getElementById('browserBody');
-    if (!data.length) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted)">No data</td></tr>'; return; }
+    if (!data.length) {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">No data</td></tr>';
+      return;
+    }
     tbody.innerHTML = data.map(d => {
       let cls = 'tag-chrome';
-      if (d.browser==='edge') cls='tag-edge';
-      else if (d.browser==='firefox') cls='tag-firefox';
+      if (d.browser === 'edge') cls = 'tag-edge';
+      else if (d.browser === 'firefox') cls = 'tag-firefox';
+
+      // Screenshot thumbnail cell
+      let shotCell = '<span class="shot-thumb-placeholder" aria-hidden="true">—</span>';
+      if (d.screenshot_id) {
+        const shotSrc = `/api/screenshots/image/${d.screenshot_id}`;
+        shotCell = `<img class="shot-thumb"
+          src="${escAttr(shotSrc)}"
+          alt="Screenshot at ${escAttr(d.screenshot_time||'')}"
+          title="Screenshot: ${escAttr(d.screenshot_time||'')} — click to enlarge"
+          data-src="${escAttr(shotSrc)}"
+          loading="lazy">`;
+      }
+
       return `<tr>
-        <td><span class="tag ${cls}">${esc(d.browser)}</span></td>
-        <td title="${esc(d.title)}">${esc((d.title||'').substring(0,50))}</td>
-        <td title="${esc(d.url)}"><a href="${esc(d.url)}" target="_blank" style="color:var(--accent);text-decoration:none">${esc(d.url.substring(0,70))}</a></td>
-        <td>${d.last_visit||'-'}</td><td>${d.visit_count}</td>
+        <td>${shotCell}</td>
+        <td><span class="tag ${cls}">${escHtml(d.browser)}</span></td>
+        <td title="${escAttr(d.title)}">${escHtml((d.title||'').substring(0,50))}</td>
+        <td title="${escAttr(d.url)}"><a href="${escAttr(d.url)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none" aria-label="Open ${escAttr(d.url)} in new tab">${escHtml(d.url.substring(0,60))}</a></td>
+        <td>${escHtml(d.last_visit||'-')}</td>
+        <td>${d.visit_count}</td>
       </tr>`;
     }).join('');
-  } catch(e) { console.error(e); }
+  } catch(e) {
+    console.error('Browser History:', e);
+    const tbody = document.getElementById('browserBody');
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">Load failed</td></tr>';
+  }
 }
 
-// ============ Utils ============
-function esc(s) {
+// ============ Context-Aware HTML Escaping ============
+function escHtml(s) {
   if (!s) return '';
   const d = document.createElement('div');
   d.textContent = s;
   return d.innerHTML;
+}
+
+function escAttr(s) {
+  // Safe escaping for HTML attribute values (used with double-quoted attrs)
+  if (!s) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 </script>
 </body>

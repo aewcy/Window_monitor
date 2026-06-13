@@ -14,6 +14,7 @@ from models import (
     save_screenshot, get_screenshots, get_latest_screenshot,
     save_app_event, get_app_usage_summary,
     save_browser_history, get_browser_history,
+    get_browser_history_with_screenshots,
     get_dashboard_stats,
 )
 
@@ -188,6 +189,9 @@ async def browser_history_list(
     agent: Optional[str] = Query(None),
     limit: int = Query(100, le=500),
     offset: int = Query(0),
+    with_screenshots: bool = Query(False),
 ):
-    """浏览器历史列表"""
+    """浏览器历史列表 - 可选关联截图"""
+    if with_screenshots:
+        return get_browser_history_with_screenshots(agent, limit, offset)
     return get_browser_history(agent, limit, offset)
