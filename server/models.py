@@ -106,6 +106,13 @@ def init_db():
     except sqlite3.OperationalError:
         pass  # 列已存在
 
+    # 向前兼容迁移: 为已存在的 app_events 表添加 screenshot_timestamp 列
+    try:
+        db.execute("ALTER TABLE app_events ADD COLUMN screenshot_timestamp TEXT DEFAULT ''")
+        db.commit()
+    except sqlite3.OperationalError:
+        pass  # 列已存在
+
 
 # ============================================
 # Agent 管理
@@ -218,8 +225,8 @@ def save_app_event(agent_name: str, data: dict):
     db.execute(
         """INSERT INTO app_events
            (agent_name, event_type, window_title, process_name, process_path,
-            display_name, timestamp, duration_seconds)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            display_name, timestamp, duration_seconds, screenshot_timestamp)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             agent_name,
             data.get("type", "unknown"),
@@ -229,6 +236,7 @@ def save_app_event(agent_name: str, data: dict):
             data.get("display_name", ""),
             data.get("timestamp", datetime.now().isoformat()),
             data.get("duration_seconds", 0),
+            data.get("screenshot_timestamp", ""),
         )
     )
     db.commit()
@@ -269,11 +277,22 @@ def get_app_events(agent_name: str, limit: int = 50) -> list[dict]:
 
 
 def get_app_events_with_screenshots(agent_name: str, limit: int = 50) -> list[dict]:
-    """最近应用事件时间线，每条关联最近时间的截图"""
+    """最近应用事件时间线，每条关联最近时间的截图
+
+    匹配策略 (按优先级):
+    1. 精确匹配 — 事件携带 screenshot_timestamp 时直接关联 (Enter/窗口切换触发的即时截图)
+    2. 事后兜底 — 事件后任意时间的最近截图
+    3. 事前兜底 — 事件前最近的截图
+    """
     db = get_db()
     rows = db.execute("""
         SELECT ae.*,
             COALESCE(
+                (SELECT s.id FROM screenshots s
+                 WHERE s.agent_name = ae.agent_name
+                   AND ae.screenshot_timestamp != ''
+                   AND s.timestamp = ae.screenshot_timestamp
+                 LIMIT 1),
                 (SELECT s.id FROM screenshots s
                  WHERE s.agent_name = ae.agent_name AND s.timestamp >= ae.timestamp
                  ORDER BY s.timestamp ASC LIMIT 1),
@@ -282,6 +301,11 @@ def get_app_events_with_screenshots(agent_name: str, limit: int = 50) -> list[di
                  ORDER BY s.timestamp DESC LIMIT 1)
             ) as screenshot_id,
             COALESCE(
+                (SELECT s.timestamp FROM screenshots s
+                 WHERE s.agent_name = ae.agent_name
+                   AND ae.screenshot_timestamp != ''
+                   AND s.timestamp = ae.screenshot_timestamp
+                 LIMIT 1),
                 (SELECT s.timestamp FROM screenshots s
                  WHERE s.agent_name = ae.agent_name AND s.timestamp >= ae.timestamp
                  ORDER BY s.timestamp ASC LIMIT 1),

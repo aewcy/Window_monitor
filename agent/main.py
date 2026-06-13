@@ -70,6 +70,7 @@ class Reporter:
             "process_name": data.get("process_name", ""),
             "process_path": data.get("process_path", ""),
             "timestamp": data.get("timestamp", ""),
+            "screenshot_timestamp": data.get("screenshot_timestamp", ""),
         })
 
     def browser(self, records: list):
@@ -91,6 +92,7 @@ class Reporter:
             "process_path": data.get("process_path", data.get("process_name", "")),
             "display_name": data.get("display_name", ""),
             "timestamp": data.get("timestamp", ""),
+            "screenshot_timestamp": data.get("screenshot_timestamp", ""),
         })
         if ok:
             print(f"  [OK] Enter事件 {data.get('display_name', '?')}")
@@ -103,7 +105,21 @@ class Reporter:
 # Agent 主控
 # ============================================
 
+# ============================================
+# 自适应截图频率 — 全局状态
+# ============================================
+_last_activity_time = time.time()          # 最后一次用户活动时间
+_server_interval = SCREENSHOT_INTERVAL       # 服务端下发的截图间隔
+
+
+def record_activity():
+    """记录用户活动时间戳，供自适应频率控制器使用"""
+    global _last_activity_time
+    _last_activity_time = time.time()
+
+
 def main():
+    global _server_interval
     platform = "Windows" if IS_WINDOWS else ("Linux" if IS_LINUX else "?")
     reporter = Reporter(SERVER_URL, AGENT_NAME)
 
@@ -145,7 +161,9 @@ def main():
         shot_data = screenshot.capture_once()
         if shot_data:
             reporter.screenshot(shot_data)
+            info["screenshot_timestamp"] = shot_data["timestamp"]
         reporter.window(info)
+        record_activity()  # 窗口切换也视为活动
 
     window.add_listener(on_app_switch_with_screenshot)
 
@@ -160,7 +178,10 @@ def main():
         shot_data = screenshot.capture_once()
         if shot_data:
             reporter.screenshot(shot_data)
+            # 嵌入截图时间戳，供服务端精确关联事件与截图
+            info["screenshot_timestamp"] = shot_data["timestamp"]
         reporter.chat_enter(info)
+        record_activity()  # 标记活动，触发高频截图
 
     keyboard_monitor.add_listener(on_chat_enter)
 
@@ -177,8 +198,9 @@ def main():
 
     threading.Thread(target=heartbeat_loop, daemon=True).start()
 
-    # 动态配置轮询 - 根据 Dashboard 是否有人观察调整截图频率
+    # 服务端配置轮询 — 只更新 _server_interval，最终由频率控制器裁决
     def config_poller():
+        global _server_interval
         while True:
             try:
                 r = requests.get(
@@ -188,16 +210,49 @@ def main():
                 if r.status_code == 200:
                     cfg = r.json()
                     new_interval = cfg.get("screenshot_interval", SCREENSHOT_INTERVAL)
-                    # 只在变化时更新，减少日志噪音
-                    if new_interval != screenshot.interval:
-                        screenshot.interval = new_interval
-                        status = "LIVE" if new_interval == 1 else "IDLE"
-                        print(f"  [>>] 观察状态: {status}  截图间隔: {new_interval}s")
+                    if new_interval != _server_interval:
+                        _server_interval = new_interval
+                        status = "LIVE" if new_interval <= 1.5 else "IDLE"
+                        print(f"  [>>] 观察状态: {status}  服务端间隔: {new_interval}s")
             except Exception:
                 pass
-            time.sleep(3)  # 每3秒检查一次
+            time.sleep(3)
 
     threading.Thread(target=config_poller, daemon=True).start()
+
+    # 自适应截图频率控制器 — 本地活动优先于服务端配置
+    def screenshot_frequency_controller():
+        global _server_interval
+        ACTIVE_INTERVAL = 0.25    # 活跃 → 每秒 4 次
+        IDLE_INTERVAL = 5.0        # 空闲 → 每 5 秒 1 次
+        IDLE_THRESHOLD = 60.0      # 1 分钟无活动视为空闲
+        last_interval = None
+
+        while True:
+            idle_sec = time.time() - _last_activity_time
+            is_active = idle_sec < IDLE_THRESHOLD
+
+            if is_active:
+                target = ACTIVE_INTERVAL
+            elif _server_interval <= 1.5:
+                target = _server_interval  # 观察者正在查看 → 1s
+            else:
+                target = IDLE_INTERVAL
+
+            if target != last_interval:
+                screenshot.interval = target
+                if is_active:
+                    mode = f"ACTIVE ({idle_sec:.0f}s 空闲)"
+                elif target <= 1.5:
+                    mode = "VIEWER"
+                else:
+                    mode = "IDLE"
+                print(f"  [Adaptive] {mode}  截图间隔: {target}s")
+                last_interval = target
+
+            time.sleep(1)
+
+    threading.Thread(target=screenshot_frequency_controller, daemon=True).start()
 
     print("\n  Agent 运行中, Ctrl+C 停止\n")
 
