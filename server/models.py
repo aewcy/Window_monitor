@@ -259,6 +259,18 @@ def get_app_usage_summary(agent_name: str, date: str = None) -> list[dict]:
     return results
 
 
+def get_app_events(agent_name: str, limit: int = 50) -> list[dict]:
+    """最近应用事件时间线"""
+    db = get_db()
+    rows = db.execute(
+        """SELECT * FROM app_events
+           WHERE agent_name = ?
+           ORDER BY timestamp DESC LIMIT ?""",
+        (agent_name, limit)
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
 # ============================================
 # 浏览器历史
 # ============================================

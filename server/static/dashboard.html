@@ -287,15 +287,25 @@
       </div>
     </div>
 
+    <!-- 活动时间线 (实时) -->
+    <div class="panel" id="timelinePanel">
+      <div class="panel-header">
+        <h3>Activity Timeline <span style="color:var(--accent2);font-size:0.7rem">LIVE</span></h3>
+      </div>
+      <div class="panel-body" id="timelineBody" style="max-height:400px;overflow-y:auto">
+        <div style="color:var(--text-muted);padding:12px;text-align:center">Select an agent</div>
+      </div>
+    </div>
+
     <!-- 应用使用面板 -->
     <div class="panel" id="appUsagePanel">
       <div class="panel-header">
-        <h3>📱 应用使用统计</h3>
+        <h3>App Usage Summary</h3>
       </div>
       <div class="panel-body">
         <table>
-          <thead><tr><th>进程</th><th>总时长(分钟)</th><th>切换次数</th><th>最近窗口</th></tr></thead>
-          <tbody id="appUsageBody"><tr><td colspan="4" style="text-align:center;color:var(--text-muted)">请选择终端</td></tr></tbody>
+          <thead><tr><th>Process</th><th>Minutes</th><th>Switches</th><th>Last Window</th></tr></thead>
+          <tbody id="appUsageBody"><tr><td colspan="4" style="text-align:center;color:var(--text-muted)">Select an agent</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -330,23 +340,32 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('autoRefresh').addEventListener('change', startAutoRefresh);
 });
 
+// ============ Viewer Heartbeat ============
+// Ping server every 1s to tell Agent "someone is watching"
+setInterval(() => {
+  fetch('/api/viewer/heartbeat', { method: 'POST' }).catch(() => {});
+}, 1000);
+
 // ============ Auto Refresh ============
 function startAutoRefresh() {
   if (refreshTimer) clearInterval(refreshTimer);
   if (document.getElementById('autoRefresh').checked) {
-    let countdown = 10;
-    const cdEl = document.getElementById('refreshCountdown');
+    let tick = 0;
     refreshTimer = setInterval(() => {
-      countdown--;
-      cdEl.textContent = `${countdown}s`;
-      if (countdown <= 0) {
-        refreshAll();
-        countdown = 10;
-      }
-    }, 1000);
-  } else {
-    document.getElementById('refreshCountdown').textContent = '';
+      tick++;
+      refreshLive();
+      // Full refresh every 30 ticks
+      if (tick % 30 === 0) refreshAll();
+    }, 1000);  // 1s for live view
   }
+}
+
+async function refreshLive() {
+  if (!selectedAgent) { await loadAgents(); return; }
+  await Promise.all([
+    loadScreenshotLatest(selectedAgent),
+    loadAppTimeline(selectedAgent),
+  ]);
 }
 
 // ============ API Calls ============
@@ -361,9 +380,12 @@ async function refreshAll() {
   await loadStats();
   await loadAgents();
   if (selectedAgent) {
-    await loadScreenshots(selectedAgent);
-    await loadAppUsage(selectedAgent);
-    await loadBrowserHistory(selectedAgent);
+    await Promise.all([
+      loadScreenshots(selectedAgent),
+      loadAppUsage(selectedAgent),
+      loadBrowserHistory(selectedAgent),
+      loadAppTimeline(selectedAgent),
+    ]);
   }
 }
 
@@ -418,6 +440,7 @@ async function selectAgent(name) {
     loadScreenshots(name),
     loadAppUsage(name),
     loadBrowserHistory(name),
+    loadAppTimeline(name),
   ]);
 }
 
@@ -431,21 +454,37 @@ async function loadScreenshots(agent) {
     document.getElementById('btnPrevScreenshot').disabled = data.length <= 1;
   } catch(e) {
     console.error('loadScreenshots', e);
-    document.getElementById('screenshotViewer').innerHTML = '<span class="no-data">加载失败</span>';
+    document.getElementById('screenshotViewer').innerHTML = '<span class="no-data">Loading failed</span>';
   }
+}
+
+// Live: load just the latest screenshot
+async function loadScreenshotLatest(agent) {
+  try {
+    const data = await api(`/api/screenshots/latest?agent=${encodeURIComponent(agent)}`);
+    if (!data.id) return;
+    const viewer = document.getElementById('screenshotViewer');
+    const timeEl = document.getElementById('screenshotTime');
+    const lastSrc = viewer.dataset.src || '';
+    const newSrc = `/api/screenshots/image/${data.id}`;
+    if (lastSrc === newSrc && viewer.querySelector('img')) return; // same image, skip
+    viewer.dataset.src = newSrc;
+    viewer.innerHTML = `<img src="${newSrc}?t=${Date.now()}" alt="Screenshot" />`;
+    timeEl.textContent = `LIVE - ${data.timestamp}`;
+  } catch(e) { /* ignore */ }
 }
 
 function displayScreenshot() {
   const viewer = document.getElementById('screenshotViewer');
   const timeEl = document.getElementById('screenshotTime');
   if (!screenshotList.length) {
-    viewer.innerHTML = '<span class="no-data">暂无截图</span>';
+    viewer.innerHTML = '<span class="no-data">No screenshots</span>';
     timeEl.textContent = '';
     return;
   }
   const item = screenshotList[currentScreenshotIndex];
   viewer.innerHTML = `<img src="/api/screenshots/image/${item.id}" alt="Screenshot" />`;
-  timeEl.textContent = `🕐 ${item.timestamp}  (${currentScreenshotIndex + 1}/${screenshotList.length})`;
+  timeEl.textContent = `${item.timestamp}  (${currentScreenshotIndex + 1}/${screenshotList.length})`;
 }
 
 function prevScreenshot() {
@@ -460,7 +499,7 @@ async function loadAppUsage(agent) {
     const data = await api(`/api/app_usage?agent=${encodeURIComponent(agent)}`);
     const tbody = document.getElementById('appUsageBody');
     if (!data.length) {
-      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted)">暂无数据</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted)">No data</td></tr>';
       return;
     }
     tbody.innerHTML = data.map(d => `
@@ -472,6 +511,30 @@ async function loadAppUsage(agent) {
       </tr>
     `).join('');
   } catch(e) { console.error('loadAppUsage', e); }
+}
+
+// ============ App Timeline (live) ============
+async function loadAppTimeline(agent) {
+  try {
+    const data = await api(`/api/app_events?agent=${encodeURIComponent(agent)}&limit=20`);
+    const body = document.getElementById('timelineBody');
+    if (!data.length) {
+      body.innerHTML = '<div style="color:var(--text-muted);padding:12px;text-align:center">Waiting for activity...</div>';
+      return;
+    }
+    body.innerHTML = data.map(e => {
+      const time = e.timestamp ? e.timestamp.split('T')[1].substring(0, 8) : '-';
+      const icon = e.event_type === 'app_start' ? '+' : (e.event_type === 'app_end' ? '-' : '|');
+      const color = e.event_type === 'app_start' ? 'var(--accent2)' : (e.event_type === 'app_end' ? 'var(--text-muted)' : 'var(--accent)');
+      return `
+        <div style="display:flex;align-items:center;gap:10px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.03)">
+          <span style="color:${color};font-weight:bold;width:16px">${icon}</span>
+          <span style="font-size:0.75rem;color:var(--text-muted);min-width:60px">${time}</span>
+          <span style="font-size:0.85rem;font-weight:500;flex:1">${escapeHtml(e.window_title || '-').substring(0, 60)}</span>
+          <span style="font-size:0.75rem;color:var(--text-muted)">${escapeHtml(e.process_name || '')}</span>
+        </div>`;
+    }).join('');
+  } catch(e) { console.error('loadAppTimeline', e); }
 }
 
 // ============ Browser History ============

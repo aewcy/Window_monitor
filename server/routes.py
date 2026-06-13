@@ -19,6 +19,9 @@ from models import (
 
 router = APIRouter(prefix="/api")
 
+# 观察者心跳 - 记录 Dashboard 最后访问时间
+_viewer_last_seen: dict[str, datetime] = {}
+
 
 # ============================================
 # 健康检查
@@ -27,6 +30,31 @@ router = APIRouter(prefix="/api")
 @router.get("/health")
 async def health():
     return {"status": "ok", "time": datetime.now().isoformat()}
+
+
+# ============================================
+# 观察者心跳 & 动态配置
+# ============================================
+
+@router.post("/viewer/heartbeat")
+async def viewer_heartbeat():
+    """Dashboard 每秒 ping 此接口，表示有人正在观看"""
+    _viewer_last_seen["dashboard"] = datetime.now()
+    return {"status": "ok"}
+
+
+@router.get("/config")
+async def agent_config(agent: str = Query("unknown")):
+    """Agent 拉取动态配置 - 根据观察者存在与否调整截图间隔"""
+    last_seen = _viewer_last_seen.get("dashboard")
+    if last_seen and (datetime.now() - last_seen).total_seconds() < 10:
+        screenshot_interval = 1   # 有人看 → 1秒
+    else:
+        screenshot_interval = 5   # 没人看 → 5秒
+    return {
+        "screenshot_interval": screenshot_interval,
+        "app_track_interval": 2,
+    }
 
 
 # ============================================
@@ -143,6 +171,16 @@ async def app_usage(
 ):
     """应用使用汇总"""
     return get_app_usage_summary(agent, date)
+
+
+@router.get("/app_events")
+async def app_events_list(
+    agent: str = Query(...),
+    limit: int = Query(50, le=200),
+):
+    """最近应用事件时间线"""
+    from models import get_app_events
+    return get_app_events(agent, limit)
 
 
 @router.get("/browser_history")

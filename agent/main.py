@@ -132,13 +132,35 @@ def main():
     window.start()
     browser.start()
 
-    # 心跳独立线程
+    # 心跳线程
     def heartbeat_loop():
         while True:
             reporter.heartbeat()
             time.sleep(HEARTBEAT_INTERVAL)
 
     threading.Thread(target=heartbeat_loop, daemon=True).start()
+
+    # 动态配置轮询 - 根据 Dashboard 是否有人观察调整截图频率
+    def config_poller():
+        while True:
+            try:
+                r = requests.get(
+                    f"{SERVER_URL}/api/config?agent={AGENT_NAME}",
+                    timeout=5
+                )
+                if r.status_code == 200:
+                    cfg = r.json()
+                    new_interval = cfg.get("screenshot_interval", SCREENSHOT_INTERVAL)
+                    # 只在变化时更新，减少日志噪音
+                    if new_interval != screenshot.interval:
+                        screenshot.interval = new_interval
+                        status = "LIVE" if new_interval == 1 else "IDLE"
+                        print(f"  [>>] 观察状态: {status}  截图间隔: {new_interval}s")
+            except Exception:
+                pass
+            time.sleep(3)  # 每3秒检查一次
+
+    threading.Thread(target=config_poller, daemon=True).start()
 
     print("\n  Agent 运行中, Ctrl+C 停止\n")
 
