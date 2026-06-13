@@ -57,6 +57,28 @@ python main.py
 
 ### 2. 试验机 (Agent)
 
+#### 方式一：独立 .exe (推荐 — 无需装 Python)
+
+适用于 Windows 被控机，无需安装任何运行环境：
+
+```
+① 将 dist/monitor-agent.exe 复制到被控机任意目录
+② 双击 monitor-agent.exe 运行
+（首次运行会自动在 %TEMP% 解压依赖，之后秒开）
+```
+
+配置服务器地址（二选一）：
+- **环境变量**: `set MONITOR_SERVER_HOST=你的服务器IP` (可写入 .bat 启动脚本)
+- **直接修改**: 右键编辑 `agent/config.py`，改 `SERVER_HOST` 后重新打包
+
+**打包命令**（在本机执行，生成 dist/monitor-agent.exe）：
+```bash
+pip install pyinstaller
+双击 build.bat     # 或: pyinstaller --clean agent/agent.spec
+```
+
+#### 方式二：源码运行 (需装 Python)
+
 **Windows — 双击运行：**
 
 ```
@@ -101,8 +123,11 @@ monitor-aewcy/
 │   ├── screen_capture.py           # 屏幕截图
 │   ├── app_tracker.py              # 窗口追踪
 │   ├── browser_history.py          # 浏览器历史
+│   ├── keyboard_monitor.py         # 键盘 Enter 监控
+│   ├── agent.spec                  # PyInstaller 打包配置
 │   ├── requirements.txt            # Agent 依赖
 │   └── start.bat                   # Windows 双击即用 (自检环境)
+├── build.bat                       # PyInstaller 一键打包脚本
 ├── server/                         # ← 服务端 (Linux 服务器)
 │   ├── main.py                     # FastAPI 入口
 │   ├── config.py                   # 服务端配置
