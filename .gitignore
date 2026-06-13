@@ -16,6 +16,11 @@ agent/venv/
 .vscode/
 .idea/
 
+# Archives
+*.rar
+*.zip
+*.7z
+
 # OS
 .DS_Store
 Thumbs.db
