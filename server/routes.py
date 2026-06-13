@@ -15,6 +15,7 @@ from models import (
     save_app_event, get_app_usage_summary,
     save_browser_history, get_browser_history,
     get_browser_history_with_screenshots,
+    get_app_events, get_app_events_with_screenshots,
     get_dashboard_stats,
 )
 
@@ -178,9 +179,11 @@ async def app_usage(
 async def app_events_list(
     agent: str = Query(...),
     limit: int = Query(50, le=200),
+    with_screenshots: bool = Query(False),
 ):
-    """最近应用事件时间线"""
-    from models import get_app_events
+    """最近应用事件时间线 - 可选关联截图"""
+    if with_screenshots:
+        return get_app_events_with_screenshots(agent, limit)
     return get_app_events(agent, limit)
 
 

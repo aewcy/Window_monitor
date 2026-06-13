@@ -29,6 +29,7 @@ class ScreenCapture:
         self._thread = None
         self._last_screenshot = None
         self._listeners = []
+        self._capture_lock = threading.Lock()
 
     def add_listener(self, callback):
         """添加截图回调 - callback(b64_data, timestamp)"""
@@ -67,8 +68,9 @@ class ScreenCapture:
             return None
 
     def capture_once(self) -> dict | None:
-        """执行一次截图并返回结构化数据"""
-        result = self._capture()
+        """执行一次截图并返回结构化数据（线程安全）"""
+        with self._capture_lock:
+            result = self._capture()
         if result is None:
             return None
         b64_data, timestamp = result

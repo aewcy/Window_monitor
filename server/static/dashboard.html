@@ -203,6 +203,26 @@
   .btn:disabled:hover { border-color: var(--border); color: var(--text); }
   .btn-icon { padding:4px 8px; font-size:0.9rem; }
 
+  /* ========== Timeline Entries ========== */
+  .timeline-entry {
+    display:flex; align-items:center; gap:8px; padding:3px 4px;
+    border-bottom:1px solid rgba(255,255,255,.02);
+    cursor: default; border-radius: 3px; transition: background .15s;
+  }
+  .timeline-entry.has-shot {
+    cursor: pointer;
+  }
+  .timeline-entry.has-shot:hover {
+    background: rgba(79,140,255,.08);
+  }
+  .timeline-entry .shot-indicator {
+    font-size: 0.7rem; color: var(--accent); margin-left: auto;
+    opacity: 0; transition: opacity .15s; flex-shrink: 0;
+  }
+  .timeline-entry.has-shot:hover .shot-indicator {
+    opacity: 0.7;
+  }
+
   /* ========== Scrollbar ========== */
   ::-webkit-scrollbar { width:5px; }
   ::-webkit-scrollbar-track { background:transparent; }
@@ -335,6 +355,9 @@ let selectedAgent = null;
 let currentScreenshotIndex = 0;
 let screenshotList = [];
 let refreshTimer = null;
+let refreshTick = 0;
+let timelineGen = 0;   // generation counter to discard stale async responses
+let screenshotGen = 0;  // ditto for screenshot latest
 
 // ============ Init ============
 document.addEventListener('DOMContentLoaded', () => {
@@ -388,11 +411,29 @@ function bindEvents() {
     }
   });
 
-  // Screenshot thumbnail clicks → open modal
+  // Screenshot thumbnail clicks → open modal (browser history)
   document.getElementById('browserBodyWrap').addEventListener('click', function(e) {
     const thumb = e.target.closest('.shot-thumb');
     if (thumb && thumb.dataset.src) {
       openModal(thumb.dataset.src);
+    }
+  });
+
+  // Timeline entry clicks → open associated screenshot modal
+  document.getElementById('timelineBody').addEventListener('click', function(e) {
+    const entry = e.target.closest('.timeline-entry.has-shot');
+    if (entry && entry.dataset.shotSrc) {
+      openModal(entry.dataset.shotSrc);
+    }
+  });
+  // Keyboard support for clickable timeline entries
+  document.getElementById('timelineBody').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      const entry = e.target.closest('.timeline-entry.has-shot');
+      if (entry && entry.dataset.shotSrc) {
+        e.preventDefault();
+        openModal(entry.dataset.shotSrc);
+      }
     }
   });
 
@@ -429,20 +470,20 @@ setInterval(() => {
 function startAutoRefresh() {
   if (refreshTimer) clearInterval(refreshTimer);
   if (document.getElementById('autoRefresh').checked) {
-    let tick = 0;
     refreshTimer = setInterval(() => {
-      tick++;
+      refreshTick++;
       refreshLive();
-      if (tick % 30 === 0) refreshAll();
+      if (refreshTick % 30 === 0) refreshAll();
     }, 1000);
   }
 }
 
 async function refreshLive() {
   if (!selectedAgent) { await loadAgents(); return; }
+  // Screenshot every second, timeline only every 5 seconds (reduces DB load)
   await Promise.all([
     loadScreenshotLatest(selectedAgent),
-    loadAppTimeline(selectedAgent),
+    (refreshTick % 5 === 0) ? loadAppTimeline(selectedAgent) : Promise.resolve(),
   ]);
 }
 
@@ -555,8 +596,10 @@ async function loadScreenshots(agent) {
 }
 
 async function loadScreenshotLatest(agent) {
+  const gen = ++screenshotGen;
   try {
     const data = await api(`/api/screenshots/latest?agent=${encodeURIComponent(agent)}`);
+    if (gen !== screenshotGen) return; // stale — agent changed
     if (!data.id) return;
     const viewer = document.getElementById('screenshotViewer');
     const src = `/api/screenshots/image/${data.id}`;
@@ -566,15 +609,18 @@ async function loadScreenshotLatest(agent) {
     const cacheBustSrc = `${src}?t=${Date.now()}`;
     await preloadImage(cacheBustSrc);
 
+    if (gen !== screenshotGen) return; // re-check after await
     viewer.dataset.src = src;
-    // Insert with loading class for fade-in transition
-    viewer.innerHTML = `<img src="${cacheBustSrc}" alt="Screenshot" class="loading">`;
-    const img = viewer.querySelector('img');
-    if (img) {
-      img.onload = () => img.classList.remove('loading');
-      // Safety fallback: remove loading class after 1s
-      setTimeout(() => { if (img) img.classList.remove('loading'); }, 1000);
-    }
+    // Create Image element manually so onload fires for cached images too
+    const img = new Image();
+    img.className = 'loading';
+    img.alt = 'Screenshot';
+    img.onload = () => img.classList.remove('loading');
+    img.src = cacheBustSrc;
+    viewer.innerHTML = '';
+    viewer.appendChild(img);
+    // Safety fallback: remove loading class after 1s
+    setTimeout(() => { if (img && img.parentNode) img.classList.remove('loading'); }, 1000);
     document.getElementById('screenshotTime').textContent = 'LIVE - ' + data.timestamp;
   } catch(e) { /* 404 or network error — keep existing image, don't flicker */ }
 }
@@ -638,8 +684,10 @@ async function loadAppUsage(agent) {
 
 // ============ Timeline ============
 async function loadAppTimeline(agent) {
+  const gen = ++timelineGen;
   try {
-    const data = await api(`/api/app_events?agent=${encodeURIComponent(agent)}&limit=20`);
+    const data = await api(`/api/app_events?agent=${encodeURIComponent(agent)}&limit=20&with_screenshots=true`);
+    if (gen !== timelineGen) return; // stale — agent changed or superseded
     const body = document.getElementById('timelineBody');
     if (!data.length) {
       body.innerHTML = '<div style="color:var(--text-muted);padding:12px;text-align:center">Waiting for events...</div>';
@@ -647,16 +695,25 @@ async function loadAppTimeline(agent) {
     }
     body.innerHTML = data.map(e => {
       const t = e.timestamp ? e.timestamp.split('T')[1].substring(0,8) : '-';
-      return `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.02)">
+      const hasShot = e.screenshot_id != null;
+      const shotSrc = hasShot ? `/api/screenshots/image/${e.screenshot_id}` : '';
+      const cls = 'timeline-entry' + (hasShot ? ' has-shot' : '');
+      const indicator = hasShot
+        ? `<span class="shot-indicator" title="Click to view screenshot">&#x1F4F7;</span>`
+        : '';
+      const clickAttr = hasShot
+        ? ` data-shot-src="${escAttr(shotSrc)}" role="button" tabindex="0" aria-label="View screenshot at ${escAttr(e.timestamp)}"`
+        : '';
+      return `<div class="${cls}"${clickAttr}>
         <span style="color:var(--accent2);font-weight:bold;width:12px;font-size:0.75rem" aria-hidden="true">&gt;</span>
         <span style="font-size:0.72rem;color:var(--text-muted);min-width:55px">${escHtml(t)}</span>
         <span style="font-size:0.82rem;flex:1">${escHtml((e.window_title||'-').substring(0,60))}</span>
         <span style="font-size:0.72rem;color:var(--text-muted)">${escHtml(e.process_name||'')}</span>
+        ${indicator}
       </div>`;
     }).join('');
   } catch(e) {
     console.error('Timeline:', e);
-    // Show error state instead of silently failing
     const body = document.getElementById('timelineBody');
     body.innerHTML = '<div style="color:var(--text-muted);padding:12px;text-align:center">Timeline unavailable</div>';
   }

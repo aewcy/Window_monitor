@@ -123,7 +123,15 @@ def main():
     screenshot.add_listener(reporter.screenshot)
 
     window = AppTracker(interval=APP_TRACK_INTERVAL)
-    window.add_listener(reporter.window)
+
+    def on_app_switch_with_screenshot(info):
+        """窗口切换时立即触发一次截图，确保有时间戳接近的截图"""
+        shot_data = screenshot.capture_once()
+        if shot_data:
+            reporter.screenshot(shot_data)
+        reporter.window(info)
+
+    window.add_listener(on_app_switch_with_screenshot)
 
     browser = BrowserHistoryCollector(interval=BROWSER_HISTORY_INTERVAL)
     browser.add_listener(reporter.browser)

@@ -258,6 +258,35 @@ def get_app_events(agent_name: str, limit: int = 50) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def get_app_events_with_screenshots(agent_name: str, limit: int = 50) -> list[dict]:
+    """最近应用事件时间线，每条关联最近时间的截图"""
+    db = get_db()
+    rows = db.execute("""
+        SELECT ae.*,
+            COALESCE(
+                (SELECT s.id FROM screenshots s
+                 WHERE s.agent_name = ae.agent_name AND s.timestamp >= ae.timestamp
+                 ORDER BY s.timestamp ASC LIMIT 1),
+                (SELECT s.id FROM screenshots s
+                 WHERE s.agent_name = ae.agent_name AND s.timestamp <= ae.timestamp
+                 ORDER BY s.timestamp DESC LIMIT 1)
+            ) as screenshot_id,
+            COALESCE(
+                (SELECT s.timestamp FROM screenshots s
+                 WHERE s.agent_name = ae.agent_name AND s.timestamp >= ae.timestamp
+                 ORDER BY s.timestamp ASC LIMIT 1),
+                (SELECT s.timestamp FROM screenshots s
+                 WHERE s.agent_name = ae.agent_name AND s.timestamp <= ae.timestamp
+                 ORDER BY s.timestamp DESC LIMIT 1)
+            ) as screenshot_time
+        FROM app_events ae
+        WHERE ae.agent_name = ?
+        ORDER BY ae.timestamp DESC
+        LIMIT ?
+    """, (agent_name, limit)).fetchall()
+    return [dict(r) for r in rows]
+
+
 # ============================================
 # 浏览器历史
 # ============================================
