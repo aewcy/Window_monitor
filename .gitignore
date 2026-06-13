@@ -9,6 +9,9 @@ server/data/
 *.db-shm
 *.db-wal
 
+# Agent venv
+agent/venv/
+
 # IDE
 .vscode/
 .idea/
