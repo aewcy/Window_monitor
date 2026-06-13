@@ -62,8 +62,8 @@ python main.py
 
 ```
 ① 进入 agent/ 目录
-② 双击 setup.bat   ← 初始化（只需一次）
-③ 双击 start.bat   ← 启动 Agent
+② 双击 start.bat   ← 自动检测环境、缺啥装啥、启动
+（第一次自动装 venv + 依赖，之后秒开）
 ```
 
 首次运行前，右键编辑 `start.bat`，修改服务器地址：
@@ -103,8 +103,7 @@ monitor-aewcy/
 │   ├── app_tracker.py              # 窗口追踪
 │   ├── browser_history.py          # 浏览器历史
 │   ├── requirements.txt            # Agent 依赖
-│   ├── setup.bat                   # Windows 一键安装
-│   └── start.bat                   # Windows 一键启动
+│   └── start.bat                   # Windows 双击即用 (自检环境)
 ├── server/                         # ← 服务端 (Linux 服务器)
 │   ├── main.py                     # FastAPI 入口
 │   ├── config.py                   # 服务端配置
