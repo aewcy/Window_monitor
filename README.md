@@ -21,10 +21,37 @@
 
 ## 快速开始
 
-### 1. Linux 服务器 (核心)
+### 1. Linux 服务器 (核心) — Docker 部署 (推荐)
 
 ```bash
-cd monitor-demo
+# 克隆项目
+git clone git@github.com:aewcy/monitor-aewcy.git
+cd monitor-aewcy
+
+# 一键启动
+docker compose up -d
+
+# 查看日志
+docker compose logs -f
+```
+
+启动后：
+- 监控面板: `http://<服务器IP>:8899/`
+- API 文档: `http://<服务器IP>:8899/docs`
+
+更新部署：
+
+```bash
+git pull
+docker compose up -d --build
+```
+
+数据持久化在 `./server/data/` 目录，容器重建不会丢失。
+
+### 1-alt. 裸机部署 (无 Docker)
+
+```bash
+cd monitor-aewcy
 pip install -r requirements.txt
 cd server
 
@@ -80,20 +107,24 @@ ngrok http 8899
 ## 项目结构
 
 ```
-monitor-demo/
+monitor-aewcy/
 ├── agent/                    # 试验机 (精简Agent)
 │   ├── main.py               # 入口，采集循环
 │   ├── config.py             # 配置 (服务端地址、间隔等)
 │   ├── screen_capture.py     # 屏幕截图 (mss, 跨平台)
 │   ├── app_tracker.py        # 活动窗口追踪 (xdotool/win32gui)
 │   └── browser_history.py    # 浏览器历史 (Chrome/Edge/Firefox)
-├── server/                   # Linux 服务器
+├── server/                   # 服务端
 │   ├── main.py               # FastAPI 入口
 │   ├── config.py             # 服务端配置
 │   ├── models.py             # SQLite 数据层
 │   ├── routes.py             # REST API
 │   └── static/
 │       └── dashboard.html    # Web 监控面板
+├── Dockerfile                # Docker 镜像
+├── docker-compose.yml        # Docker Compose 部署
+├── .dockerignore
+├── .gitignore
 └── requirements.txt
 ```
 

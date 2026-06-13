@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+.git/
+.gitignore
+*.md
+server/data/
+*.db
+*.db-shm
+*.db-wal
+*.egg-info/
+.vscode/
+.idea/
