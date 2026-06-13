@@ -16,7 +16,7 @@
 通过环境变量配置服务器地址（可写入 .bat 启动脚本）：
 
 ```batch
-set MONITOR_SERVER_HOST=192.168.1.100
+set MONITOR_SERVER_HOST=192.168.61.133
 set MONITOR_SERVER_PORT=8899
 set AGENT_NAME=试验机-01
 monitor-agent.exe
@@ -39,7 +39,7 @@ MONITOR_SERVER_HOST=<IP> python main.py
 
 | 参数 | 环境变量 | 默认值 | 说明 |
 |------|----------|--------|------|
-| `SERVER_HOST` | `MONITOR_SERVER_HOST` | `127.0.0.1` | 服务端地址 |
+| `SERVER_HOST` | `MONITOR_SERVER_HOST` | `192.168.61.133` | 服务端地址 |
 | `SERVER_PORT` | `MONITOR_SERVER_PORT` | `8899` | 服务端端口 |
 | `AGENT_NAME` | `AGENT_NAME` | `试验机-01` | 机器标识 |
 | `SCREENSHOT_INTERVAL` | `SCREENSHOT_INTERVAL` | `30` | 截图间隔(秒) — 运行时会自适应调整 |
