@@ -3,322 +3,228 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>监控面板 - Monitor Dashboard</title>
+<title>Monitor Dashboard</title>
 <style>
   :root {
-    --bg: #0f1119;
-    --panel: #1a1d2e;
-    --border: #2a2d3e;
-    --text: #e0e0e0;
-    --text-muted: #8890a0;
-    --accent: #4f8cff;
-    --accent2: #22c55e;
-    --warn: #f59e0b;
-    --danger: #ef4444;
-    --radius: 8px;
+    --bg: #0f1119; --panel: #1a1d2e; --border: #2a2d3e;
+    --text: #e0e0e0; --text-muted: #8890a0; --accent: #4f8cff;
+    --accent2: #22c55e; --radius: 8px; --sidebar-w: 280px;
   }
 
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+  * { margin:0; padding:0; box-sizing:border-box; }
 
   body {
-    font-family: -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    min-height: 100vh;
+    font-family: -apple-system,'Segoe UI','Microsoft YaHei',sans-serif;
+    background: var(--bg); color: var(--text); min-height: 100vh;
   }
 
   /* ========== Header ========== */
   .header {
-    background: var(--panel);
-    border-bottom: 1px solid var(--border);
-    padding: 12px 24px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    position: sticky;
-    top: 0;
-    z-index: 100;
+    background: var(--panel); border-bottom: 1px solid var(--border);
+    padding: 10px 20px; display: flex; align-items: center;
+    justify-content: space-between; position: sticky; top:0; z-index:100;
   }
-  .header h1 {
-    font-size: 1.25rem;
-    font-weight: 600;
-    letter-spacing: .02em;
-  }
-  .header .status-dot {
-    width: 8px; height: 8px; border-radius: 50%;
-    display: inline-block; margin-right: 6px;
-  }
-  .header .status-dot.online { background: var(--accent2); }
-  .header .status-dot.offline { background: var(--text-muted); }
+  .header h1 { font-size:1.15rem; font-weight:600; }
+  .header-left { display:flex; align-items:center; gap:12px; }
+  .refresh-bar { display:flex; gap:10px; align-items:center; font-size:0.8rem; }
 
   /* ========== Layout ========== */
   .main-grid {
     display: grid;
-    grid-template-columns: 280px 1fr;
-    gap: 16px;
-    padding: 16px 24px;
-    height: calc(100vh - 60px);
+    grid-template-columns: var(--sidebar-w) 1fr;
+    gap: 14px; padding: 14px 18px;
+    height: calc(100vh - 52px);
+    transition: grid-template-columns .2s;
+  }
+  .main-grid.sidebar-collapsed {
+    grid-template-columns: 0px 1fr;
   }
 
   /* ========== Sidebar ========== */
   .sidebar {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    overflow-y: auto;
+    display:flex; flex-direction:column; gap:12px;
+    overflow-y:auto; overflow-x:hidden;
+    transition: width .2s, padding .2s, opacity .2s;
   }
-  .sidebar .stats {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 16px;
+  .sidebar-collapsed .sidebar {
+    width:0; padding:0; opacity:0; overflow:hidden;
   }
-  .sidebar .stats h3 {
-    font-size: 0.8rem;
-    text-transform: uppercase;
-    letter-spacing: .08em;
-    color: var(--text-muted);
-    margin-bottom: 12px;
+  .sidebar .stats, .sidebar .agent-list {
+    background:var(--panel); border:1px solid var(--border);
+    border-radius:var(--radius); padding:14px;
   }
-  .stat-item {
-    display: flex;
-    justify-content: space-between;
-    padding: 6px 0;
-    font-size: 0.9rem;
-  }
-  .stat-item .val { font-weight: 600; color: var(--accent); }
-
-  .agent-list {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 16px;
-    flex: 1;
-  }
-  .agent-list h3 {
-    font-size: 0.8rem;
-    text-transform: uppercase;
-    letter-spacing: .08em;
-    color: var(--text-muted);
-    margin-bottom: 12px;
-  }
+  .sidebar h3 { font-size:0.75rem; text-transform:uppercase; letter-spacing:.06em; color:var(--text-muted); margin-bottom:10px; }
+  .stat-item { display:flex; justify-content:space-between; padding:4px 0; font-size:0.85rem; }
+  .stat-item .val { font-weight:600; color:var(--accent); }
   .agent-card {
-    padding: 10px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    margin-bottom: 8px;
-    cursor: pointer;
-    transition: all .15s;
+    padding:8px 10px; border:1px solid var(--border); border-radius:6px;
+    margin-bottom:6px; cursor:pointer; transition:all .15s;
   }
-  .agent-card:hover { border-color: var(--accent); }
-  .agent-card.active { border-color: var(--accent); background: rgba(79,140,255,.08); }
-  .agent-card .name { font-weight: 600; font-size: 0.95rem; }
-  .agent-card .meta { font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; }
+  .agent-card:hover { border-color:var(--accent); }
+  .agent-card.active { border-color:var(--accent); background:rgba(79,140,255,.08); }
+  .agent-card .name { font-weight:600; font-size:0.9rem; }
+  .agent-card .meta { font-size:0.72rem; color:var(--text-muted); margin-top:3px; }
+  .status-dot { width:7px; height:7px; border-radius:50%; display:inline-block; margin-right:5px; }
+  .status-dot.online { background:var(--accent2); }
+  .status-dot.offline { background:var(--text-muted); }
 
   /* ========== Main Content ========== */
-  .content {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    overflow-y: auto;
-  }
+  .content { display:flex; flex-direction:column; gap:12px; overflow-y:auto; }
 
-  .panel {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    overflow: hidden;
-  }
+  /* ========== Panels ========== */
+  .panel { background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; }
   .panel-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--border);
-    background: rgba(255,255,255,.02);
+    display:flex; align-items:center; justify-content:space-between;
+    padding:10px 14px; border-bottom:1px solid var(--border);
+    background:rgba(255,255,255,.02); cursor:pointer; user-select:none;
   }
-  .panel-header h3 {
-    font-size: 0.85rem;
-    font-weight: 600;
-    letter-spacing: .03em;
-  }
-  .panel-body { padding: 16px; }
+  .panel-header h3 { font-size:0.82rem; font-weight:600; }
+  .panel-header .toggle-icon { font-size:0.8rem; color:var(--text-muted); transition:transform .2s; }
+  .panel.collapsed .toggle-icon { transform:rotate(-90deg); }
+  .panel-body { padding:12px; transition:all .2s; }
+  .panel.collapsed .panel-body { display:none; }
 
   /* ========== Screenshot ========== */
   .screenshot-viewer {
-    display: flex;
-    justify-content: center;
-    background: #000;
-    border-radius: 4px;
-    overflow: hidden;
-    min-height: 300px;
-    align-items: center;
+    display:flex; justify-content:center; background:#000;
+    border-radius:4px; overflow:hidden;
+    max-height:55vh; min-height:200px; align-items:center;
   }
-  .screenshot-viewer img {
-    max-width: 100%;
-    max-height: 60vh;
-    object-fit: contain;
-  }
-  .screenshot-viewer .no-data {
-    color: var(--text-muted);
-    font-size: 0.9rem;
-  }
+  .screenshot-viewer img { max-width:100%; max-height:55vh; object-fit:contain; display:block; }
+  .screenshot-viewer .no-data { color:var(--text-muted); font-size:0.85rem; }
   .screenshot-info {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-top: 8px;
-    font-size: 0.8rem;
-    color: var(--text-muted);
+    display:flex; justify-content:space-between; align-items:center;
+    margin-top:8px; font-size:0.78rem; color:var(--text-muted);
   }
+  .screenshot-nav { display:flex; gap:6px; }
+  .screenshot-nav button { min-width:28px; }
 
   /* ========== Tables ========== */
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.85rem;
-  }
+  table { width:100%; border-collapse:collapse; font-size:0.82rem; }
   th {
-    text-align: left;
-    padding: 8px 12px;
-    color: var(--text-muted);
-    font-weight: 500;
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: .05em;
-    border-bottom: 1px solid var(--border);
+    text-align:left; padding:6px 10px; color:var(--text-muted);
+    font-weight:500; font-size:0.72rem; text-transform:uppercase;
+    letter-spacing:.04em; border-bottom:1px solid var(--border);
   }
   td {
-    padding: 8px 12px;
-    border-bottom: 1px solid rgba(255,255,255,.04);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 300px;
+    padding:6px 10px; border-bottom:1px solid rgba(255,255,255,.03);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:280px;
   }
-  tr:hover td { background: rgba(255,255,255,.02); }
+  tr:hover td { background:rgba(255,255,255,.02); }
 
-  .tag {
-    display: inline-block;
-    padding: 2px 8px;
-    border-radius: 12px;
-    font-size: 0.7rem;
-    font-weight: 600;
+  /* ========== Scrollable panels ========== */
+  .scroll-body { max-height:300px; overflow-y:auto; }
+
+  .tag { display:inline-block; padding:1px 7px; border-radius:10px; font-size:0.68rem; font-weight:600; }
+  .tag-chrome { background:#4285f422; color:#4285f4; }
+  .tag-edge { background:#22c55e22; color:#22c55e; }
+  .tag-firefox { background:#ff950022; color:#ff9500; }
+
+  /* ========== Buttons ========== */
+  .btn {
+    padding:5px 12px; border:1px solid var(--border); border-radius:5px;
+    background:transparent; color:var(--text); cursor:pointer;
+    font-size:0.78rem; transition:all .15s;
   }
-  .tag-chrome { background: #4285f422; color: #4285f4; }
-  .tag-edge { background: #22c55e22; color: #22c55e; }
-  .tag-firefox { background: #ff950022; color: #ff9500; }
+  .btn:hover { border-color:var(--accent); color:var(--accent); }
+  .btn-icon { padding:4px 8px; font-size:0.9rem; }
 
   /* ========== Scrollbar ========== */
-  ::-webkit-scrollbar { width: 6px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar { width:5px; }
+  ::-webkit-scrollbar-track { background:transparent; }
+  ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
 
-  /* ========== Refresh ========== */
-  .refresh-bar {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-  }
-  .btn {
-    padding: 6px 14px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: transparent;
-    color: var(--text);
-    cursor: pointer;
-    font-size: 0.8rem;
-    transition: all .15s;
-  }
-  .btn:hover { border-color: var(--accent); color: var(--accent); }
-  .auto-refresh { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--text-muted); }
-
-  @media (max-width: 768px) {
-    .main-grid { grid-template-columns: 1fr; }
-    .sidebar { order: 2; }
-    .content { order: 1; }
+  @media (max-width:768px) {
+    .main-grid { grid-template-columns:1fr; }
   }
 </style>
 </head>
 <body>
 
 <div class="header">
-  <h1>🖥 监控面板</h1>
+  <div class="header-left">
+    <button class="btn btn-icon" onclick="toggleSidebar()" title="Toggle sidebar" data-testid="sidebar-toggle">☰</button>
+    <h1>Monitor Dashboard</h1>
+  </div>
   <div class="refresh-bar">
-    <label class="auto-refresh">
-      <input type="checkbox" id="autoRefresh" checked> 自动刷新
-    </label>
-    <span id="refreshCountdown" style="font-size:0.75rem;color:var(--text-muted)"></span>
-    <button class="btn" onclick="refreshAll()">⟳ 刷新</button>
+    <input type="checkbox" id="autoRefresh" checked onchange="startAutoRefresh()">
+    <label for="autoRefresh">Auto</label>
+    <button class="btn" onclick="refreshAll()">Refresh</button>
   </div>
 </div>
 
-<div class="main-grid">
+<div class="main-grid" id="mainGrid">
 
-  <!-- ===== Sidebar: Stats + Agent List ===== -->
-  <div class="sidebar">
-    <div class="stats" id="statsPanel">
-      <h3>📊 统计</h3>
-      <div id="statsContent">加载中...</div>
+  <!-- Sidebar -->
+  <div class="sidebar" data-testid="sidebar" id="sidebar">
+    <div class="stats">
+      <h3>Stats</h3>
+      <div id="statsContent">Loading...</div>
     </div>
-
-    <div class="agent-list" id="agentListPanel">
-      <h3>🖥 终端列表</h3>
-      <div id="agentList">加载中...</div>
+    <div class="agent-list">
+      <h3>Agents</h3>
+      <div id="agentList">Loading...</div>
     </div>
   </div>
 
-  <!-- ===== Main: Screenshot + Tables ===== -->
+  <!-- Content -->
   <div class="content">
 
-    <!-- 截图面板 -->
+    <!-- Screenshot Panel -->
     <div class="panel" id="screenshotPanel">
-      <div class="panel-header">
-        <h3>📸 最新截图 <span id="screenshotAgentLabel" style="color:var(--accent)"></span></h3>
+      <div class="panel-header" onclick="togglePanel('screenshotPanel')" data-testid="panel-toggle">
+        <h3>Screenshot <span id="screenshotAgentLabel" style="color:var(--accent)"></span></h3>
+        <span class="toggle-icon">▼</span>
       </div>
       <div class="panel-body">
-        <div class="screenshot-viewer" id="screenshotViewer">
-          <span class="no-data">请从左侧选择终端</span>
+        <div class="screenshot-viewer" data-testid="screenshot-viewer" id="screenshotViewer">
+          <span class="no-data">Select an agent</span>
         </div>
         <div class="screenshot-info">
           <span id="screenshotTime"></span>
-          <button class="btn" id="btnPrevScreenshot" onclick="prevScreenshot()" disabled>◀ 上一张</button>
+          <div class="screenshot-nav">
+            <button class="btn" onclick="prevScreenshot()" id="btnPrev" disabled title="Previous">◀</button>
+            <button class="btn" onclick="nextScreenshot()" id="btnNext" disabled title="Next">▶</button>
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- 活动时间线 (实时) -->
+    <!-- Timeline Panel -->
     <div class="panel" id="timelinePanel">
-      <div class="panel-header">
-        <h3>Activity Timeline <span style="color:var(--accent2);font-size:0.7rem">LIVE</span></h3>
+      <div class="panel-header" onclick="togglePanel('timelinePanel')" data-testid="panel-toggle">
+        <h3>Activity <span style="color:var(--accent2);font-size:0.65rem">LIVE</span></h3>
+        <span class="toggle-icon">▼</span>
       </div>
-      <div class="panel-body" id="timelineBody" style="max-height:400px;overflow-y:auto">
+      <div class="panel-body scroll-body" data-testid="timeline-body" id="timelineBody">
         <div style="color:var(--text-muted);padding:12px;text-align:center">Select an agent</div>
       </div>
     </div>
 
-    <!-- 应用使用面板 -->
+    <!-- App Usage Panel -->
     <div class="panel" id="appUsagePanel">
-      <div class="panel-header">
-        <h3>App Usage Summary</h3>
+      <div class="panel-header" onclick="togglePanel('appUsagePanel')" data-testid="panel-toggle">
+        <h3>App Usage</h3>
+        <span class="toggle-icon">▼</span>
       </div>
-      <div class="panel-body">
+      <div class="panel-body scroll-body">
         <table>
-          <thead><tr><th>Process</th><th>Minutes</th><th>Switches</th><th>Last Window</th></tr></thead>
+          <thead><tr><th>Process</th><th>Min</th><th>Switches</th><th>Last Window</th></tr></thead>
           <tbody id="appUsageBody"><tr><td colspan="4" style="text-align:center;color:var(--text-muted)">Select an agent</td></tr></tbody>
         </table>
       </div>
     </div>
 
-    <!-- 浏览器历史面板 -->
+    <!-- Browser History Panel -->
     <div class="panel" id="browserPanel">
-      <div class="panel-header">
-        <h3>🌐 浏览器访问记录</h3>
+      <div class="panel-header" onclick="togglePanel('browserPanel')" data-testid="panel-toggle">
+        <h3>Browser History</h3>
+        <span class="toggle-icon">▼</span>
       </div>
-      <div class="panel-body">
+      <div class="panel-body scroll-body" data-testid="browser-body">
         <table>
-          <thead><tr><th>浏览器</th><th>标题</th><th>URL</th><th>访问时间</th><th>次数</th></tr></thead>
-          <tbody id="browserBody"><tr><td colspan="5" style="text-align:center;color:var(--text-muted)">请选择终端</td></tr></tbody>
+          <thead><tr><th>Browser</th><th>Title</th><th>URL</th><th>Time</th><th>#</th></tr></thead>
+          <tbody id="browserBody"><tr><td colspan="5" style="text-align:center;color:var(--text-muted)">Select an agent</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -337,13 +243,21 @@ let refreshTimer = null;
 document.addEventListener('DOMContentLoaded', () => {
   refreshAll();
   startAutoRefresh();
-  document.getElementById('autoRefresh').addEventListener('change', startAutoRefresh);
 });
 
+// ============ Sidebar Toggle ============
+function toggleSidebar() {
+  document.getElementById('mainGrid').classList.toggle('sidebar-collapsed');
+}
+
+// ============ Panel Toggle ============
+function togglePanel(id) {
+  document.getElementById(id).classList.toggle('collapsed');
+}
+
 // ============ Viewer Heartbeat ============
-// Ping server every 1s to tell Agent "someone is watching"
 setInterval(() => {
-  fetch('/api/viewer/heartbeat', { method: 'POST' }).catch(() => {});
+  fetch('/api/viewer/heartbeat', { method:'POST' }).catch(()=>{});
 }, 1000);
 
 // ============ Auto Refresh ============
@@ -354,9 +268,8 @@ function startAutoRefresh() {
     refreshTimer = setInterval(() => {
       tick++;
       refreshLive();
-      // Full refresh every 30 ticks
       if (tick % 30 === 0) refreshAll();
-    }, 1000);  // 1s for live view
+    }, 1000);
   }
 }
 
@@ -368,14 +281,13 @@ async function refreshLive() {
   ]);
 }
 
-// ============ API Calls ============
+// ============ API ============
 async function api(path) {
   const resp = await fetch(path);
   if (!resp.ok) throw new Error(`${resp.status}`);
   return resp.json();
 }
 
-// ============ Refresh All ============
 async function refreshAll() {
   await loadStats();
   await loadAgents();
@@ -392,85 +304,64 @@ async function refreshAll() {
 // ============ Stats ============
 async function loadStats() {
   try {
-    const data = await api('/api/dashboard/stats');
+    const d = await api('/api/dashboard/stats');
     document.getElementById('statsContent').innerHTML = `
-      <div class="stat-item"><span>在线终端</span><span class="val">${data.online_agents ?? 0}</span></div>
-      <div class="stat-item"><span>截图总数</span><span class="val">${data.total_screenshots ?? 0}</span></div>
-      <div class="stat-item"><span>今日应用事件</span><span class="val">${data.today_app_events ?? 0}</span></div>
-      <div class="stat-item"><span>浏览器记录</span><span class="val">${data.total_browser_records ?? 0}</span></div>
-    `;
-  } catch(e) { console.error('loadStats', e); }
+      <div class="stat-item"><span>Online</span><span class="val">${d.online_agents??0}</span></div>
+      <div class="stat-item"><span>Shots</span><span class="val">${d.total_screenshots??0}</span></div>
+      <div class="stat-item"><span>Events</span><span class="val">${d.today_app_events??0}</span></div>
+      <div class="stat-item"><span>URLs</span><span class="val">${d.total_browser_records??0}</span></div>`;
+  } catch(e) { console.error(e); }
 }
 
-// ============ Agent List ============
+// ============ Agents ============
 async function loadAgents() {
   try {
     const agents = await api('/api/agents');
-    const list = document.getElementById('agentList');
-    if (!agents.length) {
-      list.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem">暂无连接的终端</div>';
-      return;
-    }
-    list.innerHTML = agents.map(a => {
-      const dotClass = a.status === 'online' ? 'online' : 'offline';
-      const activeClass = selectedAgent === a.name ? 'active' : '';
-      const lastSeen = a.last_seen || '-';
-      return `
-        <div class="agent-card ${activeClass}" onclick="selectAgent('${escapeHtml(a.name)}')">
-          <div class="name">
-            <span class="status-dot ${dotClass}"></span>${escapeHtml(a.name)}
-          </div>
-          <div class="meta">状态: ${a.status} | 最后心跳: ${lastSeen}</div>
-        </div>`;
-    }).join('');
-  } catch(e) { console.error('loadAgents', e); }
+    const el = document.getElementById('agentList');
+    if (!agents.length) { el.innerHTML = '<div style="color:var(--text-muted);font-size:0.82rem">No agents</div>'; return; }
+    el.innerHTML = agents.map(a => `
+      <div class="agent-card ${selectedAgent===a.name?'active':''}" onclick="selectAgent('${esc(a.name)}')">
+        <div class="name"><span class="status-dot ${a.status==='online'?'online':'offline'}"></span>${esc(a.name)}</div>
+        <div class="meta">${a.status} | ${a.last_seen||'-'}</div>
+      </div>`).join('');
+  } catch(e) { console.error(e); }
 }
 
-// ============ Select Agent ============
 async function selectAgent(name) {
   selectedAgent = name;
   document.getElementById('screenshotAgentLabel').textContent = ' - ' + name;
-  currentScreenshotIndex = 0;
-  screenshotList = [];
-  // Update card styles
+  currentScreenshotIndex = 0; screenshotList = [];
   document.querySelectorAll('.agent-card').forEach(c => {
     c.classList.toggle('active', c.querySelector('.name').textContent.trim() === name);
   });
   await Promise.all([
-    loadScreenshots(name),
-    loadAppUsage(name),
-    loadBrowserHistory(name),
-    loadAppTimeline(name),
+    loadScreenshots(name), loadAppUsage(name),
+    loadBrowserHistory(name), loadAppTimeline(name),
   ]);
 }
 
 // ============ Screenshots ============
 async function loadScreenshots(agent) {
   try {
-    const data = await api(`/api/screenshots?agent=${encodeURIComponent(agent)}&limit=50`);
-    screenshotList = data;
-    currentScreenshotIndex = 0;
-    displayScreenshot();
-    document.getElementById('btnPrevScreenshot').disabled = data.length <= 1;
+    screenshotList = await api(`/api/screenshots?agent=${encodeURIComponent(agent)}&limit=50`);
+    currentScreenshotIndex = 0; displayScreenshot();
+    document.getElementById('btnPrev').disabled = screenshotList.length <= 1;
+    document.getElementById('btnNext').disabled = screenshotList.length <= 1;
   } catch(e) {
-    console.error('loadScreenshots', e);
-    document.getElementById('screenshotViewer').innerHTML = '<span class="no-data">Loading failed</span>';
+    document.getElementById('screenshotViewer').innerHTML = '<span class="no-data">Load failed</span>';
   }
 }
 
-// Live: load just the latest screenshot
 async function loadScreenshotLatest(agent) {
   try {
     const data = await api(`/api/screenshots/latest?agent=${encodeURIComponent(agent)}`);
     if (!data.id) return;
     const viewer = document.getElementById('screenshotViewer');
-    const timeEl = document.getElementById('screenshotTime');
-    const lastSrc = viewer.dataset.src || '';
-    const newSrc = `/api/screenshots/image/${data.id}`;
-    if (lastSrc === newSrc && viewer.querySelector('img')) return; // same image, skip
-    viewer.dataset.src = newSrc;
-    viewer.innerHTML = `<img src="${newSrc}?t=${Date.now()}" alt="Screenshot" />`;
-    timeEl.textContent = `LIVE - ${data.timestamp}`;
+    const src = `/api/screenshots/image/${data.id}`;
+    if (viewer.dataset.src === src) return;
+    viewer.dataset.src = src;
+    viewer.innerHTML = `<img src="${src}?t=${Date.now()}" alt="Screenshot">`;
+    document.getElementById('screenshotTime').textContent = `LIVE - ${data.timestamp}`;
   } catch(e) { /* ignore */ }
 }
 
@@ -478,18 +369,21 @@ function displayScreenshot() {
   const viewer = document.getElementById('screenshotViewer');
   const timeEl = document.getElementById('screenshotTime');
   if (!screenshotList.length) {
-    viewer.innerHTML = '<span class="no-data">No screenshots</span>';
-    timeEl.textContent = '';
-    return;
+    viewer.innerHTML = '<span class="no-data">No screenshots</span>'; timeEl.textContent = ''; return;
   }
   const item = screenshotList[currentScreenshotIndex];
-  viewer.innerHTML = `<img src="/api/screenshots/image/${item.id}" alt="Screenshot" />`;
-  timeEl.textContent = `${item.timestamp}  (${currentScreenshotIndex + 1}/${screenshotList.length})`;
+  viewer.innerHTML = `<img src="/api/screenshots/image/${item.id}" alt="Screenshot">`;
+  timeEl.textContent = `${item.timestamp}  (${currentScreenshotIndex+1}/${screenshotList.length})`;
 }
 
 function prevScreenshot() {
   if (screenshotList.length <= 1) return;
   currentScreenshotIndex = (currentScreenshotIndex - 1 + screenshotList.length) % screenshotList.length;
+  displayScreenshot();
+}
+function nextScreenshot() {
+  if (screenshotList.length <= 1) return;
+  currentScreenshotIndex = (currentScreenshotIndex + 1) % screenshotList.length;
   displayScreenshot();
 }
 
@@ -498,43 +392,28 @@ async function loadAppUsage(agent) {
   try {
     const data = await api(`/api/app_usage?agent=${encodeURIComponent(agent)}`);
     const tbody = document.getElementById('appUsageBody');
-    if (!data.length) {
-      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted)">No data</td></tr>';
-      return;
-    }
+    if (!data.length) { tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted)">No data</td></tr>'; return; }
     tbody.innerHTML = data.map(d => `
-      <tr>
-        <td><strong>${escapeHtml(d.process_name)}</strong></td>
-        <td>${d.total_minutes ?? 0}</td>
-        <td>${d.switch_count ?? 0}</td>
-        <td title="${escapeHtml(d.last_window_title || '')}">${escapeHtml((d.last_window_title || '').substring(0, 50))}</td>
-      </tr>
-    `).join('');
-  } catch(e) { console.error('loadAppUsage', e); }
+      <tr><td><strong>${esc(d.process_name)}</strong></td><td>${d.total_minutes??0}</td><td>${d.switch_count??0}</td><td title="${esc(d.last_window_title||'')}">${esc((d.last_window_title||'').substring(0,50))}</td></tr>`).join('');
+  } catch(e) { console.error(e); }
 }
 
-// ============ App Timeline (live) ============
+// ============ Timeline ============
 async function loadAppTimeline(agent) {
   try {
     const data = await api(`/api/app_events?agent=${encodeURIComponent(agent)}&limit=20`);
     const body = document.getElementById('timelineBody');
-    if (!data.length) {
-      body.innerHTML = '<div style="color:var(--text-muted);padding:12px;text-align:center">Waiting for activity...</div>';
-      return;
-    }
+    if (!data.length) { body.innerHTML = '<div style="color:var(--text-muted);padding:12px;text-align:center">Waiting...</div>'; return; }
     body.innerHTML = data.map(e => {
-      const time = e.timestamp ? e.timestamp.split('T')[1].substring(0, 8) : '-';
-      const icon = '>';
-      const color = 'var(--accent2)';
-      return `
-        <div style="display:flex;align-items:center;gap:10px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.03)">
-          <span style="color:${color};font-weight:bold;width:16px">${icon}</span>
-          <span style="font-size:0.75rem;color:var(--text-muted);min-width:60px">${time}</span>
-          <span style="font-size:0.85rem;font-weight:500;flex:1">${escapeHtml(e.window_title || '-').substring(0, 60)}</span>
-          <span style="font-size:0.75rem;color:var(--text-muted)">${escapeHtml(e.process_name || '')}</span>
-        </div>`;
+      const t = e.timestamp ? e.timestamp.split('T')[1].substring(0,8) : '-';
+      return `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.02)">
+        <span style="color:var(--accent2);font-weight:bold;width:12px;font-size:0.75rem">></span>
+        <span style="font-size:0.72rem;color:var(--text-muted);min-width:55px">${t}</span>
+        <span style="font-size:0.82rem;flex:1">${esc((e.window_title||'-').substring(0,60))}</span>
+        <span style="font-size:0.72rem;color:var(--text-muted)">${esc(e.process_name||'')}</span>
+      </div>`;
     }).join('');
-  } catch(e) { console.error('loadAppTimeline', e); }
+  } catch(e) { console.error(e); }
 }
 
 // ============ Browser History ============
@@ -542,33 +421,27 @@ async function loadBrowserHistory(agent) {
   try {
     const data = await api(`/api/browser_history?agent=${encodeURIComponent(agent)}&limit=100`);
     const tbody = document.getElementById('browserBody');
-    if (!data.length) {
-      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted)">暂无数据</td></tr>';
-      return;
-    }
+    if (!data.length) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted)">No data</td></tr>'; return; }
     tbody.innerHTML = data.map(d => {
-      let tagClass = 'tag-chrome';
-      if (d.browser === 'edge') tagClass = 'tag-edge';
-      else if (d.browser === 'firefox') tagClass = 'tag-firefox';
-      return `
-        <tr>
-          <td><span class="tag ${tagClass}">${escapeHtml(d.browser)}</span></td>
-          <td title="${escapeHtml(d.title)}">${escapeHtml((d.title || '无标题').substring(0, 60))}</td>
-          <td title="${escapeHtml(d.url)}"><a href="${escapeHtml(d.url)}" target="_blank" style="color:var(--accent);text-decoration:none">${escapeHtml(d.url.substring(0, 80))}</a></td>
-          <td>${d.last_visit || '-'}</td>
-          <td>${d.visit_count}</td>
-        </tr>
-      `;
+      let cls = 'tag-chrome';
+      if (d.browser==='edge') cls='tag-edge';
+      else if (d.browser==='firefox') cls='tag-firefox';
+      return `<tr>
+        <td><span class="tag ${cls}">${esc(d.browser)}</span></td>
+        <td title="${esc(d.title)}">${esc((d.title||'').substring(0,50))}</td>
+        <td title="${esc(d.url)}"><a href="${esc(d.url)}" target="_blank" style="color:var(--accent);text-decoration:none">${esc(d.url.substring(0,70))}</a></td>
+        <td>${d.last_visit||'-'}</td><td>${d.visit_count}</td>
+      </tr>`;
     }).join('');
-  } catch(e) { console.error('loadBrowserHistory', e); }
+  } catch(e) { console.error(e); }
 }
 
 // ============ Utils ============
-function escapeHtml(str) {
-  if (!str) return '';
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
+function esc(s) {
+  if (!s) return '';
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
 }
 </script>
 </body>
