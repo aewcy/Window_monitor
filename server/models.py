@@ -194,6 +194,33 @@ def get_screenshots(agent_name: str = None, limit: int = 50, offset: int = 0,
     return [dict(r) for r in rows]
 
 
+def delete_screenshot(screenshot_id: int) -> bool:
+    """删除单张截图（文件 + DB 索引）"""
+    db = get_db()
+    row = db.execute("SELECT file_path FROM screenshots WHERE id = ?", (screenshot_id,)).fetchone()
+    if not row:
+        return False
+    # 删除文件
+    try:
+        if os.path.exists(row["file_path"]):
+            os.remove(row["file_path"])
+    except OSError:
+        pass
+    # 删除索引
+    db.execute("DELETE FROM screenshots WHERE id = ?", (screenshot_id,))
+    db.commit()
+    return True
+
+
+def delete_screenshots_batch(ids: list[int]) -> int:
+    """批量删除截图，返回成功删除数量"""
+    count = 0
+    for sid in ids:
+        if delete_screenshot(sid):
+            count += 1
+    return count
+
+
 def get_latest_screenshot(agent_name: str) -> dict | None:
     """获取最新截图"""
     db = get_db()

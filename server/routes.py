@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse
 from models import (
     init_db, upsert_agent, get_agents, get_db,
     save_screenshot, get_screenshots, get_latest_screenshot,
+    delete_screenshot, delete_screenshots_batch,
     save_app_event, get_app_usage_summary,
     save_browser_history, get_browser_history,
     get_browser_history_with_screenshots,
@@ -163,6 +164,25 @@ async def screenshot_image(screenshot_id: int):
     if not row or not os.path.exists(row["file_path"]):
         raise HTTPException(status_code=404, detail="截图文件不存在")
     return FileResponse(row["file_path"], media_type="image/jpeg")
+
+
+@router.delete("/screenshots/{screenshot_id}")
+async def delete_single_screenshot(screenshot_id: int):
+    """删除单张截图"""
+    ok = delete_screenshot(screenshot_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="截图不存在")
+    return {"status": "ok", "deleted": 1}
+
+
+@router.post("/screenshots/delete-batch")
+async def delete_batch_screenshots(data: dict):
+    """批量删除截图  {ids: [1, 2, 3]}"""
+    ids = data.get("ids", [])
+    if not ids:
+        raise HTTPException(status_code=400, detail="缺少 ids")
+    count = delete_screenshots_batch(ids)
+    return {"status": "ok", "deleted": count}
 
 
 @router.get("/app_usage")

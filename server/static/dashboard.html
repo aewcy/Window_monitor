@@ -202,6 +202,57 @@
   .btn:disabled { opacity: 0.4; cursor: not-allowed; }
   .btn:disabled:hover { border-color: var(--border); color: var(--text); }
   .btn-icon { padding:4px 8px; font-size:0.9rem; }
+  .btn-danger { border-color: rgba(239,68,68,.4); color: #ef4444; }
+  .btn-danger:hover { border-color: #ef4444; background: rgba(239,68,68,.1); }
+
+  /* ========== Grid View ========== */
+  .grid-toolbar {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:8px 4px; border-bottom:1px solid var(--border); margin-bottom:8px;
+  }
+  .grid-check-all { font-size:0.78rem; color:var(--text-muted); cursor:pointer; display:flex; align-items:center; gap:4px; }
+  .grid-container {
+    display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr));
+    gap:8px; max-height:450px; overflow-y:auto;
+  }
+  .grid-item {
+    position:relative; border-radius:4px; overflow:hidden;
+    border:2px solid transparent; cursor:pointer; transition:border-color .15s;
+    background:#000; aspect-ratio: 16/10;
+  }
+  .grid-item:hover { border-color:var(--accent); }
+  .grid-item.selected { border-color:var(--accent2); }
+  .grid-item img { width:100%; height:100%; object-fit:cover; display:block; }
+  .grid-item .grid-check {
+    position:absolute; top:4px; left:4px; z-index:2;
+    width:16px; height:16px; accent-color:var(--accent2);
+  }
+  .grid-item .grid-time {
+    position:absolute; bottom:0; left:0; right:0;
+    background:linear-gradient(transparent, rgba(0,0,0,.8));
+    color:#fff; font-size:0.62rem; padding:12px 4px 2px 4px;
+    pointer-events:none;
+  }
+  .grid-item .grid-delete {
+    position:absolute; top:2px; right:2px; z-index:2;
+    width:22px; height:22px; border-radius:50%; border:none;
+    background:rgba(0,0,0,.6); color:#ef4444; font-size:0.75rem;
+    cursor:pointer; display:none; align-items:center; justify-content:center;
+  }
+  .grid-item:hover .grid-delete { display:flex; }
+
+  /* ========== Confirm Dialog ========== */
+  .confirm-overlay {
+    display:none; position:fixed; inset:0; background:rgba(0,0,0,.7);
+    z-index:2000; align-items:center; justify-content:center;
+  }
+  .confirm-overlay.open { display:flex; }
+  .confirm-box {
+    background:var(--panel); border:1px solid var(--border); border-radius:var(--radius);
+    padding:24px; max-width:360px; text-align:center;
+  }
+  .confirm-box p { margin-bottom:16px; font-size:0.9rem; }
+  .confirm-box .confirm-actions { display:flex; gap:8px; justify-content:center; }
 
   /* ========== Timeline Entries ========== */
   .timeline-entry {
@@ -298,7 +349,17 @@
             <button class="btn" id="btnLiveMode" title="Switch to History mode" aria-label="Toggle live/history screenshot mode">🔴 LIVE</button>
             <button class="btn" id="btnPrev" disabled title="Previous screenshot" aria-label="Previous screenshot">◀</button>
             <button class="btn" id="btnNext" disabled title="Next screenshot" aria-label="Next screenshot">▶</button>
+            <button class="btn" id="btnGridView" title="Grid view" aria-label="Toggle grid view">⊞</button>
+            <button class="btn btn-danger" id="btnDeleteSelected" title="Delete selected" style="display:none" aria-label="Delete selected screenshots">🗑</button>
           </div>
+        </div>
+        <!-- Grid view -->
+        <div class="grid-view" id="gridView" style="display:none">
+          <div class="grid-toolbar">
+            <label class="grid-check-all"><input type="checkbox" id="selectAll"> Select All</label>
+            <span id="gridInfo" style="color:var(--text-muted);font-size:0.78rem"></span>
+          </div>
+          <div class="grid-container" id="gridContainer"></div>
         </div>
       </div>
     </div>
@@ -350,6 +411,17 @@
   <img src="" alt="Screenshot preview" id="modalImage">
 </div>
 
+<!-- Confirm Delete Dialog -->
+<div class="confirm-overlay" id="confirmDialog" role="dialog" aria-label="Confirm delete" tabindex="-1">
+  <div class="confirm-box">
+    <p id="confirmMsg">Delete selected screenshots?</p>
+    <div class="confirm-actions">
+      <button class="btn" id="btnConfirmCancel">Cancel</button>
+      <button class="btn btn-danger" id="btnConfirmOk">Delete</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ============ State ============
 let selectedAgent = null;
@@ -360,6 +432,9 @@ let refreshTick = 0;
 let timelineGen = 0;   // generation counter to discard stale async responses
 let screenshotGen = 0;  // ditto for screenshot latest
 let liveMode = true;    // true=LIVE auto-refresh, false=HISTORY manual browse
+let gridMode = false;   // true=grid thumbnail view
+let gridSelected = new Set();  // selected screenshot IDs in grid mode
+let pendingDeleteIds = [];     // IDs awaiting confirm
 
 // ============ Init ============
 document.addEventListener('DOMContentLoaded', () => {
@@ -442,10 +517,25 @@ function bindEvents() {
     }
   });
 
+  // Grid view toggle
+  document.getElementById('btnGridView').addEventListener('click', toggleGridView);
+
+  // Delete selected
+  document.getElementById('btnDeleteSelected').addEventListener('click', showDeleteConfirm);
+
+  // Select all in grid
+  document.getElementById('selectAll').addEventListener('change', function() {
+    toggleSelectAll(this.checked);
+  });
+
+  // Confirm dialog
+  document.getElementById('btnConfirmCancel').addEventListener('click', hideConfirmDialog);
+  document.getElementById('btnConfirmOk').addEventListener('click', executeDelete);
+
   // Modal close
   document.getElementById('screenshotModal').addEventListener('click', closeModal);
   document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') closeModal();
+    if (e.key === 'Escape') { closeModal(); hideConfirmDialog(); }
   });
 }
 
@@ -673,6 +763,143 @@ function nextScreenshot() {
   if (screenshotList.length <= 1) return;
   currentScreenshotIndex = (currentScreenshotIndex + 1) % screenshotList.length;
   displayScreenshot();
+}
+
+// ============ Grid View ============
+function toggleGridView() {
+  gridMode = !gridMode;
+  const btn = document.getElementById('btnGridView');
+  const grid = document.getElementById('gridView');
+  const viewer = document.getElementById('screenshotViewer');
+  const delBtn = document.getElementById('btnDeleteSelected');
+
+  if (gridMode) {
+    btn.textContent = '⊟';  btn.title = 'Exit grid view';
+    grid.style.display = 'block';
+    viewer.style.display = 'none';
+    delBtn.style.display = 'inline-block';
+    // 关闭 Live 模式，防止刷新打断选择
+    if (liveMode) toggleScreenshotMode();
+    if (selectedAgent) renderGrid();
+  } else {
+    btn.textContent = '⊞';  btn.title = 'Grid view';
+    grid.style.display = 'none';
+    viewer.style.display = 'flex';
+    delBtn.style.display = 'none';
+    gridSelected.clear();
+  }
+}
+
+async function renderGrid() {
+  try {
+    const data = await api(`/api/screenshots?agent=${encodeURIComponent(selectedAgent)}&limit=100`);
+    const container = document.getElementById('gridContainer');
+    const info = document.getElementById('gridInfo');
+    gridSelected.clear();
+    document.getElementById('selectAll').checked = false;
+    updateDeleteBtn();
+
+    if (!data.length) {
+      container.innerHTML = '<div style="color:var(--text-muted);padding:12px;text-align:center">No screenshots</div>';
+      info.textContent = '';
+      return;
+    }
+    info.textContent = `${data.length} screenshots`;
+    container.innerHTML = data.map(s => {
+      const src = `/api/screenshots/image/${s.id}`;
+      const t = (s.timestamp || '').replace('T', ' ').substring(0, 19);
+      return `<div class="grid-item" data-id="${s.id}">
+        <input type="checkbox" class="grid-check" data-id="${s.id}" title="Select">
+        <button class="grid-delete" data-id="${s.id}" title="Delete">×</button>
+        <img src="${src}" alt="${t}" loading="lazy">
+        <div class="grid-time">${escHtml(t)}</div>
+      </div>`;
+    }).join('');
+
+    // Event delegation on grid container
+    container.onclick = function(e) {
+      const check = e.target.closest('.grid-check');
+      const del = e.target.closest('.grid-delete');
+      const item = e.target.closest('.grid-item');
+
+      if (check) {
+        e.stopPropagation();
+        toggleGridItem(parseInt(check.dataset.id));
+      } else if (del) {
+        e.stopPropagation();
+        pendingDeleteIds = [parseInt(del.dataset.id)];
+        document.getElementById('confirmMsg').textContent = 'Delete this screenshot?';
+        showConfirmDialog();
+      } else if (item) {
+        const id = parseInt(item.dataset.id);
+        openModal(`/api/screenshots/image/${id}`);
+      }
+    };
+  } catch(e) { console.error('Grid:', e); }
+}
+
+function toggleGridItem(id) {
+  if (gridSelected.has(id)) gridSelected.delete(id);
+  else gridSelected.add(id);
+  document.querySelectorAll('.grid-item').forEach(el => {
+    el.classList.toggle('selected', gridSelected.has(parseInt(el.dataset.id)));
+  });
+  updateDeleteBtn();
+}
+
+function toggleSelectAll(checked) {
+  document.querySelectorAll('.grid-check').forEach(cb => {
+    cb.checked = checked;
+    const id = parseInt(cb.dataset.id);
+    if (checked) gridSelected.add(id);
+    else gridSelected.delete(id);
+  });
+  document.querySelectorAll('.grid-item').forEach(el => {
+    el.classList.toggle('selected', checked);
+  });
+  updateDeleteBtn();
+}
+
+function updateDeleteBtn() {
+  const btn = document.getElementById('btnDeleteSelected');
+  btn.textContent = gridSelected.size ? `🗑 (${gridSelected.size})` : '🗑';
+}
+
+// ============ Delete ============
+function showDeleteConfirm() {
+  if (!gridSelected.size) return;
+  pendingDeleteIds = [...gridSelected];
+  document.getElementById('confirmMsg').textContent =
+    `Delete ${pendingDeleteIds.length} screenshot(s)? This cannot be undone.`;
+  document.getElementById('confirmDialog').classList.add('open');
+  document.getElementById('confirmDialog').focus();
+}
+
+function showConfirmDialog() {
+  document.getElementById('confirmDialog').classList.add('open');
+  document.getElementById('confirmDialog').focus();
+}
+
+function hideConfirmDialog() {
+  document.getElementById('confirmDialog').classList.remove('open');
+}
+
+async function executeDelete() {
+  hideConfirmDialog();
+  if (!pendingDeleteIds.length) return;
+  try {
+    const resp = await fetch('/api/screenshots/delete-batch', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ids: pendingDeleteIds}),
+    });
+    const result = await resp.json();
+    console.log(`Deleted ${result.deleted} screenshots`);
+    pendingDeleteIds = [];
+    // Refresh grid and screenshot list
+    if (gridMode) renderGrid();
+    if (selectedAgent) loadScreenshots(selectedAgent);
+  } catch(e) { console.error('Delete failed:', e); }
 }
 
 // ============ Screenshot Modal ============
