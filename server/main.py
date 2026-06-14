@@ -70,6 +70,11 @@ async def security_headers_middleware(request: Request, call_next):
         "base-uri 'self'; "
         "form-action 'self'"
     )
+    # 禁止浏览器缓存 HTML，确保更新后立即生效
+    if request.url.path in ("/", "/static/dashboard.html"):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
     return response
 
 # 注册 API 路由
