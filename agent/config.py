@@ -74,14 +74,15 @@ RETRY_TIMES = int(os.environ.get("RETRY_TIMES", "3"))
 RETRY_DELAY = int(os.environ.get("RETRY_DELAY", "5"))
 
 # ============================================
-# 键盘监控配置 — 检测聊天应用中的 Enter 键
+# 键盘监控配置 — 前台白名单 Enter 键检测
 # ============================================
 KEYBOARD_MONITOR_ENABLED = os.environ.get("KEYBOARD_MONITOR_ENABLED", "true").lower() in ("true", "1", "yes")
 KEYBOARD_MONITOR_COOLDOWN = float(os.environ.get("KEYBOARD_MONITOR_COOLDOWN", "0.5"))
 
-# 受监控的聊天应用 process_name → display_name
+# 前台白名单: 当前台窗口进程名命中此名单时，Enter 键触发截图
+# 格式: process_name → display_name
 if IS_WINDOWS:
-    CHAT_APPS = {
+    FOREGROUND_WHITELIST = {
         "WeChat.exe": "WeChat",
         "Weixin.exe": "WeChat",
         "QQ.exe": "QQ",
@@ -102,7 +103,7 @@ if IS_WINDOWS:
         "FeishuRt.exe": "Feishu",
     }
 elif IS_LINUX:
-    CHAT_APPS = {
+    FOREGROUND_WHITELIST = {
         "telegram-desktop": "Telegram",
         "slack": "Slack",
         "discord": "Discord",
@@ -113,4 +114,4 @@ elif IS_LINUX:
         "qq": "QQ",
     }
 else:
-    CHAT_APPS = {}
+    FOREGROUND_WHITELIST = {}

@@ -48,9 +48,9 @@ MONITOR_SERVER_HOST=<IP> python main.py
 | `SCREENSHOT_QUALITY` | `SCREENSHOT_QUALITY` | `40` | JPEG 质量(1-100) |
 | `SCREENSHOT_MAX_WIDTH` | `SCREENSHOT_MAX_WIDTH` | `1280` | 截图最大宽度 |
 
-### 聊天应用监控
+### 前台白名单
 
-[config.py](config.py) 中 `CHAT_APPS` 字典配置了受监控的聊天应用（WeChat/QQ/DingTalk/Telegram 等），在聊天窗口中按 Enter 发送消息时自动截图。
+[config.py](config.py) 中 `FOREGROUND_WHITELIST` 字典配置了前台白名单应用（WeChat/QQ/DingTalk/Telegram 等），当前台窗口命中白名单时按 Enter 键自动截图。
 
 ### 自适应截图频率
 

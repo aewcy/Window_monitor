@@ -369,19 +369,34 @@ def get_browser_history(agent_name: str = None, limit: int = 100,
 
 def get_browser_history_with_screenshots(agent_name: str = None, limit: int = 100,
                                           offset: int = 0) -> list[dict]:
-    """查询浏览器历史，每条记录关联最近时间的截图"""
+    """查询浏览器历史，每条记录关联最近时间的截图
+
+    匹配策略: 优先访前截图 → 兜底访后截图
+    """
     db = get_db()
     if agent_name:
         rows = db.execute(
             """SELECT bh.*,
-               (SELECT s.id FROM screenshots s
-                WHERE s.agent_name = bh.agent_name
-                  AND s.timestamp <= bh.last_visit
-                ORDER BY s.timestamp DESC LIMIT 1) as screenshot_id,
-               (SELECT s.timestamp FROM screenshots s
-                WHERE s.agent_name = bh.agent_name
-                  AND s.timestamp <= bh.last_visit
-                ORDER BY s.timestamp DESC LIMIT 1) as screenshot_time
+               COALESCE(
+                   (SELECT s.id FROM screenshots s
+                    WHERE s.agent_name = bh.agent_name
+                      AND s.timestamp <= bh.last_visit
+                    ORDER BY s.timestamp DESC LIMIT 1),
+                   (SELECT s.id FROM screenshots s
+                    WHERE s.agent_name = bh.agent_name
+                      AND s.timestamp >= bh.last_visit
+                    ORDER BY s.timestamp ASC LIMIT 1)
+               ) as screenshot_id,
+               COALESCE(
+                   (SELECT s.timestamp FROM screenshots s
+                    WHERE s.agent_name = bh.agent_name
+                      AND s.timestamp <= bh.last_visit
+                    ORDER BY s.timestamp DESC LIMIT 1),
+                   (SELECT s.timestamp FROM screenshots s
+                    WHERE s.agent_name = bh.agent_name
+                      AND s.timestamp >= bh.last_visit
+                    ORDER BY s.timestamp ASC LIMIT 1)
+               ) as screenshot_time
             FROM browser_history bh
             WHERE bh.agent_name = ?
             ORDER BY bh.last_visit DESC LIMIT ? OFFSET ?""",
@@ -390,14 +405,26 @@ def get_browser_history_with_screenshots(agent_name: str = None, limit: int = 10
     else:
         rows = db.execute(
             """SELECT bh.*,
-               (SELECT s.id FROM screenshots s
-                WHERE s.agent_name = bh.agent_name
-                  AND s.timestamp <= bh.last_visit
-                ORDER BY s.timestamp DESC LIMIT 1) as screenshot_id,
-               (SELECT s.timestamp FROM screenshots s
-                WHERE s.agent_name = bh.agent_name
-                  AND s.timestamp <= bh.last_visit
-                ORDER BY s.timestamp DESC LIMIT 1) as screenshot_time
+               COALESCE(
+                   (SELECT s.id FROM screenshots s
+                    WHERE s.agent_name = bh.agent_name
+                      AND s.timestamp <= bh.last_visit
+                    ORDER BY s.timestamp DESC LIMIT 1),
+                   (SELECT s.id FROM screenshots s
+                    WHERE s.agent_name = bh.agent_name
+                      AND s.timestamp >= bh.last_visit
+                    ORDER BY s.timestamp ASC LIMIT 1)
+               ) as screenshot_id,
+               COALESCE(
+                   (SELECT s.timestamp FROM screenshots s
+                    WHERE s.agent_name = bh.agent_name
+                      AND s.timestamp <= bh.last_visit
+                    ORDER BY s.timestamp DESC LIMIT 1),
+                   (SELECT s.timestamp FROM screenshots s
+                    WHERE s.agent_name = bh.agent_name
+                      AND s.timestamp >= bh.last_visit
+                    ORDER BY s.timestamp ASC LIMIT 1)
+               ) as screenshot_time
             FROM browser_history bh
             ORDER BY bh.last_visit DESC LIMIT ? OFFSET ?""",
             (limit, offset)

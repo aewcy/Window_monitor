@@ -295,6 +295,7 @@
         <div class="screenshot-info">
           <span id="screenshotTime"></span>
           <div class="screenshot-nav">
+            <button class="btn" id="btnLiveMode" title="Switch to History mode" aria-label="Toggle live/history screenshot mode">🔴 LIVE</button>
             <button class="btn" id="btnPrev" disabled title="Previous screenshot" aria-label="Previous screenshot">◀</button>
             <button class="btn" id="btnNext" disabled title="Next screenshot" aria-label="Next screenshot">▶</button>
           </div>
@@ -358,6 +359,7 @@ let refreshTimer = null;
 let refreshTick = 0;
 let timelineGen = 0;   // generation counter to discard stale async responses
 let screenshotGen = 0;  // ditto for screenshot latest
+let liveMode = true;    // true=LIVE auto-refresh, false=HISTORY manual browse
 
 // ============ Init ============
 document.addEventListener('DOMContentLoaded', () => {
@@ -389,6 +391,9 @@ function bindEvents() {
       }
     });
   });
+
+  // Live/History toggle
+  document.getElementById('btnLiveMode').addEventListener('click', toggleScreenshotMode);
 
   // Screenshot navigation buttons
   document.getElementById('btnPrev').addEventListener('click', prevScreenshot);
@@ -444,6 +449,23 @@ function bindEvents() {
   });
 }
 
+// ============ Screenshot Mode Toggle ============
+function toggleScreenshotMode() {
+  liveMode = !liveMode;
+  const btn = document.getElementById('btnLiveMode');
+  if (liveMode) {
+    btn.innerHTML = '🔴 LIVE';
+    btn.title = 'Switch to History mode';
+    document.getElementById('btnPrev').disabled = true;
+    document.getElementById('btnNext').disabled = true;
+  } else {
+    btn.innerHTML = '📷 HIST';
+    btn.title = 'Switch to Live mode';
+    // Load full screenshot list for browsing
+    if (selectedAgent) loadScreenshots(selectedAgent);
+  }
+}
+
 // ============ Sidebar Toggle ============
 function toggleSidebar() {
   const grid = document.getElementById('mainGrid');
@@ -480,9 +502,10 @@ function startAutoRefresh() {
 
 async function refreshLive() {
   if (!selectedAgent) { await loadAgents(); return; }
-  // Screenshot every second, timeline only every 5 seconds (reduces DB load)
+  // Screenshot: only auto-refresh in LIVE mode
+  // Timeline: update every 5 seconds regardless
   await Promise.all([
-    loadScreenshotLatest(selectedAgent),
+    liveMode ? loadScreenshotLatest(selectedAgent) : Promise.resolve(),
     (refreshTick % 5 === 0) ? loadAppTimeline(selectedAgent) : Promise.resolve(),
   ]);
 }

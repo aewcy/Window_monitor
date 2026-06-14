@@ -7,7 +7,7 @@ import threading
 import queue
 from datetime import datetime
 
-from config import KEYBOARD_MONITOR_ENABLED, KEYBOARD_MONITOR_COOLDOWN, CHAT_APPS
+from config import KEYBOARD_MONITOR_ENABLED, KEYBOARD_MONITOR_COOLDOWN, FOREGROUND_WHITELIST
 from app_tracker import get_active_window
 
 HAS_PYNPUT = False
@@ -17,10 +17,10 @@ try:
 except ImportError:
     print("[WARN] pynput 未安装，键盘监控不可用。安装: pip install pynput")
 
-# 将 CHAT_APPS 键标准化为小写，实现不区分大小写的进程名匹配
-_NORMALIZED_CHAT_APPS = {}
-if CHAT_APPS:
-    _NORMALIZED_CHAT_APPS = {k.lower(): v for k, v in CHAT_APPS.items()}
+# 将 FOREGROUND_WHITELIST 键标准化为小写，实现不区分大小写的进程名匹配
+_NORMALIZED_FOREGROUND_WHITELIST = {}
+if FOREGROUND_WHITELIST:
+    _NORMALIZED_FOREGROUND_WHITELIST = {k.lower(): v for k, v in FOREGROUND_WHITELIST.items()}
 
 
 class KeyboardEnterMonitor:
@@ -90,9 +90,9 @@ class KeyboardEnterMonitor:
                 if not process_name:
                     continue
                 normalized = process_name.lower()
-                if normalized not in _NORMALIZED_CHAT_APPS:
+                if normalized not in _NORMALIZED_FOREGROUND_WHITELIST:
                     continue
-                display_name = _NORMALIZED_CHAT_APPS[normalized]
+                display_name = _NORMALIZED_FOREGROUND_WHITELIST[normalized]
             except Exception as e:
                 print(f"[KeyboardMonitor] 检查窗口失败: {e}")
                 continue
@@ -118,7 +118,7 @@ class KeyboardEnterMonitor:
         if not KEYBOARD_MONITOR_ENABLED:
             print("[KeyboardMonitor] 已禁用 (KEYBOARD_MONITOR_ENABLED=false)")
             return
-        if not CHAT_APPS:
+        if not FOREGROUND_WHITELIST:
             print("[KeyboardMonitor] 无聊天应用配置，跳过")
             return
         if not HAS_PYNPUT:
@@ -151,7 +151,7 @@ class KeyboardEnterMonitor:
                 self._running = False
                 return
 
-            app_names = ", ".join(CHAT_APPS.values())
+            app_names = ", ".join(FOREGROUND_WHITELIST.values())
             print(f"[KeyboardMonitor] 已启动  冷却: {self._cooldown}s  覆盖: {app_names}")
         except PermissionError:
             print("[KeyboardMonitor] ✗ 权限不足，无法全局监听键盘")
