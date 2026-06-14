@@ -113,10 +113,10 @@
   }
   .screenshot-viewer img {
     max-width:100%; max-height:55vh; object-fit:contain; display:block;
-    transition: opacity 0.25s ease;
+    transition: opacity 0.12s ease;
     opacity: 1;
   }
-  .screenshot-viewer img.loading { opacity: 0; }
+  .screenshot-viewer img.fading { opacity: 0.35; }
   .screenshot-viewer .no-data { color:var(--text-muted); font-size:0.85rem; }
   .screenshot-viewer .loader {
     position: absolute; inset: 0; display: flex;
@@ -495,8 +495,8 @@ function startAutoRefresh() {
     refreshTimer = setInterval(() => {
       refreshTick++;
       refreshLive();
-      if (refreshTick % 30 === 0) refreshAll();
-    }, 1000);
+      if (refreshTick % 120 === 0) refreshAll();  // 每30秒全量刷新 (120×250ms)
+    }, 250);  // 4fps
   }
 }
 
@@ -506,7 +506,7 @@ async function refreshLive() {
   // Timeline: update every 5 seconds regardless
   await Promise.all([
     liveMode ? loadScreenshotLatest(selectedAgent) : Promise.resolve(),
-    (refreshTick % 5 === 0) ? loadAppTimeline(selectedAgent) : Promise.resolve(),
+    (refreshTick % 20 === 0) ? loadAppTimeline(selectedAgent) : Promise.resolve(),  // 每5s
   ]);
 }
 
@@ -591,18 +591,7 @@ async function selectAgent(name) {
   ]);
 }
 
-// ============ Screenshots (flicker-free image loading) ============
-let preloadCache = {};
-
-function preloadImage(src) {
-  if (preloadCache[src]) return Promise.resolve();
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => { preloadCache[src] = true; resolve(); };
-    img.onerror = () => resolve(); // resolve anyway to avoid blocking
-    img.src = src;
-  });
-}
+// ============ Screenshots (4fps optimized, crossfade) ============
 
 async function loadScreenshots(agent) {
   try {
@@ -622,30 +611,42 @@ async function loadScreenshotLatest(agent) {
   const gen = ++screenshotGen;
   try {
     const data = await api(`/api/screenshots/latest?agent=${encodeURIComponent(agent)}`);
-    if (gen !== screenshotGen) return; // stale — agent changed
+    if (gen !== screenshotGen) return;
     if (!data.id) return;
     const viewer = document.getElementById('screenshotViewer');
     const src = `/api/screenshots/image/${data.id}`;
-    if (viewer.dataset.src === src) return; // already showing this image
+    if (viewer.dataset.src === src) return;  // 同一张图，跳过
 
-    // Preload image before swapping to prevent container collapse
-    const cacheBustSrc = `${src}?t=${Date.now()}`;
-    await preloadImage(cacheBustSrc);
-
-    if (gen !== screenshotGen) return; // re-check after await
-    viewer.dataset.src = src;
-    // Create Image element manually so onload fires for cached images too
+    // 预加载新图（后台加载，旧图保持可见）
     const img = new Image();
-    img.className = 'loading';
     img.alt = 'Screenshot';
-    img.onload = () => img.classList.remove('loading');
-    img.src = cacheBustSrc;
+    await new Promise((resolve) => {
+      img.onload = resolve;
+      img.onerror = resolve;  // 即使失败也不阻塞
+      img.src = src;
+      // 超时保护: 2秒仍未加载完就放弃
+      setTimeout(resolve, 2000);
+    });
+
+    if (gen !== screenshotGen) return;       // agent 已切换
+    if (viewer.dataset.src === src) return;  // 等加载期间已被另一个请求更新
+
+    viewer.dataset.src = src;
+    // 旧图淡出 → 替换 → 新图淡入
+    const oldImg = viewer.querySelector('img');
+    if (oldImg) {
+      oldImg.classList.add('fading');
+      await new Promise(r => setTimeout(r, 80));  // 等淡出完成
+    }
     viewer.innerHTML = '';
+    img.style.opacity = '0';
     viewer.appendChild(img);
-    // Safety fallback: remove loading class after 1s
-    setTimeout(() => { if (img && img.parentNode) img.classList.remove('loading'); }, 1000);
+    // 强制回流后淡入
+    img.offsetHeight;
+    img.style.opacity = '1';
+
     document.getElementById('screenshotTime').textContent = 'LIVE - ' + data.timestamp;
-  } catch(e) { /* 404 or network error — keep existing image, don't flicker */ }
+  } catch(e) { /* 网络错误 — 保持现有图片 */ }
 }
 
 function displayScreenshot() {
