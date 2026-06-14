@@ -11,7 +11,6 @@ from PIL import Image
 
 try:
     import mss
-    import mss.tools
     HAS_MSS = True
 except ImportError:
     HAS_MSS = False

@@ -16,8 +16,6 @@ services:
       - TZ=Asia/Shanghai
       - SERVER_HOST=0.0.0.0
       - SERVER_PORT=8899
-      - MAX_SCREENSHOT_AGE_DAYS=7
-      - MAX_HISTORY_DAYS=30
     logging:
       driver: "json-file"
       options:

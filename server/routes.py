@@ -2,12 +2,11 @@
 FastAPI 路由定义
 """
 import os
-import base64
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Request, Query
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import FileResponse
 
 from models import (
     init_db, upsert_agent, get_agents, get_db,

@@ -3,11 +3,9 @@
 使用 SQLite 存储结构化数据，文件系统存储截图
 """
 import os
-import json
 import sqlite3
 import threading
-from datetime import datetime, timedelta
-from typing import Optional
+from datetime import datetime
 
 from config import DB_PATH, SCREENSHOT_DIR
 
@@ -86,16 +84,6 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_browser_history_agent_time
             ON browser_history(agent_name, last_visit DESC);
 
-        -- 系统事件日志
-        CREATE TABLE IF NOT EXISTS event_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            agent_name TEXT NOT NULL,
-            event_type TEXT NOT NULL,
-            message TEXT DEFAULT '',
-            timestamp TEXT DEFAULT (datetime('now', 'localtime'))
-        );
-        CREATE INDEX IF NOT EXISTS idx_event_log_agent_time
-            ON event_log(agent_name, timestamp DESC);
     """)
     db.commit()
 

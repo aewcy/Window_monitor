@@ -2,7 +2,6 @@
 应用窗口追踪模块 - 精简版
 只做一件事：定时获取当前活动窗口并上报
 """
-import sys
 import time
 import threading
 import subprocess
@@ -102,13 +101,6 @@ def get_active_window() -> dict | None:
                 get_active_window._error_warned = True
 
     return None
-
-# 附加属性用于抑制重复的 import/error 警告
-get_active_window._pywin32_warned = False
-get_active_window._error_warned = False
-get_active_window._xdotool_warned = False
-get_active_window._linux_error_warned = False
-
 
 class AppTracker:
     """活动窗口追踪器 - 精简版，定时轮询"""

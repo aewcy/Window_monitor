@@ -3,7 +3,6 @@
 FastAPI + 静态文件服务 + 自动初始化
 """
 import os
-import sys
 from contextlib import asynccontextmanager
 
 import uvicorn
