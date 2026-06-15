@@ -88,6 +88,69 @@
   .status-dot.online { background:var(--accent2); }
   .status-dot.offline { background:var(--text-muted); }
 
+  /* ========== Calendar ========== */
+  .calendar {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 10px;
+  }
+  .calendar-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .calendar-header .month-label {
+    font-size: 0.82rem; font-weight: 600; color: var(--text);
+    cursor: default; user-select: none;
+  }
+  .calendar-header .nav-btn {
+    background: none; border: 1px solid var(--border); border-radius: 4px;
+    color: var(--text-muted); cursor: pointer; font-size: 0.75rem;
+    padding: 2px 6px; line-height: 1; transition: all .15s;
+  }
+  .calendar-header .nav-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .calendar-day-headers {
+    display: grid; grid-template-columns: repeat(7, 1fr);
+    text-align: center; font-size: 0.62rem; color: var(--text-muted);
+    text-transform: uppercase; margin-bottom: 4px; gap: 1px;
+  }
+  .calendar-grid {
+    display: grid; grid-template-columns: repeat(7, 1fr);
+    gap: 1px; text-align: center;
+  }
+  .calendar-cell {
+    aspect-ratio: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    border-radius: 4px; font-size: 0.72rem; cursor: default;
+    position: relative; transition: background .1s; user-select: none;
+    border: 1px solid transparent;
+  }
+  .calendar-cell.has-data {
+    cursor: pointer; font-weight: 600;
+  }
+  .calendar-cell.has-data:hover {
+    background: rgba(79,140,255,.12); border-color: var(--accent);
+  }
+  .calendar-cell.today {
+    border-color: var(--accent2);
+  }
+  .calendar-cell.selected {
+    background: rgba(79,140,255,.18); border-color: var(--accent);
+  }
+  .calendar-cell .count-dot {
+    position: absolute; top: 2px; right: 2px;
+    width: 12px; height: 12px; border-radius: 50%;
+    background: var(--accent); color: #fff;
+    font-size: 0.52rem; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    line-height: 1;
+  }
+  .calendar-cell.empty { color: var(--text-muted); opacity: 0.3; }
+  .calendar-quick {
+    display: flex; gap: 4px; margin-top: 8px; padding-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+  .calendar-quick .btn { flex: 1; font-size: 0.7rem; padding: 3px 6px; text-align: center; }
+  .calendar-quick .btn.active-filter { border-color: var(--accent); color: var(--accent); }
+
   /* ========== Main Content ========== */
   .content { display:flex; flex-direction:column; gap:12px; overflow-y:auto; }
 
@@ -324,6 +387,21 @@
       <h3>Stats</h3>
       <div id="statsContent">Loading...</div>
     </div>
+    <div class="calendar" id="calendarWidget" role="region" aria-label="Screenshot date calendar">
+      <div class="calendar-header">
+        <button class="nav-btn" id="calPrev" aria-label="Previous month">&lt;</button>
+        <span class="month-label" id="calMonthLabel" role="heading" aria-level="3">-</span>
+        <button class="nav-btn" id="calNext" aria-label="Next month">&gt;</button>
+      </div>
+      <div class="calendar-day-headers" aria-hidden="true">
+        <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
+      </div>
+      <div class="calendar-grid" id="calGrid" role="grid" aria-label="Calendar days"></div>
+      <div class="calendar-quick">
+        <button class="btn" id="calToday">Today</button>
+        <button class="btn active-filter" id="calAll">All dates</button>
+      </div>
+    </div>
     <div class="agent-list" role="region" aria-label="Agent list">
       <h3>Agents</h3>
       <div id="agentList">Loading...</div>
@@ -435,6 +513,9 @@ let liveMode = true;    // true=LIVE auto-refresh, false=HISTORY manual browse
 let gridMode = false;   // true=grid thumbnail view
 let gridSelected = new Set();  // selected screenshot IDs in grid mode
 let pendingDeleteIds = [];     // IDs awaiting confirm
+let currentCalendarMonth = null;  // {year, month} — 0-indexed month
+let selectedDate = null;          // 'YYYY-MM-DD' or null (null = all dates)
+let dateCounts = {};              // {'YYYY-MM-DD': count}
 
 // ============ Init ============
 document.addEventListener('DOMContentLoaded', () => {
@@ -528,6 +609,33 @@ function bindEvents() {
     toggleSelectAll(this.checked);
   });
 
+  // Calendar navigation
+  document.getElementById('calPrev').addEventListener('click', () => renderCalendar(-1));
+  document.getElementById('calNext').addEventListener('click', () => renderCalendar(1));
+  document.getElementById('calToday').addEventListener('click', () => {
+    const now = new Date();
+    currentCalendarMonth = { year: now.getFullYear(), month: now.getMonth() };
+    selectCalendarDate(`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`);
+  });
+  document.getElementById('calAll').addEventListener('click', clearCalendarFilter);
+
+  // Calendar grid keyboard + click
+  document.getElementById('calGrid').addEventListener('click', function(e) {
+    const cell = e.target.closest('.calendar-cell.has-data');
+    if (cell && cell.dataset.date) {
+      selectCalendarDate(cell.dataset.date);
+    }
+  });
+  document.getElementById('calGrid').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      const cell = e.target.closest('.calendar-cell.has-data');
+      if (cell && cell.dataset.date) {
+        e.preventDefault();
+        selectCalendarDate(cell.dataset.date);
+      }
+    }
+  });
+
   // Confirm dialog
   document.getElementById('btnConfirmCancel').addEventListener('click', hideConfirmDialog);
   document.getElementById('btnConfirmOk').addEventListener('click', executeDelete);
@@ -619,6 +727,7 @@ async function refreshAll() {
       loadAppUsage(selectedAgent),
       loadBrowserHistory(selectedAgent),
       loadAppTimeline(selectedAgent),
+      loadCalendarData(),
     ]);
   }
 }
@@ -633,6 +742,116 @@ async function loadStats() {
       <div class="stat-item"><span>Events</span><span class="val">${d.today_app_events ?? 0}</span></div>
       <div class="stat-item"><span>URLs</span><span class="val">${d.total_browser_records ?? 0}</span></div>`;
   } catch(e) { console.error('Stats:', e); }
+}
+
+// ============ Calendar ============
+
+async function loadCalendarData() {
+  if (!selectedAgent) { dateCounts = {}; renderCalendar(); return; }
+  try {
+    const data = await api(`/api/screenshots/dates?agent=${encodeURIComponent(selectedAgent)}`);
+    dateCounts = {};
+    data.forEach(d => { dateCounts[d.date] = d.count; });
+    renderCalendar();
+  } catch(e) { console.error('Calendar dates:', e); }
+}
+
+function renderCalendar(monthOffset) {
+  if (monthOffset !== undefined) {
+    currentCalendarMonth.month += monthOffset;
+    if (currentCalendarMonth.month < 0) {
+      currentCalendarMonth.year--;
+      currentCalendarMonth.month = 11;
+    }
+    if (currentCalendarMonth.month > 11) {
+      currentCalendarMonth.year++;
+      currentCalendarMonth.month = 0;
+    }
+  }
+  if (!currentCalendarMonth) {
+    const now = new Date();
+    currentCalendarMonth = { year: now.getFullYear(), month: now.getMonth() };
+  }
+
+  const { year, month } = currentCalendarMonth;
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+
+  const monthNames = ['January','February','March','April','May','June',
+                      'July','August','September','October','November','December'];
+  document.getElementById('calMonthLabel').textContent = `${monthNames[month]} ${year}`;
+
+  const firstDay = new Date(year, month, 1).getDay(); // 0=Sun
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const grid = document.getElementById('calGrid');
+  let html = '';
+
+  for (let i = 0; i < firstDay; i++) {
+    html += '<span class="calendar-cell empty" aria-hidden="true"></span>';
+  }
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const count = dateCounts[dateStr] || 0;
+    const isToday = dateStr === todayStr;
+    const isSelected = dateStr === selectedDate;
+    const hasData = count > 0;
+
+    let cls = 'calendar-cell';
+    if (hasData) cls += ' has-data';
+    if (isToday) cls += ' today';
+    if (isSelected) cls += ' selected';
+
+    const clickAttr = hasData
+      ? ` role="gridcell" tabindex="0" aria-label="${dateStr}, ${count} screenshot${count!==1?'s':''}"`
+      : ' aria-hidden="true"';
+    const badge = hasData
+      ? `<span class="count-dot" aria-hidden="true">${count > 99 ? '99+' : count}</span>`
+      : '';
+
+    html += `<span class="${cls}" data-date="${dateStr}"${clickAttr}>${d}${badge}</span>`;
+  }
+
+  grid.innerHTML = html;
+}
+
+function selectCalendarDate(dateStr) {
+  selectedDate = dateStr;
+  renderCalendar();
+
+  // Update "All dates" button styling
+  document.getElementById('calAll').classList.remove('active-filter');
+
+  // Switch to HISTORY mode if in LIVE mode
+  if (liveMode) toggleScreenshotMode();
+
+  if (selectedAgent) loadScreenshotsForDate(selectedAgent, dateStr);
+}
+
+async function loadScreenshotsForDate(agent, dateStr) {
+  try {
+    screenshotList = await api(
+      `/api/screenshots?agent=${encodeURIComponent(agent)}&limit=200&date_from=${dateStr}&date_to=${dateStr}`
+    );
+    currentScreenshotIndex = 0;
+    displayScreenshot();
+    document.getElementById('btnPrev').disabled = screenshotList.length <= 1;
+    document.getElementById('btnNext').disabled = screenshotList.length <= 1;
+
+    if (!screenshotList.length) {
+      document.getElementById('screenshotTime').textContent = `No screenshots for ${dateStr}`;
+    }
+  } catch(e) {
+    document.getElementById('screenshotViewer').innerHTML = '<span class="no-data">Load failed</span>';
+    document.getElementById('screenshotTime').textContent = '';
+  }
+}
+
+function clearCalendarFilter() {
+  selectedDate = null;
+  renderCalendar();
+  document.getElementById('calAll').classList.add('active-filter');
+  if (selectedAgent) loadScreenshots(selectedAgent);
 }
 
 // ============ Agents ============
@@ -678,6 +897,7 @@ async function selectAgent(name) {
     loadAppUsage(name),
     loadBrowserHistory(name),
     loadAppTimeline(name),
+    loadCalendarData(),
   ]);
 }
 
@@ -685,7 +905,11 @@ async function selectAgent(name) {
 
 async function loadScreenshots(agent) {
   try {
-    screenshotList = await api(`/api/screenshots?agent=${encodeURIComponent(agent)}&limit=50`);
+    let url = `/api/screenshots?agent=${encodeURIComponent(agent)}&limit=50`;
+    if (selectedDate) {
+      url += `&date_from=${selectedDate}&date_to=${selectedDate}`;
+    }
+    screenshotList = await api(url);
     currentScreenshotIndex = 0;
     displayScreenshot();
     document.getElementById('btnPrev').disabled = screenshotList.length <= 1;
@@ -792,7 +1016,11 @@ function toggleGridView() {
 
 async function renderGrid() {
   try {
-    const data = await api(`/api/screenshots?agent=${encodeURIComponent(selectedAgent)}&limit=100`);
+    let url = `/api/screenshots?agent=${encodeURIComponent(selectedAgent)}&limit=100`;
+    if (selectedDate) {
+      url += `&date_from=${selectedDate}&date_to=${selectedDate}`;
+    }
+    const data = await api(url);
     const container = document.getElementById('gridContainer');
     const info = document.getElementById('gridInfo');
     gridSelected.clear();

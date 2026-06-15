@@ -220,24 +220,28 @@ def main():
 
     threading.Thread(target=config_poller, daemon=True).start()
 
-    # 自适应截图频率控制器 — 本地活动优先于服务端配置
+    # 自适应截图频率控制器 — 3级: ACTIVE → LIGHT_IDLE → DEEP_IDLE
     def screenshot_frequency_controller():
         global _server_interval
-        ACTIVE_INTERVAL = 0.25    # 活跃 → 每秒 4 次
-        IDLE_INTERVAL = 5.0        # 空闲 → 每 5 秒 1 次
-        IDLE_THRESHOLD = 60.0      # 1 分钟无活动视为空闲
+        ACTIVE_INTERVAL = 0.25        # 活跃 → 每秒 4 次
+        LIGHT_IDLE_INTERVAL = 60.0    # 轻度闲置 (1-30min) → 每分钟 1 次
+        DEEP_IDLE_INTERVAL = 300.0    # 深度闲置 (30min+) → 每 5 分钟 1 次
+        ACTIVE_THRESHOLD = 60.0       # 1 分钟无操作 → 退出活跃模式
+        LIGHT_IDLE_THRESHOLD = 1800.0 # 30 分钟无操作 → 进入深度闲置
         last_interval = None
 
         while True:
             idle_sec = time.time() - _last_activity_time
-            is_active = idle_sec < IDLE_THRESHOLD
+            is_active = idle_sec < ACTIVE_THRESHOLD
 
             if is_active:
                 target = ACTIVE_INTERVAL
             elif _server_interval <= 1.5:
                 target = _server_interval  # 观察者正在查看 → 1s
+            elif idle_sec < LIGHT_IDLE_THRESHOLD:
+                target = LIGHT_IDLE_INTERVAL
             else:
-                target = IDLE_INTERVAL
+                target = DEEP_IDLE_INTERVAL
 
             if target != last_interval:
                 screenshot.interval = target
@@ -245,8 +249,10 @@ def main():
                     mode = f"ACTIVE ({idle_sec:.0f}s 空闲)"
                 elif target <= 1.5:
                     mode = "VIEWER"
+                elif target == LIGHT_IDLE_INTERVAL:
+                    mode = f"LIGHT_IDLE ({idle_sec:.0f}s 空闲)"
                 else:
-                    mode = "IDLE"
+                    mode = f"DEEP_IDLE ({idle_sec:.0f}s 空闲)"
                 print(f"  [Adaptive] {mode}  截图间隔: {target}s")
                 last_interval = target
 
