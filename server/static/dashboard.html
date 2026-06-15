@@ -687,7 +687,7 @@ function bindEvents() {
 }
 
 // ============ Screenshot Mode Toggle ============
-function toggleScreenshotMode() {
+function toggleScreenshotMode(skipLoad) {
   liveMode = !liveMode;
   const btn = document.getElementById('btnLiveMode');
   if (liveMode) {
@@ -698,8 +698,8 @@ function toggleScreenshotMode() {
   } else {
     btn.innerHTML = '📷 HIST';
     btn.title = 'Switch to Live mode';
-    // Load full screenshot list for browsing
-    if (selectedAgent) loadScreenshots(selectedAgent);
+    // 仅在手动切换时加载无过滤截图；日历/小时选择时由调用方控制加载
+    if (!skipLoad && selectedAgent) loadScreenshots(selectedAgent);
   }
 }
 
@@ -870,8 +870,8 @@ function selectCalendarDate(dateStr) {
   // Update "All dates" button styling
   document.getElementById('calAll').classList.remove('active-filter');
 
-  // Switch to HISTORY mode if in LIVE mode
-  if (liveMode) toggleScreenshotMode();
+  // Switch to HISTORY mode if in LIVE mode (skip default unfiltered load)
+  if (liveMode) toggleScreenshotMode(true);
 
   if (selectedAgent) {
     loadHourData();
@@ -942,7 +942,7 @@ function selectHour(hour) {
   selectedHour = hour;  // number 0-23 or null
   renderHourSelector();
   if (selectedAgent) {
-    if (liveMode) toggleScreenshotMode();
+    if (liveMode) toggleScreenshotMode(true);
     loadScreenshotsForDate(selectedAgent, selectedDate);
   }
 }

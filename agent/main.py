@@ -239,10 +239,10 @@ def main():
 
             if is_active:
                 target = ACTIVE_INTERVAL
-            elif _server_interval <= 1.5:
-                target = _server_interval  # 观察者正在查看 → 1s
             elif idle_sec < LIGHT_IDLE_THRESHOLD:
-                target = LIGHT_IDLE_INTERVAL
+                target = LIGHT_IDLE_INTERVAL   # 轻度闲置优先 → 5s
+            elif _server_interval <= 1.5:
+                target = _server_interval      # 观察者仅覆盖深度闲置 → 1s
             else:
                 target = DEEP_IDLE_INTERVAL
 
