@@ -133,10 +133,30 @@ def get_agents() -> list[dict]:
 # ============================================
 
 def save_screenshot(agent_name: str, timestamp: str, image_b64: str) -> int | None:
-    """将截图保存到文件系统，索引写入数据库"""
+    """将截图保存到文件系统，索引写入数据库
+
+    去重策略: 同一秒内只保留最新一张 (4fps 采集 → 1fps 存储)
+    """
     import base64
 
     try:
+        db = get_db()
+
+        # 去重: 同一秒内替换旧截图
+        ts_second = timestamp[:19]  # '2026-06-15T10:00:49'
+        existing = db.execute(
+            """SELECT id, file_path FROM screenshots
+               WHERE agent_name = ? AND substr(timestamp, 1, 19) = ?""",
+            (agent_name, ts_second)
+        ).fetchone()
+        if existing:
+            try:
+                if os.path.exists(existing["file_path"]):
+                    os.remove(existing["file_path"])
+            except OSError:
+                pass
+            db.execute("DELETE FROM screenshots WHERE id = ?", (existing["id"],))
+
         # 生成文件路径: data/screenshots/{agent}/{date}/{timestamp}.jpg
         date_str = timestamp[:10]  # YYYY-MM-DD
         dir_path = os.path.join(SCREENSHOT_DIR, agent_name, date_str)
@@ -154,7 +174,6 @@ def save_screenshot(agent_name: str, timestamp: str, image_b64: str) -> int | No
         file_size = len(image_data)
 
         # 写入数据库索引
-        db = get_db()
         cursor = db.execute(
             """INSERT INTO screenshots (agent_name, timestamp, file_path, file_size)
                VALUES (?, ?, ?, ?)""",

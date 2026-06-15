@@ -139,7 +139,7 @@ async def list_agents():
 @router.get("/screenshots")
 async def list_screenshots(
     agent: Optional[str] = Query(None),
-    limit: int = Query(50, le=200),
+    limit: int = Query(50, le=2000),
     offset: int = Query(0),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),

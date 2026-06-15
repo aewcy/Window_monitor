@@ -905,7 +905,7 @@ async function selectAgent(name) {
 
 async function loadScreenshots(agent) {
   try {
-    let url = `/api/screenshots?agent=${encodeURIComponent(agent)}&limit=50`;
+    let url = `/api/screenshots?agent=${encodeURIComponent(agent)}&limit=200`;
     if (selectedDate) {
       url += `&date_from=${selectedDate}&date_to=${selectedDate}`;
     }
@@ -1016,7 +1016,7 @@ function toggleGridView() {
 
 async function renderGrid() {
   try {
-    let url = `/api/screenshots?agent=${encodeURIComponent(selectedAgent)}&limit=100`;
+    let url = `/api/screenshots?agent=${encodeURIComponent(selectedAgent)}&limit=500`;
     if (selectedDate) {
       url += `&date_from=${selectedDate}&date_to=${selectedDate}`;
     }
