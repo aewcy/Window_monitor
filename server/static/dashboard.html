@@ -537,6 +537,8 @@ let refreshTick = 0;
 let timelineGen = 0;   // generation counter to discard stale async responses
 let screenshotGen = 0;  // ditto for screenshot latest
 let liveMode = true;    // true=LIVE auto-refresh, false=HISTORY manual browse
+let currentOffset = 0;  // pagination offset for HISTORY mode
+const PAGE_SIZE = 2000;  // max screenshots per page
 let gridMode = false;   // true=grid thumbnail view
 let gridSelected = new Set();  // selected screenshot IDs in grid mode
 let pendingDeleteIds = [];     // IDs awaiting confirm
@@ -880,25 +882,10 @@ function selectCalendarDate(dateStr) {
 }
 
 async function loadScreenshotsForDate(agent, dateStr) {
-  try {
-    const dateTo = encodeURIComponent(dateStr + 'T23:59:59');
-    let url = `/api/screenshots?agent=${encodeURIComponent(agent)}&limit=2000&date_from=${dateStr}&date_to=${dateTo}`;
-    if (selectedHour !== null) {
-      const hh = String(selectedHour).padStart(2, '0');
-      url = `/api/screenshots?agent=${encodeURIComponent(agent)}&limit=2000&date_from=${dateStr}T${hh}:00:00&date_to=${dateStr}T${hh}:59:59`;
-    }
-    screenshotList = await api(url);
-    currentScreenshotIndex = 0;
-    displayScreenshot();
-    document.getElementById('btnPrev').disabled = screenshotList.length <= 1;
-    document.getElementById('btnNext').disabled = screenshotList.length <= 1;
-
-    if (!screenshotList.length) {
-      document.getElementById('screenshotTime').textContent = `No screenshots for ${dateStr}`;
-    }
-  } catch(e) {
-    document.getElementById('screenshotViewer').innerHTML = '<span class="no-data">Load failed</span>';
-    document.getElementById('screenshotTime').textContent = '';
+  currentOffset = 0;
+  await loadScreenshotsPage(agent, 0);
+  if (!screenshotList.length) {
+    document.getElementById('screenshotTime').textContent = `No screenshots for ${dateStr}`;
   }
 }
 
@@ -1020,26 +1007,41 @@ async function selectAgent(name) {
 
 // ============ Screenshots (4fps optimized, crossfade) ============
 
+function buildScreenshotUrl(agent, offset) {
+  let url = `/api/screenshots?agent=${encodeURIComponent(agent)}&limit=${PAGE_SIZE}&offset=${offset}`;
+  if (selectedHour !== null && selectedDate) {
+    const hh = String(selectedHour).padStart(2, '0');
+    url += `&date_from=${selectedDate}T${hh}:00:00&date_to=${selectedDate}T${hh}:59:59`;
+  } else if (selectedDate) {
+    url += `&date_from=${selectedDate}&date_to=${encodeURIComponent(selectedDate + 'T23:59:59')}`;
+  }
+  return url;
+}
+
 async function loadScreenshots(agent) {
+  currentOffset = 0;
+  await loadScreenshotsPage(agent, 0);
+}
+
+async function loadScreenshotsPage(agent, offset) {
   try {
-    let url = `/api/screenshots?agent=${encodeURIComponent(agent)}&limit=200`;
-    if (selectedDate) {
-      url += `&date_from=${selectedDate}&date_to=${encodeURIComponent(selectedDate + 'T23:59:59')}`;
-    }
-    if (selectedHour !== null) {
-      const hh = String(selectedHour).padStart(2, '0');
-      url += `&date_from=${selectedDate}T${hh}:00:00&date_to=${selectedDate}T${hh}:59:59`;
-    }
-    screenshotList = await api(url);
+    screenshotList = await api(buildScreenshotUrl(agent, offset));
+    currentOffset = offset;
     currentScreenshotIndex = 0;
     displayScreenshot();
-    document.getElementById('btnPrev').disabled = screenshotList.length <= 1;
-    document.getElementById('btnNext').disabled = screenshotList.length <= 1;
+    updateNavButtons();
   } catch(e) {
     const viewer = document.getElementById('screenshotViewer');
     viewer.innerHTML = '<span class="no-data">Load failed</span>';
     document.getElementById('screenshotTime').textContent = '';
   }
+}
+
+function updateNavButtons() {
+  const hasPrev = currentScreenshotIndex > 0 || currentOffset > 0;
+  const hasNext = currentScreenshotIndex < screenshotList.length - 1 || screenshotList.length === PAGE_SIZE;
+  document.getElementById('btnPrev').disabled = !hasPrev;
+  document.getElementById('btnNext').disabled = !hasNext;
 }
 
 async function loadScreenshotLatest(agent) {
@@ -1084,7 +1086,10 @@ function displayScreenshot() {
   const src = `/api/screenshots/image/${item.id}`;
   viewer.dataset.src = src;
   viewer.innerHTML = `<img src="${src}" alt="Screenshot ${item.timestamp}" onload="lockViewerHeight(this)">`;
-  timeEl.textContent = `${item.timestamp}  (${currentScreenshotIndex+1}/${screenshotList.length})`;
+  const page = currentOffset > 0 || screenshotList.length === PAGE_SIZE
+    ? `  [page ${Math.floor(currentOffset/PAGE_SIZE)+1}]`
+    : '';
+  timeEl.textContent = `${item.timestamp}  (${currentScreenshotIndex+1}/${screenshotList.length})${page}`;
 }
 
 function lockViewerHeight(img) {
@@ -1106,14 +1111,47 @@ function unlockViewerHeight() {
 }
 
 function prevScreenshot() {
-  if (screenshotList.length <= 1) return;
-  currentScreenshotIndex = (currentScreenshotIndex - 1 + screenshotList.length) % screenshotList.length;
-  displayScreenshot();
+  if (screenshotList.length === 0) return;
+  if (currentScreenshotIndex > 0) {
+    // 页内向前
+    currentScreenshotIndex--;
+    displayScreenshot();
+    updateNavButtons();
+  } else if (currentOffset > 0) {
+    // 本页到头，加载更早的一页，定位到末尾
+    const newOffset = Math.max(0, currentOffset - PAGE_SIZE);
+    loadScreenshotsPageOffset(newOffset, screenshotList.length > 0 ? PAGE_SIZE - 1 : 0);
+  }
 }
+
 function nextScreenshot() {
-  if (screenshotList.length <= 1) return;
-  currentScreenshotIndex = (currentScreenshotIndex + 1) % screenshotList.length;
-  displayScreenshot();
+  if (screenshotList.length === 0) return;
+  if (currentScreenshotIndex < screenshotList.length - 1) {
+    // 页内向后
+    currentScreenshotIndex++;
+    displayScreenshot();
+    updateNavButtons();
+  } else if (screenshotList.length === PAGE_SIZE) {
+    // 本页满，可能还有更早的
+    loadScreenshotsPageOffset(currentOffset + PAGE_SIZE, 0);
+  }
+}
+
+async function loadScreenshotsPageOffset(offset, targetIndex) {
+  if (!selectedAgent) return;
+  try {
+    screenshotList = await api(buildScreenshotUrl(selectedAgent, offset));
+    currentOffset = offset;
+    currentScreenshotIndex = Math.min(targetIndex, screenshotList.length - 1);
+    if (screenshotList.length === 0) {
+      currentScreenshotIndex = 0;
+      document.getElementById('screenshotTime').textContent = 'No more screenshots';
+    }
+    displayScreenshot();
+    updateNavButtons();
+  } catch(e) {
+    document.getElementById('screenshotViewer').innerHTML = '<span class="no-data">Load failed</span>';
+  }
 }
 
 // ============ Grid View ============
