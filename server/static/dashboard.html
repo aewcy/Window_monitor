@@ -545,6 +545,7 @@ let selectedDate = null;          // 'YYYY-MM-DD' or null (null = all dates)
 let selectedHour = null;          // 0-23 or null (null = all hours)
 let dateCounts = {};              // {'YYYY-MM-DD': count}
 let hourCounts = {};              // {hour_str: count}
+let viewerFixedHeight = null;     // locked viewer box height (px)
 
 // ============ Init ============
 document.addEventListener('DOMContentLoaded', () => {
@@ -970,6 +971,7 @@ async function selectAgent(name) {
   });
 
   // Show loading state while fetching
+  unlockViewerHeight();
   const viewer = document.getElementById('screenshotViewer');
   viewer.dataset.src = '';
   viewer.innerHTML = '<div class="loader"></div>';
@@ -1018,33 +1020,21 @@ async function loadScreenshotLatest(agent) {
     const src = `/api/screenshots/image/${data.id}`;
     if (viewer.dataset.src === src) return;  // 同一张图，跳过
 
-    // 预加载新图（后台加载，旧图保持可见）
-    const img = new Image();
-    img.alt = 'Screenshot';
-    await new Promise((resolve) => {
-      img.onload = resolve;
-      img.onerror = resolve;  // 即使失败也不阻塞
-      img.src = src;
-      // 超时保护: 2秒仍未加载完就放弃
-      setTimeout(resolve, 2000);
-    });
-
-    if (gen !== screenshotGen) return;       // agent 已切换
-    if (viewer.dataset.src === src) return;  // 等加载期间已被另一个请求更新
-
     viewer.dataset.src = src;
-    // 旧图淡出 → 替换 → 新图淡入
-    const oldImg = viewer.querySelector('img');
-    if (oldImg) {
-      oldImg.classList.add('fading');
-      await new Promise(r => setTimeout(r, 80));  // 等淡出完成
+
+    // 直接替换，无渐变
+    let img = viewer.querySelector('img');
+    if (!img) {
+      viewer.innerHTML = '';
+      img = document.createElement('img');
+      img.alt = 'Screenshot';
+      viewer.appendChild(img);
     }
-    viewer.innerHTML = '';
-    img.style.opacity = '0';
-    viewer.appendChild(img);
-    // 强制回流后淡入
-    img.offsetHeight;
-    img.style.opacity = '1';
+
+    img.onload = function() {
+      lockViewerHeight(img);
+    };
+    img.src = src;
 
     document.getElementById('screenshotTime').textContent = 'LIVE - ' + data.timestamp;
   } catch(e) { /* 网络错误 — 保持现有图片 */ }
@@ -1061,8 +1051,26 @@ function displayScreenshot() {
   const item = screenshotList[currentScreenshotIndex];
   const src = `/api/screenshots/image/${item.id}`;
   viewer.dataset.src = src;
-  viewer.innerHTML = `<img src="${src}" alt="Screenshot ${item.timestamp}">`;
+  viewer.innerHTML = `<img src="${src}" alt="Screenshot ${item.timestamp}" onload="lockViewerHeight(this)">`;
   timeEl.textContent = `${item.timestamp}  (${currentScreenshotIndex+1}/${screenshotList.length})`;
+}
+
+function lockViewerHeight(img) {
+  if (viewerFixedHeight !== null) return;  // 已锁定
+  const h = img?.clientHeight;
+  if (h && h > 0) {
+    viewerFixedHeight = h;
+    const viewer = document.getElementById('screenshotViewer');
+    viewer.style.minHeight = h + 'px';
+    viewer.style.height = h + 'px';
+  }
+}
+
+function unlockViewerHeight() {
+  viewerFixedHeight = null;
+  const viewer = document.getElementById('screenshotViewer');
+  viewer.style.minHeight = '';
+  viewer.style.height = '';
 }
 
 function prevScreenshot() {
