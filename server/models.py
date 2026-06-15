@@ -265,6 +265,23 @@ def get_screenshot_dates(agent_name: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def get_screenshot_hours(agent_name: str, date_str: str) -> list[dict]:
+    """返回指定日期内有截图的小时列表及每小时数量"""
+    db = get_db()
+    rows = db.execute(
+        """SELECT substr(timestamp, 12, 2) as hour,
+                  COUNT(*) as count
+           FROM screenshots
+           WHERE agent_name = ?
+             AND timestamp >= ?
+             AND timestamp <= ?
+           GROUP BY hour
+           ORDER BY hour ASC""",
+        (agent_name, date_str, date_str + "T23:59:59")
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
 # ============================================
 # 应用事件
 # ============================================

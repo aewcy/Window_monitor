@@ -151,6 +151,27 @@
   .calendar-quick .btn { flex: 1; font-size: 0.7rem; padding: 3px 6px; text-align: center; }
   .calendar-quick .btn.active-filter { border-color: var(--accent); color: var(--accent); }
 
+  /* ========== Hour Selector ========== */
+  .hour-selector {
+    display: none; flex-wrap: wrap; gap: 3px;
+    padding: 8px 0 0 0; margin-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+  .hour-selector.visible { display: flex; }
+  .hour-chip {
+    background: transparent; border: 1px solid var(--border);
+    border-radius: 4px; color: var(--text-muted);
+    font-size: 0.65rem; padding: 2px 5px; cursor: pointer;
+    transition: all .15s; font-family: inherit;
+  }
+  .hour-chip:hover { border-color: var(--accent); color: var(--text); }
+  .hour-chip.active { border-color: var(--accent); background: rgba(79,140,255,.18); color: var(--accent); }
+  .hour-chip .hour-count { font-size: 0.55rem; opacity: 0.7; margin-left: 2px; }
+  .hour-selector-label {
+    width: 100%; font-size: 0.62rem; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: .04em; margin-bottom: 2px;
+  }
+
   /* ========== Main Content ========== */
   .content { display:flex; flex-direction:column; gap:12px; overflow-y:auto; }
 
@@ -401,6 +422,12 @@
         <button class="btn" id="calToday">Today</button>
         <button class="btn active-filter" id="calAll">All dates</button>
       </div>
+      <div class="hour-selector" id="hourSelector">
+        <span class="hour-selector-label">Hours</span>
+        <div id="hourChips" style="display:flex;flex-wrap:wrap;gap:3px">
+          <button class="hour-chip active" data-hour="all">All</button>
+        </div>
+      </div>
     </div>
     <div class="agent-list" role="region" aria-label="Agent list">
       <h3>Agents</h3>
@@ -515,7 +542,9 @@ let gridSelected = new Set();  // selected screenshot IDs in grid mode
 let pendingDeleteIds = [];     // IDs awaiting confirm
 let currentCalendarMonth = null;  // {year, month} — 0-indexed month
 let selectedDate = null;          // 'YYYY-MM-DD' or null (null = all dates)
+let selectedHour = null;          // 0-23 or null (null = all hours)
 let dateCounts = {};              // {'YYYY-MM-DD': count}
+let hourCounts = {};              // {hour_str: count}
 
 // ============ Init ============
 document.addEventListener('DOMContentLoaded', () => {
@@ -634,6 +663,14 @@ function bindEvents() {
         selectCalendarDate(cell.dataset.date);
       }
     }
+  });
+
+  // Hour chip clicks
+  document.getElementById('hourChips').addEventListener('click', function(e) {
+    const chip = e.target.closest('.hour-chip');
+    if (!chip) return;
+    const hour = chip.dataset.hour;
+    selectHour(hour === 'all' ? null : parseInt(hour));
   });
 
   // Confirm dialog
@@ -817,6 +854,7 @@ function renderCalendar(monthOffset) {
 
 function selectCalendarDate(dateStr) {
   selectedDate = dateStr;
+  selectedHour = null;  // reset hour filter when switching dates
   renderCalendar();
 
   // Update "All dates" button styling
@@ -825,14 +863,21 @@ function selectCalendarDate(dateStr) {
   // Switch to HISTORY mode if in LIVE mode
   if (liveMode) toggleScreenshotMode();
 
-  if (selectedAgent) loadScreenshotsForDate(selectedAgent, dateStr);
+  if (selectedAgent) {
+    loadHourData();
+    loadScreenshotsForDate(selectedAgent, dateStr);
+  }
 }
 
 async function loadScreenshotsForDate(agent, dateStr) {
   try {
-    screenshotList = await api(
-      `/api/screenshots?agent=${encodeURIComponent(agent)}&limit=200&date_from=${dateStr}&date_to=${dateStr}`
-    );
+    const dateTo = encodeURIComponent(dateStr + 'T23:59:59');
+    let url = `/api/screenshots?agent=${encodeURIComponent(agent)}&limit=2000&date_from=${dateStr}&date_to=${dateTo}`;
+    if (selectedHour !== null) {
+      const hh = String(selectedHour).padStart(2, '0');
+      url = `/api/screenshots?agent=${encodeURIComponent(agent)}&limit=2000&date_from=${dateStr}T${hh}:00:00&date_to=${dateStr}T${hh}:59:59`;
+    }
+    screenshotList = await api(url);
     currentScreenshotIndex = 0;
     displayScreenshot();
     document.getElementById('btnPrev').disabled = screenshotList.length <= 1;
@@ -849,9 +894,47 @@ async function loadScreenshotsForDate(agent, dateStr) {
 
 function clearCalendarFilter() {
   selectedDate = null;
+  selectedHour = null;
   renderCalendar();
+  renderHourSelector();
   document.getElementById('calAll').classList.add('active-filter');
   if (selectedAgent) loadScreenshots(selectedAgent);
+}
+
+async function loadHourData() {
+  if (!selectedAgent || !selectedDate) { hourCounts = {}; renderHourSelector(); return; }
+  try {
+    const data = await api(`/api/screenshots/hours?agent=${encodeURIComponent(selectedAgent)}&date=${selectedDate}`);
+    hourCounts = {};
+    data.forEach(d => { hourCounts[d.hour] = d.count; });
+    renderHourSelector();
+  } catch(e) { console.error('Hours:', e); }
+}
+
+function renderHourSelector() {
+  const sel = document.getElementById('hourSelector');
+  const chips = document.getElementById('hourChips');
+  if (!selectedDate) { sel.classList.remove('visible'); return; }
+  sel.classList.add('visible');
+
+  let html = '<button class="hour-chip' + (selectedHour === null ? ' active' : '') + '" data-hour="all">All</button>';
+  for (let h = 0; h < 24; h++) {
+    const hh = String(h).padStart(2, '0');
+    const count = hourCounts[hh] || 0;
+    if (count > 0) {
+      html += `<button class="hour-chip${selectedHour === h ? ' active' : ''}" data-hour="${h}">${hh}<span class="hour-count">${count}</span></button>`;
+    }
+  }
+  chips.innerHTML = html;
+}
+
+function selectHour(hour) {
+  selectedHour = hour;  // number 0-23 or null
+  renderHourSelector();
+  if (selectedAgent) {
+    if (liveMode) toggleScreenshotMode();
+    loadScreenshotsForDate(selectedAgent, selectedDate);
+  }
 }
 
 // ============ Agents ============
@@ -907,7 +990,11 @@ async function loadScreenshots(agent) {
   try {
     let url = `/api/screenshots?agent=${encodeURIComponent(agent)}&limit=200`;
     if (selectedDate) {
-      url += `&date_from=${selectedDate}&date_to=${selectedDate}`;
+      url += `&date_from=${selectedDate}&date_to=${encodeURIComponent(selectedDate + 'T23:59:59')}`;
+    }
+    if (selectedHour !== null) {
+      const hh = String(selectedHour).padStart(2, '0');
+      url += `&date_from=${selectedDate}T${hh}:00:00&date_to=${selectedDate}T${hh}:59:59`;
     }
     screenshotList = await api(url);
     currentScreenshotIndex = 0;

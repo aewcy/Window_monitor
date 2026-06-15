@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 from models import (
     init_db, upsert_agent, get_agents, get_db,
     save_screenshot, get_screenshots, get_latest_screenshot,
-    get_screenshot_dates,
+    get_screenshot_dates, get_screenshot_hours,
     delete_screenshot, delete_screenshots_batch,
     save_app_event, get_app_usage_summary,
     save_browser_history, get_browser_history,
@@ -161,6 +161,12 @@ async def latest_screenshot(agent: str = Query(...)):
 async def screenshot_dates(agent: str = Query(...)):
     """返回有截图的日期列表及每天数量"""
     return get_screenshot_dates(agent)
+
+
+@router.get("/screenshots/hours")
+async def screenshot_hours(agent: str = Query(...), date: str = Query(...)):
+    """返回指定日期内有截图的小时列表及每小时数量"""
+    return get_screenshot_hours(agent, date)
 
 
 @router.get("/screenshots/image/{screenshot_id}")
