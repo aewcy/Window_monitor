@@ -97,8 +97,11 @@ class Reporter:
         if ok:
             print(f"  [OK] Enter事件 {data.get('display_name', '?')}")
 
-    def heartbeat(self):
-        self._post("heartbeat", {"agent_name": self.agent})
+    def heartbeat(self, screenshot_interval: float = 0):
+        self._post("heartbeat", {
+            "agent_name": self.agent,
+            "screenshot_interval": screenshot_interval,
+        })
 
 
 # ============================================
@@ -193,7 +196,7 @@ def main():
     # 心跳线程
     def heartbeat_loop():
         while True:
-            reporter.heartbeat()
+            reporter.heartbeat(screenshot.interval)
             time.sleep(HEARTBEAT_INTERVAL)
 
     threading.Thread(target=heartbeat_loop, daemon=True).start()

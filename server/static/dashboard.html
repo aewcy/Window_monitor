@@ -441,7 +441,7 @@
     <!-- Screenshot Panel -->
     <div class="panel" id="screenshotPanel" role="region" aria-label="Screenshot viewer">
       <div class="panel-header" role="button" tabindex="0" aria-expanded="true" data-panel="screenshotPanel">
-        <h3>Screenshot <span id="screenshotAgentLabel" style="color:var(--accent)"></span></h3>
+        <h3>Screenshot <span id="screenshotAgentLabel" style="color:var(--accent)"></span><span id="screenshotFpsBadge" style="font-size:0.65rem;color:var(--text-muted);margin-left:6px"></span></h3>
         <span class="toggle-icon" aria-hidden="true">▼</span>
       </div>
       <div class="panel-body">
@@ -546,6 +546,7 @@ let selectedHour = null;          // 0-23 or null (null = all hours)
 let dateCounts = {};              // {'YYYY-MM-DD': count}
 let hourCounts = {};              // {hour_str: count}
 let viewerFixedHeight = null;     // locked viewer box height (px)
+let agentInterval = 0;           // 被控端当前截图间隔 (秒)
 
 // ============ Init ============
 document.addEventListener('DOMContentLoaded', () => {
@@ -727,13 +728,21 @@ setInterval(() => {
 // ============ Auto Refresh ============
 function startAutoRefresh() {
   if (refreshTimer) clearInterval(refreshTimer);
-  if (document.getElementById('autoRefresh').checked) {
-    refreshTimer = setInterval(() => {
-      refreshTick++;
-      refreshLive();
-      if (refreshTick % 120 === 0) refreshAll();  // 每30秒全量刷新 (120×250ms)
-    }, 250);  // 4fps
-  }
+  if (!document.getElementById('autoRefresh').checked) return;
+
+  // 根据 Agent 实际采集频率自适应轮询间隔
+  let pollMs = 250;  // default: 4fps 对应活跃状态
+  if (agentInterval > 60)      pollMs = 10000;  // 深度闲置 → 10s 检查一次
+  else if (agentInterval > 5)  pollMs = 5000;   // 轻度闲置 → 5s 检查一次
+  else if (agentInterval > 1)  pollMs = 1000;   // VIEWER 1fps → 1s 轮询
+
+  refreshTimer = setInterval(() => {
+    refreshTick++;
+    refreshLive();
+    // 全量刷新频率也自适应
+    const fullRefreshTicks = agentInterval > 5 ? 6 : 120;  // 闲置时 30s/60s，活跃时 30s
+    if (refreshTick % fullRefreshTicks === 0) refreshAll();
+  }, pollMs);
 }
 
 async function refreshLive() {
@@ -947,20 +956,42 @@ async function loadAgents() {
       el.innerHTML = '<div style="color:var(--text-muted);font-size:0.82rem">No agents</div>';
       return;
     }
-    el.innerHTML = agents.map(a => `
-      <button class="agent-card ${selectedAgent===a.name?'active':''}"
+    // Update stored interval for selected agent
+    const sel = agents.find(a => a.name === selectedAgent);
+    if (sel) {
+      const old = agentInterval;
+      agentInterval = sel.screenshot_interval || 0;
+      if (agentInterval !== old) {
+        document.getElementById('screenshotFpsBadge').textContent = formatFps(agentInterval);
+        startAutoRefresh();  // 调整轮询频率
+      }
+    }
+
+    el.innerHTML = agents.map(a => {
+      const fpsLabel = formatFps(a.screenshot_interval || 0);
+      return `<button class="agent-card ${selectedAgent===a.name?'active':''}"
               type="button"
               data-agent="${escAttr(a.name)}"
               aria-pressed="${selectedAgent===a.name}">
         <div class="name"><span class="status-dot ${a.status==='online'?'online':'offline'}" aria-hidden="true"></span>${escHtml(a.name)}</div>
-        <div class="meta">${escHtml(a.status)} | ${escHtml(a.last_seen||'-')}</div>
-      </button>`).join('');
+        <div class="meta">${escHtml(a.status)} | ${fpsLabel} | ${escHtml(a.last_seen||'-')}</div>
+      </button>`;
+    }).join('');
   } catch(e) { console.error('Agents:', e); }
+}
+
+function formatFps(interval) {
+  if (!interval || interval <= 0) return '—';
+  if (interval <= 0.5) return '⚡4fps';
+  if (interval <= 1.5) return '🔵1fps';
+  if (interval <= 61) return '🟡1/min';
+  return '⏳1/5min';
 }
 
 async function selectAgent(name) {
   selectedAgent = name;
   document.getElementById('screenshotAgentLabel').textContent = ' - ' + name;
+  document.getElementById('screenshotFpsBadge').textContent = formatFps(agentInterval);
   currentScreenshotIndex = 0; screenshotList = [];
 
   // Update agent card active states

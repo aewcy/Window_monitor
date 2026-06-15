@@ -25,6 +25,9 @@ router = APIRouter(prefix="/api")
 # 观察者心跳 - 记录 Dashboard 最后访问时间
 _viewer_last_seen: dict[str, datetime] = {}
 
+# Agent 上报的当前截图间隔
+_agent_intervals: dict[str, float] = {}
+
 
 # ============================================
 # 健康检查
@@ -69,6 +72,10 @@ async def heartbeat(data: dict):
     """接收 Agent 心跳"""
     agent_name = data.get("agent_name", "unknown")
     upsert_agent(agent_name, "online")
+    # 记录 Agent 当前截图间隔
+    interval = data.get("screenshot_interval", 0)
+    if interval:
+        _agent_intervals[agent_name] = interval
     return {"status": "ok"}
 
 
@@ -132,8 +139,11 @@ async def dashboard_stats(agent: Optional[str] = Query(None)):
 
 @router.get("/agents")
 async def list_agents():
-    """Agent 列表"""
-    return get_agents()
+    """Agent 列表，附带当前截图间隔"""
+    agents = get_agents()
+    for a in agents:
+        a["screenshot_interval"] = _agent_intervals.get(a["name"], 0)
+    return agents
 
 
 @router.get("/screenshots")
