@@ -732,8 +732,8 @@ function startAutoRefresh() {
 
   // 根据 Agent 实际采集频率自适应轮询间隔
   let pollMs = 250;  // default: 4fps 对应活跃状态
-  if (agentInterval > 60)      pollMs = 10000;  // 深度闲置 → 10s 检查一次
-  else if (agentInterval > 5)  pollMs = 5000;   // 轻度闲置 → 5s 检查一次
+  if (agentInterval > 60)      pollMs = 10000;  // 深度闲置 1/min → 10s 检查
+  else if (agentInterval > 5)  pollMs = 5000;   // 轻度闲置 1/5s → 5s 检查
   else if (agentInterval > 1)  pollMs = 1000;   // VIEWER 1fps → 1s 轮询
 
   refreshTimer = setInterval(() => {
@@ -984,8 +984,9 @@ function formatFps(interval) {
   if (!interval || interval <= 0) return '—';
   if (interval <= 0.5) return '⚡4fps';
   if (interval <= 1.5) return '🔵1fps';
-  if (interval <= 61) return '🟡1/min';
-  return '⏳1/5min';
+  if (interval <= 6) return '🟡1/5s';
+  if (interval <= 61) return '⏳1/min';
+  return '—';
 }
 
 async function selectAgent(name) {

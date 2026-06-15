@@ -227,10 +227,10 @@ def main():
     def screenshot_frequency_controller():
         global _server_interval
         ACTIVE_INTERVAL = 0.25        # 活跃 → 每秒 4 次
-        LIGHT_IDLE_INTERVAL = 60.0    # 轻度闲置 (1-30min) → 每分钟 1 次
-        DEEP_IDLE_INTERVAL = 300.0    # 深度闲置 (30min+) → 每 5 分钟 1 次
-        ACTIVE_THRESHOLD = 60.0       # 1 分钟无操作 → 退出活跃模式
-        LIGHT_IDLE_THRESHOLD = 1800.0 # 30 分钟无操作 → 进入深度闲置
+        LIGHT_IDLE_INTERVAL = 5.0     # 轻度闲置 (1-5min) → 每 5 秒 1 次
+        DEEP_IDLE_INTERVAL = 60.0     # 深度闲置 (5min+) → 每分钟 1 次
+        ACTIVE_THRESHOLD = 60.0       # 1 分钟无操作 → 进入轻度闲置
+        LIGHT_IDLE_THRESHOLD = 300.0  # 5 分钟无操作 → 进入深度闲置
         last_interval = None
 
         while True:
