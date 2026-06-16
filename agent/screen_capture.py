@@ -35,23 +35,51 @@ class ScreenCapture:
         self._listeners.append(callback)
 
     def _capture(self) -> tuple[str, str] | None:
-        """执行一次截图，返回 (base64_str, timestamp_iso)"""
+        """执行一次截图，返回 (base64_str, timestamp_iso)
+
+        多显示器: 逐个捕获 → 分别缩放 → 纵向拼接，确保每屏内容可读
+        """
         try:
             if HAS_MSS:
                 with mss.mss() as sct:
-                    # 捕获主显示器
-                    monitor = sct.monitors[1]
-                    img = sct.grab(monitor)
-                    pil_img = Image.frombytes("RGB", img.size, img.bgra, "raw", "BGRX")
+                    monitors = sct.monitors[1:]  # 跳过 monitors[0] (虚拟全屏)
+                    if not monitors:
+                        return None
+
+                    frames = []
+                    for mon in monitors:
+                        img = sct.grab(mon)
+                        frame = Image.frombytes("RGB", img.size, img.bgra, "raw", "BGRX")
+                        # 每屏独立缩放
+                        if frame.width > SCREENSHOT_MAX_WIDTH:
+                            ratio = SCREENSHOT_MAX_WIDTH / frame.width
+                            frame = frame.resize(
+                                (SCREENSHOT_MAX_WIDTH, int(frame.height * ratio)),
+                                Image.LANCZOS
+                            )
+                        frames.append(frame)
+
+                    if len(frames) == 1:
+                        pil_img = frames[0]
+                    else:
+                        # 纵向拼接多屏
+                        total_h = sum(f.height for f in frames)
+                        max_w = max(f.width for f in frames)
+                        pil_img = Image.new("RGB", (max_w, total_h))
+                        y = 0
+                        for f in frames:
+                            pil_img.paste(f, (0, y))
+                            y += f.height
             else:
                 import pyautogui
                 pil_img = pyautogui.screenshot()
-
-            # 缩放到最大宽度
-            if pil_img.width > SCREENSHOT_MAX_WIDTH:
-                ratio = SCREENSHOT_MAX_WIDTH / pil_img.width
-                new_size = (SCREENSHOT_MAX_WIDTH, int(pil_img.height * ratio))
-                pil_img = pil_img.resize(new_size, Image.LANCZOS)
+                # 单屏 fallback 仍需缩放
+                if pil_img.width > SCREENSHOT_MAX_WIDTH:
+                    ratio = SCREENSHOT_MAX_WIDTH / pil_img.width
+                    pil_img = pil_img.resize(
+                        (SCREENSHOT_MAX_WIDTH, int(pil_img.height * ratio)),
+                        Image.LANCZOS
+                    )
 
             # 压缩为 JPEG base64
             buf = io.BytesIO()
