@@ -330,13 +330,19 @@ def delete_screenshots_batch(ids: list[int]) -> int:
     return count
 
 
-def get_latest_screenshot(agent_name: str) -> dict | None:
-    """获取最新截图"""
+def get_latest_screenshot(agent_name: str, monitor_index: int = None) -> dict | None:
+    """获取最新截图，可选指定显示器"""
     db = get_db()
-    row = db.execute(
-        "SELECT * FROM screenshots WHERE agent_name = ? ORDER BY timestamp DESC LIMIT 1",
-        (agent_name,)
-    ).fetchone()
+    if monitor_index is not None:
+        row = db.execute(
+            "SELECT * FROM screenshots WHERE agent_name = ? AND monitor_index = ? ORDER BY timestamp DESC LIMIT 1",
+            (agent_name, monitor_index)
+        ).fetchone()
+    else:
+        row = db.execute(
+            "SELECT * FROM screenshots WHERE agent_name = ? ORDER BY timestamp DESC LIMIT 1",
+            (agent_name,)
+        ).fetchone()
     return dict(row) if row else None
 
 

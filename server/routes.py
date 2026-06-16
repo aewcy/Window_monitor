@@ -242,9 +242,9 @@ async def list_screenshots(
 
 
 @router.get("/screenshots/latest")
-async def latest_screenshot(agent: str = Query(...)):
-    """获取最新截图"""
-    result = get_latest_screenshot(agent)
+async def latest_screenshot(agent: str = Query(...), monitor: Optional[int] = Query(None)):
+    """获取最新截图，可选指定显示器"""
+    result = get_latest_screenshot(agent, monitor)
     if not result:
         raise HTTPException(status_code=404, detail="暂无截图")
     return result

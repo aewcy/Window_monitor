@@ -1033,7 +1033,10 @@ function updateMonitorChips(total) {
     updateMonitorChips(monitorTotal);
     if (selectedAgent) {
       if (gridMode) resetGridAndLoad();
-      else loadScreenshots(selectedAgent);
+      else {
+        loadScreenshots(selectedAgent);
+        if (liveMode) loadScreenshotLatest(selectedAgent);
+      }
     }
   };
 }
@@ -1282,7 +1285,9 @@ function updateNavButtons() {
 async function loadScreenshotLatest(agent) {
   const gen = ++screenshotGen;
   try {
-    const data = await api(`/api/screenshots/latest?agent=${encodeURIComponent(agent)}`);
+    let latestUrl = `/api/screenshots/latest?agent=${encodeURIComponent(agent)}`;
+    if (selectedMonitor !== null) latestUrl += `&monitor=${selectedMonitor}`;
+    const data = await api(latestUrl);
     if (gen !== screenshotGen) return;
     if (!data.id) return;
     const viewer = document.getElementById('screenshotViewer');
