@@ -147,26 +147,39 @@ def record_activity():
 
 
 def _start_activity_monitor():
-    """启动通用活动监听 — 任意键盘/鼠标操作均标记活跃"""
-    try:
-        from pynput import keyboard, mouse
+    """Windows: 使用 GetLastInputInfo 检测用户空闲时间（覆盖所有输入设备）"""
+    global _get_idle_seconds
+    if IS_WINDOWS:
+        try:
+            import ctypes
+            from ctypes import wintypes
 
-        def on_any_input(*args):
-            record_activity()
+            class LASTINPUTINFO(ctypes.Structure):
+                _fields_ = [
+                    ('cbSize', wintypes.UINT),
+                    ('dwTime', wintypes.DWORD),
+                ]
 
-        # 键盘: 任意按键
-        kb = keyboard.Listener(on_press=on_any_input)
-        kb.daemon = True
-        kb.start()
+            _user32 = ctypes.windll.user32
+            _kernel32 = ctypes.windll.kernel32
 
-        # 鼠标: 移动/点击/滚轮
-        ms = mouse.Listener(on_move=on_any_input, on_click=on_any_input, on_scroll=on_any_input)
-        ms.daemon = True
-        ms.start()
+            def _get_idle_seconds_win32():
+                lii = LASTINPUTINFO()
+                lii.cbSize = ctypes.sizeof(LASTINPUTINFO)
+                _user32.GetLastInputInfo(ctypes.byref(lii))
+                return (_kernel32.GetTickCount() - lii.dwTime) / 1000.0
 
-        print("  [Activity] 键盘/鼠标监听已启动")
-    except Exception as e:
-        print(f"  [!] 活动监听启动失败: {e}")
+            _get_idle_seconds = _get_idle_seconds_win32
+            print("  [Activity] Win32 GetLastInputInfo 活动检测已启用")
+        except Exception as e:
+            print(f"  [!] Win32 活动检测失败: {e}")
+    else:
+        print("  [Activity] 非 Windows 平台，跳过活动检测")
+
+
+def _get_idle_seconds():
+    """默认: 使用 _last_activity_time 推算（兜底）"""
+    return time.time() - _last_activity_time
 
 
 def main():
@@ -290,7 +303,7 @@ def main():
         last_interval = None
 
         while True:
-            idle_sec = time.time() - _last_activity_time
+            idle_sec = _get_idle_seconds()
 
             if idle_sec < ACTIVE_THRESHOLD:
                 target = ACTIVE_INTERVAL
