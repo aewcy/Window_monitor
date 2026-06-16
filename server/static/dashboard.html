@@ -97,6 +97,23 @@
   .status-dot.online { background:var(--accent2); }
   .status-dot.offline { background:var(--text-muted); }
 
+  /* ========== Log Viewer ========== */
+  .log-entry { display:flex; align-items:flex-start; gap:6px; padding:3px 6px; border-bottom:1px solid rgba(255,255,255,.02); font-size:0.78rem; }
+  .log-entry:hover { background:rgba(255,255,255,.02); }
+  .log-time { color:var(--text-muted); font-size:0.68rem; min-width:72px; flex-shrink:0; }
+  .log-badge { display:inline-block; padding:1px 6px; border-radius:10px; font-size:0.62rem; font-weight:600; text-transform:uppercase; min-width:52px; text-align:center; flex-shrink:0; }
+  .log-badge.INFO { background:rgba(79,140,255,.15); color:#4f8cff; }
+  .log-badge.WARNING { background:rgba(234,179,8,.15); color:#eab308; }
+  .log-badge.ERROR { background:rgba(239,68,68,.15); color:#ef4444; }
+  .log-cat { display:inline-block; padding:1px 6px; border-radius:3px; font-size:0.62rem; background:rgba(255,255,255,.04); color:var(--text-muted); flex-shrink:0; }
+  .log-msg { flex:1; word-break:break-all; min-width:0; }
+  .log-toolbar { display:flex; gap:6px; align-items:center; flex-wrap:wrap; padding:8px 0; border-bottom:1px solid var(--border); margin-bottom:4px; }
+  .log-search { background:var(--bg); border:1px solid var(--border); border-radius:4px; color:var(--text); padding:4px 8px; font-size:0.75rem; font-family:inherit; width:180px; }
+  .log-search::placeholder { color:var(--text-muted); }
+  .log-chip { background:transparent; border:1px solid var(--border); border-radius:4px; color:var(--text-muted); font-size:0.65rem; padding:2px 6px; cursor:pointer; transition:all .15s; font-family:inherit; }
+  .log-chip:hover { border-color:var(--accent); color:var(--text); }
+  .log-chip.active { border-color:var(--accent); background:rgba(79,140,255,.18); color:var(--accent); }
+
   /* ========== Calendar ========== */
   .calendar {
     background: var(--panel); border: 1px solid var(--border);
@@ -537,6 +554,31 @@
       </div>
     </div>
 
+    <!-- System Log Panel -->
+    <div class="panel" id="logPanel" role="region" aria-label="System logs">
+      <div class="panel-header" role="button" tabindex="0" aria-expanded="true" data-panel="logPanel">
+        <h3>System Log</h3>
+        <span class="toggle-icon" aria-hidden="true">▼</span>
+      </div>
+      <div class="panel-body">
+        <div class="log-toolbar">
+          <div id="logCatChips" style="display:flex;gap:3px;flex-wrap:wrap">
+            <button class="log-chip active" data-cat="">All</button>
+          </div>
+          <div id="logLevelChips" style="display:flex;gap:3px;margin-left:auto">
+            <button class="log-chip active" data-level="">All</button>
+            <button class="log-chip" data-level="INFO">INFO</button>
+            <button class="log-chip" data-level="WARNING">WARN</button>
+            <button class="log-chip" data-level="ERROR">ERROR</button>
+          </div>
+          <input type="text" class="log-search" id="logSearch" placeholder="Regex search..." aria-label="Regex search logs">
+        </div>
+        <div class="scroll-body" id="logBody" style="max-height:300px">
+          <div style="color:var(--text-muted);padding:12px;text-align:center">Loading...</div>
+        </div>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -572,6 +614,9 @@ let gridMode = false;   // true=grid thumbnail view
 let gridSelected = new Set();  // selected screenshot IDs in grid mode
 let pendingDeleteIds = [];     // IDs awaiting confirm
 let pendingDeleteAgent = null;   // Agent name awaiting confirm delete
+let logCategory = '';             // log filter category
+let logLevel = '';                // log filter level
+let logPattern = '';              // log regex search pattern
 let currentCalendarMonth = null;  // {year, month} — 0-indexed month
 let selectedDate = null;          // 'YYYY-MM-DD' or null (null = all dates)
 let selectedHour = null;          // 0-23 or null (null = all hours)
@@ -735,6 +780,19 @@ function bindEvents() {
       'Screenshots before ' + cutoff.toLocaleDateString() + ' will be deleted';
   });
 
+  // Log search (debounced regex)
+  let logSearchTimer = null;
+  document.getElementById('logSearch').addEventListener('input', function() {
+    clearTimeout(logSearchTimer);
+    logSearchTimer = setTimeout(() => {
+      logPattern = this.value.trim();
+      loadLogs(false);
+    }, 400);
+  });
+
+  // Log chip clicks (initial bind)
+  bindLogChipClicks();
+
   // Confirm dialog
   document.getElementById('btnConfirmCancel').addEventListener('click', hideConfirmDialog);
   document.getElementById('btnConfirmOk').addEventListener('click', executeDelete);
@@ -828,6 +886,7 @@ async function api(path) {
 async function refreshAll() {
   await loadStats();
   await loadStorageStats();
+  await loadLogs();
   await loadAgents();
   if (selectedAgent) {
     await Promise.all([
@@ -850,6 +909,74 @@ async function loadStats() {
       <div class="stat-item"><span>Events</span><span class="val">${d.today_app_events ?? 0}</span></div>
       <div class="stat-item"><span>URLs</span><span class="val">${d.total_browser_records ?? 0}</span></div>`;
   } catch(e) { console.error('Stats:', e); }
+}
+
+// ============ System Log ============
+async function loadLogs(resetChips) {
+  try {
+    const params = new URLSearchParams();
+    if (logCategory) params.set('category', logCategory);
+    if (logLevel) params.set('level', logLevel);
+    if (logPattern) params.set('pattern', logPattern);
+    params.set('limit', '300');
+    const data = await api('/api/logs?' + params.toString());
+    const body = document.getElementById('logBody');
+    if (!data.length) {
+      body.innerHTML = '<div style="color:var(--text-muted);padding:12px;text-align:center">No logs</div>';
+      return;
+    }
+    body.innerHTML = data.map(e => {
+      const t = (e.timestamp || '').replace('T', ' ').substring(5, 19);
+      const catLabel = {network:'网络问题',storage:'存储问题',capture:'采集异常',system:'系统状态',security:'安全警告',server:'服务端'}[e.category] || e.category;
+      return `<div class="log-entry">
+        <span class="log-time">${escHtml(t)}</span>
+        <span class="log-badge ${escAttr(e.level)}">${escHtml(e.level)}</span>
+        <span class="log-cat">${escHtml(catLabel)}</span>
+        <span class="log-msg">${escHtml(e.message)}</span>
+      </div>`;
+    }).join('');
+
+    // Refresh category chips on first load
+    if (resetChips !== false) loadLogCategories();
+  } catch(e) { console.error('Logs:', e); }
+}
+
+async function loadLogCategories() {
+  try {
+    const data = await api('/api/logs/categories');
+    const chipContainer = document.getElementById('logCatChips');
+    // Build category map
+    const catMap = {};
+    data.forEach(d => { catMap[d.category] = (catMap[d.category] || 0) + d.count; });
+    let chips = '<button class="log-chip' + (!logCategory ? ' active' : '') + '" data-cat="">All</button>';
+    const labels = {network:'网络问题',storage:'存储问题',capture:'采集异常',system:'系统状态',security:'安全警告',server:'服务端'};
+    Object.entries(catMap).forEach(([cat, count]) => {
+      const label = labels[cat] || cat;
+      chips += `<button class="log-chip${logCategory === cat ? ' active' : ''}" data-cat="${escAttr(cat)}">${escHtml(label)} (${count})</button>`;
+    });
+    chipContainer.innerHTML = chips;
+    // Re-bind click handlers
+    bindLogChipClicks();
+  } catch(e) { /* chip load failure is non-critical */ }
+}
+
+function bindLogChipClicks() {
+  document.getElementById('logCatChips').onclick = function(e) {
+    const chip = e.target.closest('.log-chip');
+    if (!chip) return;
+    logCategory = chip.dataset.cat;
+    document.querySelectorAll('#logCatChips .log-chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    loadLogs(false);
+  };
+  document.getElementById('logLevelChips').onclick = function(e) {
+    const chip = e.target.closest('.log-chip');
+    if (!chip) return;
+    logLevel = chip.dataset.level;
+    document.querySelectorAll('#logLevelChips .log-chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    loadLogs(false);
+  };
 }
 
 // ============ Storage ============

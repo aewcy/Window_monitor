@@ -19,7 +19,9 @@ from models import (
     get_app_events, get_app_events_with_screenshots,
     get_dashboard_stats,
     get_storage_stats, cleanup_old_screenshots,
+    save_diagnostic, query_diagnostics, get_diagnostic_categories,
 )
+from logger import log, format_log_entry
 
 router = APIRouter(prefix="/api")
 
@@ -152,6 +154,55 @@ async def storage_cleanup(data: dict):
     if not isinstance(hours, (int, float)) or hours <= 0:
         raise HTTPException(status_code=400, detail="older_than_hours 必须是正整数")
     return cleanup_old_screenshots(int(hours), agent)
+
+
+# ============================================
+# 诊断日志 API
+# ============================================
+
+@router.post("/diagnostics")
+async def agent_diagnostics(data: dict):
+    """Agent 上报诊断信息  {agent_name, category, level, message}"""
+    agent_name = data.get("agent_name", "")
+    category = data.get("category", "system")
+    level = data.get("level", "INFO")
+    message = data.get("message", "")
+
+    if not message:
+        raise HTTPException(status_code=400, detail="message 不能为空")
+
+    entry = format_log_entry(category, level.upper(), f"{message} (agent={agent_name})")
+
+    # 写入文件日志
+    if level.upper() == "ERROR":
+        log.error(entry, extra={"category": category})
+    elif level.upper() == "WARNING":
+        log.warning(entry, extra={"category": category})
+    else:
+        log.info(entry, extra={"category": category})
+
+    # 写入数据库
+    log_id = save_diagnostic(agent_name, category, level.upper(), message)
+    return {"status": "ok", "id": log_id}
+
+
+@router.get("/logs")
+async def query_logs(
+    category: Optional[str] = Query(None),
+    level: Optional[str] = Query(None),
+    agent: Optional[str] = Query(None),
+    pattern: Optional[str] = Query(None),
+    limit: int = Query(200, le=1000),
+    offset: int = Query(0),
+):
+    """查询诊断日志 — 支持正则搜索"""
+    return query_diagnostics(category, level, agent, pattern, limit, offset)
+
+
+@router.get("/logs/categories")
+async def log_categories():
+    """日志分类及计数"""
+    return get_diagnostic_categories()
 
 
 @router.get("/agents")

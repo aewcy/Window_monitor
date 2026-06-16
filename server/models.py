@@ -84,6 +84,21 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_browser_history_agent_time
             ON browser_history(agent_name, last_visit DESC);
 
+        -- 诊断日志表 (Agent 上报 + Server 内部)
+        CREATE TABLE IF NOT EXISTS diagnostic_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            agent_name TEXT DEFAULT '',
+            category TEXT NOT NULL,
+            level TEXT NOT NULL DEFAULT 'INFO',
+            message TEXT NOT NULL,
+            timestamp TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+            FOREIGN KEY (agent_name) REFERENCES agents(name)
+        );
+        CREATE INDEX IF NOT EXISTS idx_diag_time
+            ON diagnostic_logs(timestamp DESC);
+        CREATE INDEX IF NOT EXISTS idx_diag_category
+            ON diagnostic_logs(category, level);
+
     """)
     db.commit()
 
@@ -672,3 +687,87 @@ def cleanup_old_screenshots(older_than_hours: int, agent_name: str = None) -> di
         "cutoff_time": cutoff,
         "older_than_hours": older_than_hours,
     }
+
+
+# ============================================
+# 诊断日志
+# ============================================
+
+_CATEGORIES = ["network", "storage", "capture", "system", "security", "server"]
+_LEVELS = ["INFO", "WARNING", "ERROR"]
+
+
+def save_diagnostic(agent_name: str, category: str, level: str, message: str) -> int | None:
+    """保存诊断日志 — Agent 上报或 Server 内部记录
+
+    category: network|storage|capture|system|security|server
+    level: INFO|WARNING|ERROR
+    """
+    if category not in _CATEGORIES:
+        category = "system"
+    if level not in _LEVELS:
+        level = "INFO"
+
+    db = get_db()
+    cursor = db.execute(
+        """INSERT INTO diagnostic_logs (agent_name, category, level, message)
+           VALUES (?, ?, ?, ?)""",
+        (agent_name, category, level, message)
+    )
+    db.commit()
+    return cursor.lastrowid
+
+
+def query_diagnostics(
+    category: str = None,
+    level: str = None,
+    agent_name: str = None,
+    pattern: str = None,
+    limit: int = 200,
+    offset: int = 0,
+) -> list[dict]:
+    """查询诊断日志 — 支持分类/级别/Agent/正则筛选"""
+    db = get_db()
+    conditions = []
+    params = []
+
+    if agent_name:
+        conditions.append("agent_name = ?")
+        params.append(agent_name)
+    if category:
+        conditions.append("category = ?")
+        params.append(category)
+    if level:
+        conditions.append("level = ?")
+        params.append(level)
+
+    where = "WHERE " + " AND ".join(conditions) if conditions else ""
+    sql = f"""SELECT * FROM diagnostic_logs {where}
+              ORDER BY timestamp DESC LIMIT ? OFFSET ?"""
+    params.extend([limit, offset])
+
+    rows = db.execute(sql, params).fetchall()
+    results = [dict(r) for r in rows]
+
+    # 正则筛选（SQLite 不支持，Python 侧过滤，小数据集足够）
+    if pattern:
+        import re
+        try:
+            regex = re.compile(pattern, re.IGNORECASE)
+            results = [r for r in results if regex.search(r["message"])]
+        except re.error:
+            pass
+
+    return results
+
+
+def get_diagnostic_categories() -> list[dict]:
+    """返回各类别的计数（用于前端筛选芯片）"""
+    db = get_db()
+    rows = db.execute(
+        """SELECT category, level, COUNT(*) as count
+           FROM diagnostic_logs
+           GROUP BY category, level
+           ORDER BY category, level"""
+    ).fetchall()
+    return [dict(r) for r in rows]
