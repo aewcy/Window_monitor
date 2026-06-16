@@ -21,7 +21,7 @@ _HIDDEN_IMPORTS = [
     # pynput 键盘钩子
     'pynput', 'pynput.keyboard', 'pynput.keyboard._win32',
     # pywin32 Windows API
-    'win32gui', 'win32process', 'win32api', 'win32con',
+    'win32gui', 'win32process', 'win32api', 'win32con', 'win32ui',
     'pythoncom', 'pywintypes',
     # mss 屏幕截图
     'mss', 'mss.windows',
