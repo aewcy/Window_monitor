@@ -146,6 +146,29 @@ def record_activity():
     _last_activity_time = time.time()
 
 
+def _start_activity_monitor():
+    """启动通用活动监听 — 任意键盘/鼠标操作均标记活跃"""
+    try:
+        from pynput import keyboard, mouse
+
+        def on_any_input(*args):
+            record_activity()
+
+        # 键盘: 任意按键
+        kb = keyboard.Listener(on_press=on_any_input)
+        kb.daemon = True
+        kb.start()
+
+        # 鼠标: 移动/点击/滚轮
+        ms = mouse.Listener(on_move=on_any_input, on_click=on_any_input, on_scroll=on_any_input)
+        ms.daemon = True
+        ms.start()
+
+        print("  [Activity] 键盘/鼠标监听已启动")
+    except Exception as e:
+        print(f"  [!] 活动监听启动失败: {e}")
+
+
 def main():
     global _server_interval
     platform = "Windows" if IS_WINDOWS else ("Linux" if IS_LINUX else "?")
@@ -215,6 +238,9 @@ def main():
         record_activity()  # 标记活动，触发高频截图
 
     keyboard_monitor.add_listener(on_chat_enter)
+
+    # 通用活动监听 — 鼠标移动/点击/滚轮 + 任意按键均标记活跃
+    _start_activity_monitor()
 
     screenshot.start()
     window.start()

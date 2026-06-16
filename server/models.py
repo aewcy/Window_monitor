@@ -213,7 +213,7 @@ def save_screenshot(agent_name: str, timestamp: str, image_b64: str,
                     monitor_index: int = 0, monitor_total: int = 1) -> int | None:
     """将截图保存到文件系统，索引写入数据库
 
-    去重策略: 2 秒窗口内只保留最新一张 (4fps 采集 → ~0.5fps 存储)
+    去重策略: 每屏 2 秒窗口内只保留最新一张 (4fps 采集 → ~0.5fps/屏 存储)
     """
     import base64
     from datetime import datetime, timedelta
@@ -230,9 +230,9 @@ def save_screenshot(agent_name: str, timestamp: str, image_b64: str,
 
         existing = db.execute(
             """SELECT id, file_path FROM screenshots
-               WHERE agent_name = ? AND timestamp >= ?
+               WHERE agent_name = ? AND timestamp >= ? AND monitor_index = ?
                ORDER BY timestamp DESC LIMIT 1""",
-            (agent_name, window_start)
+            (agent_name, window_start, monitor_index)
         ).fetchone()
         if existing:
             try:
