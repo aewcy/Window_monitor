@@ -33,3 +33,6 @@ Thumbs.db
 # Claude Code runtime
 .agents/
 .claude/
+CLAUDE.md
+skills-lock.json
+CONTEXT_MIGRATION.md
