@@ -150,6 +150,8 @@ async def list_agents():
 async def remove_agent(agent_name: str):
     """删除 Agent 及其所有关联数据（截图、事件、浏览器历史）"""
     result = delete_agent(agent_name)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Agent 不存在或名称非法")
     # 清理内存中的状态
     _agent_intervals.pop(agent_name, None)
     return {"status": "ok", **result}

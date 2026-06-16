@@ -128,14 +128,26 @@ def get_agents() -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def delete_agent(name: str) -> dict:
+def delete_agent(name: str) -> dict | None:
     """删除 Agent 及其所有关联数据（截图文件+DB、应用事件、浏览器历史）
 
-    返回: {"deleted": {"screenshots": N, "app_events": N, "browser_history": N}}
+    返回: {"deleted": {...}} 成功时；None 表示 Agent 不存在
     """
+    import re
     import shutil
 
+    # 安全检查：拒绝含路径遍历字符的恶意 agent 名
+    if not name or not re.match(r'^[a-zA-Z0-9_.\-]+$', name):
+        print(f"[DB] 拒绝非法 agent 名称: {repr(name)}")
+        return None
+
     db = get_db()
+
+    # 检查 Agent 是否存在
+    exists = db.execute("SELECT 1 FROM agents WHERE name = ?", (name,)).fetchone()
+    if not exists:
+        return None
+
     result = {"deleted": {"screenshots": 0, "app_events": 0, "browser_history": 0}}
 
     # 1. 删除截图文件（文件系统）
@@ -143,8 +155,8 @@ def delete_agent(name: str) -> dict:
     if os.path.isdir(agent_shot_dir):
         try:
             shutil.rmtree(agent_shot_dir)
-        except OSError:
-            pass
+        except OSError as e:
+            print(f"[DB] 删除截图目录失败 {agent_shot_dir}: {e}")
 
     # 2. 删除截图数据库记录（先于 agent 删除，因为有外键）
     cursor = db.execute("DELETE FROM screenshots WHERE agent_name = ?", (name,))
@@ -162,6 +174,7 @@ def delete_agent(name: str) -> dict:
     db.execute("DELETE FROM agents WHERE name = ?", (name,))
     db.commit()
 
+    print(f"[DB] Agent 已删除: {name} — 截图:{result['deleted']['screenshots']} 事件:{result['deleted']['app_events']} 历史:{result['deleted']['browser_history']}")
     return result
 
 
