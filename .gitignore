@@ -29,3 +29,7 @@ agent/venv/
 # OS
 .DS_Store
 Thumbs.db
+
+# Claude Code runtime
+.agents/
+.claude/
