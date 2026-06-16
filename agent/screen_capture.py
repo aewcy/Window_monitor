@@ -65,7 +65,25 @@ class ScreenCapture:
         try:
             if HAS_MSS:
                 with mss.mss() as sct:
-                    monitors = sct.monitors[1:]  # 跳过 monitors[0] (虚拟全屏)
+                    raw_monitors = sct.monitors[1:]  # 跳过 monitors[0] (虚拟全屏)
+
+                    # 去重: 坐标相同的显示器只算一个 (防止驱动层报重复)
+                    seen = set()
+                    monitors = []
+                    for m in raw_monitors:
+                        key = (m["left"], m["top"], m["width"], m["height"])
+                        if key not in seen:
+                            seen.add(key)
+                            monitors.append(m)
+                    if len(monitors) < len(raw_monitors):
+                        print(f"[ScreenCapture] mss 报告 {len(raw_monitors)} 屏, 去重后 {len(monitors)} 屏")
+
+                    # 首次捕获打印显示器布局
+                    if not hasattr(self, '_layout_printed'):
+                        for i, m in enumerate(monitors):
+                            print(f"  [ScreenCapture] 屏{i+1}: {m['width']}x{m['height']} at ({m['left']},{m['top']})")
+                        self._layout_printed = True
+
                     total = len(monitors)
                     self.monitor_count = max(total, 1)
 
