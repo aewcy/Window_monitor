@@ -223,39 +223,44 @@ def main():
 
     threading.Thread(target=config_poller, daemon=True).start()
 
-    # 自适应截图频率控制器 — 3级: ACTIVE → LIGHT_IDLE → DEEP_IDLE
+    # 自适应截图频率控制器 — 4级: ACTIVE → LIGHT_IDLE → DEEP_IDLE → VERY_DEEP_IDLE
     def screenshot_frequency_controller():
         global _server_interval
-        ACTIVE_INTERVAL = 0.25        # 活跃 → 每秒 4 次
-        LIGHT_IDLE_INTERVAL = 5.0     # 轻度闲置 (1-5min) → 每 5 秒 1 次
-        DEEP_IDLE_INTERVAL = 60.0     # 深度闲置 (5min+) → 每分钟 1 次
-        ACTIVE_THRESHOLD = 60.0       # 1 分钟无操作 → 进入轻度闲置
-        LIGHT_IDLE_THRESHOLD = 300.0  # 5 分钟无操作 → 进入深度闲置
+        ACTIVE_INTERVAL = 0.25         # 活跃 → 每秒 4 次
+        LIGHT_IDLE_INTERVAL = 10.0     # 轻度闲置 (1-5min) → 每 10 秒 1 次
+        DEEP_IDLE_INTERVAL = 60.0      # 深度闲置 (5-30min) → 每分钟 1 次
+        VERY_DEEP_IDLE_INTERVAL = 600.0 # 极深闲置 (30min+) → 每 10 分钟 1 次
+        ACTIVE_THRESHOLD = 60.0        # 1 分钟无操作 → 进入轻度闲置
+        LIGHT_IDLE_THRESHOLD = 300.0   # 5 分钟无操作 → 进入深度闲置
+        DEEP_IDLE_THRESHOLD = 1800.0   # 30 分钟无操作 → 进入极深闲置
         last_interval = None
 
         while True:
             idle_sec = time.time() - _last_activity_time
-            is_active = idle_sec < ACTIVE_THRESHOLD
 
-            if is_active:
+            if idle_sec < ACTIVE_THRESHOLD:
                 target = ACTIVE_INTERVAL
             elif idle_sec < LIGHT_IDLE_THRESHOLD:
-                target = LIGHT_IDLE_INTERVAL   # 轻度闲置优先 → 5s
-            elif _server_interval <= 1.5:
-                target = _server_interval      # 观察者仅覆盖深度闲置 → 1s
+                target = LIGHT_IDLE_INTERVAL
+            elif idle_sec < DEEP_IDLE_THRESHOLD:
+                # 深度闲置 — 但观察者存在时升到 1s
+                target = _server_interval if _server_interval <= 1.5 else DEEP_IDLE_INTERVAL
             else:
-                target = DEEP_IDLE_INTERVAL
+                # 极深闲置 — 观察者存在时也升到 1s
+                target = _server_interval if _server_interval <= 1.5 else VERY_DEEP_IDLE_INTERVAL
 
             if target != last_interval:
                 screenshot.interval = target
-                if is_active:
+                if idle_sec < ACTIVE_THRESHOLD:
                     mode = f"ACTIVE ({idle_sec:.0f}s 空闲)"
                 elif target <= 1.5:
                     mode = "VIEWER"
                 elif target == LIGHT_IDLE_INTERVAL:
                     mode = f"LIGHT_IDLE ({idle_sec:.0f}s 空闲)"
-                else:
+                elif target == DEEP_IDLE_INTERVAL:
                     mode = f"DEEP_IDLE ({idle_sec:.0f}s 空闲)"
+                else:
+                    mode = f"VERY_DEEP_IDLE ({idle_sec:.0f}s 空闲)"
                 print(f"  [Adaptive] {mode}  截图间隔: {target}s")
                 last_interval = target
 

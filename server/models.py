@@ -185,19 +185,26 @@ def delete_agent(name: str) -> dict | None:
 def save_screenshot(agent_name: str, timestamp: str, image_b64: str) -> int | None:
     """将截图保存到文件系统，索引写入数据库
 
-    去重策略: 同一秒内只保留最新一张 (4fps 采集 → 1fps 存储)
+    去重策略: 2 秒窗口内只保留最新一张 (4fps 采集 → ~0.5fps 存储)
     """
     import base64
+    from datetime import datetime, timedelta
 
     try:
         db = get_db()
 
-        # 去重: 同一秒内替换旧截图
-        ts_second = timestamp[:19]  # '2026-06-15T10:00:49'
+        # 去重: 2 秒窗口内替换旧截图
+        try:
+            parsed = datetime.fromisoformat(timestamp)
+            window_start = (parsed - timedelta(seconds=2)).isoformat()
+        except ValueError:
+            window_start = timestamp  # 解析失败则不做去重
+
         existing = db.execute(
             """SELECT id, file_path FROM screenshots
-               WHERE agent_name = ? AND substr(timestamp, 1, 19) = ?""",
-            (agent_name, ts_second)
+               WHERE agent_name = ? AND timestamp >= ?
+               ORDER BY timestamp DESC LIMIT 1""",
+            (agent_name, window_start)
         ).fetchone()
         if existing:
             try:
