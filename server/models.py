@@ -584,3 +584,91 @@ def get_dashboard_stats(agent_name: str = None) -> dict:
         "total_browser_records": _count(db, "browser_history", agent_name),
         "online_agents": db.execute("SELECT COUNT(*) FROM agents WHERE status = 'online'").fetchone()[0],
     }
+
+
+# ============================================
+# 存储管理
+# ============================================
+
+def get_storage_stats() -> dict:
+    """获取存储使用统计 — 总量、Agent 明细、最早截图时间"""
+    db = get_db()
+    total_size = db.execute(
+        "SELECT COALESCE(SUM(file_size), 0) FROM screenshots"
+    ).fetchone()[0]
+    total_count = db.execute(
+        "SELECT COUNT(*) FROM screenshots"
+    ).fetchone()[0]
+    earliest = db.execute(
+        "SELECT timestamp FROM screenshots ORDER BY timestamp ASC LIMIT 1"
+    ).fetchone()
+
+    # 按 Agent 分组统计
+    agent_rows = db.execute(
+        """SELECT agent_name,
+                  COUNT(*) as count,
+                  COALESCE(SUM(file_size), 0) as total_size,
+                  MIN(timestamp) as oldest,
+                  MAX(timestamp) as newest
+           FROM screenshots
+           GROUP BY agent_name
+           ORDER BY total_size DESC"""
+    ).fetchall()
+
+    return {
+        "total_size_bytes": total_size,
+        "total_count": total_count,
+        "earliest_screenshot": earliest["timestamp"] if earliest else None,
+        "agents": [dict(r) for r in agent_rows],
+    }
+
+
+def cleanup_old_screenshots(older_than_hours: int, agent_name: str = None) -> dict:
+    """删除超过指定小时数的截图（文件 + DB 索引）
+
+    older_than_hours: 删除 timestamp 早于该小时数的截图
+    agent_name: 可选，限制清理范围到指定 Agent
+
+    返回: {"deleted_count": N, "freed_bytes": N}
+    """
+    from datetime import datetime, timedelta
+
+    db = get_db()
+    cutoff = (datetime.now() - timedelta(hours=older_than_hours)).isoformat()
+
+    # 先查出要删的文件路径和大小（用于统计和文件删除）
+    conditions = ["timestamp < ?"]
+    params = [cutoff]
+    if agent_name:
+        conditions.append("agent_name = ?")
+        params.append(agent_name)
+
+    where = " AND ".join(conditions)
+    rows = db.execute(
+        f"SELECT id, file_path, file_size FROM screenshots WHERE {where}",
+        params
+    ).fetchall()
+
+    deleted_count = 0
+    freed_bytes = 0
+    for row in rows:
+        try:
+            if os.path.exists(row["file_path"]):
+                os.remove(row["file_path"])
+        except OSError:
+            pass
+        db.execute("DELETE FROM screenshots WHERE id = ?", (row["id"],))
+        deleted_count += 1
+        freed_bytes += row["file_size"] or 0
+
+    db.commit()
+
+    if deleted_count:
+        print(f"[DB] 清理完成: {deleted_count} 张截图, 释放 {freed_bytes / 1024 / 1024:.1f} MB")
+
+    return {
+        "deleted_count": deleted_count,
+        "freed_bytes": freed_bytes,
+        "cutoff_time": cutoff,
+        "older_than_hours": older_than_hours,
+    }

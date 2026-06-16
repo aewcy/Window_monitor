@@ -18,6 +18,7 @@ from models import (
     get_browser_history_with_screenshots,
     get_app_events, get_app_events_with_screenshots,
     get_dashboard_stats,
+    get_storage_stats, cleanup_old_screenshots,
 )
 
 router = APIRouter(prefix="/api")
@@ -135,6 +136,22 @@ async def browser_history(data: dict):
 async def dashboard_stats(agent: Optional[str] = Query(None)):
     """仪表盘统计数据"""
     return get_dashboard_stats(agent)
+
+
+@router.get("/storage/stats")
+async def storage_stats():
+    """存储使用统计 — 总量、Agent 明细"""
+    return get_storage_stats()
+
+
+@router.post("/storage/cleanup")
+async def storage_cleanup(data: dict):
+    """清理过期截图  {older_than_hours: 480, agent: "name"?}"""
+    hours = data.get("older_than_hours", 480)
+    agent = data.get("agent")
+    if not isinstance(hours, (int, float)) or hours <= 0:
+        raise HTTPException(status_code=400, detail="older_than_hours 必须是正整数")
+    return cleanup_old_screenshots(int(hours), agent)
 
 
 @router.get("/agents")

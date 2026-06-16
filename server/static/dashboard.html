@@ -67,7 +67,7 @@
   .sidebar-collapsed .sidebar {
     width:0; padding:0; opacity:0; overflow:hidden;
   }
-  .sidebar .stats, .sidebar .agent-list {
+  .sidebar .stats, .sidebar .storage-panel, .sidebar .agent-list {
     background:var(--panel); border:1px solid var(--border);
     border-radius:var(--radius); padding:14px;
   }
@@ -442,6 +442,26 @@
       <h3>Agents</h3>
       <div id="agentList">Loading...</div>
     </div>
+    <div class="storage-panel" role="region" aria-label="Storage management">
+      <h3>Storage</h3>
+      <div id="storageStats" style="font-size:0.82rem">
+        <div class="stat-item"><span>Total</span><span class="val" id="storageTotalSize">-</span></div>
+        <div class="stat-item"><span>Screenshots</span><span class="val" id="storageTotalCount">-</span></div>
+        <div class="stat-item"><span>Earliest</span><span class="val" id="storageEarliest">-</span></div>
+      </div>
+      <div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px">
+        <label style="font-size:0.72rem;color:var(--text-muted)">Retention (hours)</label>
+        <div style="display:flex;gap:4px;margin-top:4px">
+          <input type="number" id="cleanupHours" value="480" min="1" max="8760"
+            style="width:70px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 6px;font-size:0.78rem;font-family:inherit"
+            aria-label="Retention hours">
+          <button class="btn btn-danger" id="btnCleanup" style="flex:1;font-size:0.72rem;padding:4px 8px" aria-label="Clean up old screenshots">
+            Clean
+          </button>
+        </div>
+        <div id="cleanupPreview" style="font-size:0.65rem;color:var(--text-muted);margin-top:3px;min-height:14px"></div>
+      </div>
+    </div>
   </div>
 
   <!-- Content -->
@@ -704,6 +724,17 @@ function bindEvents() {
     selectHour(hour === 'all' ? null : parseInt(hour));
   });
 
+  // Cleanup button
+  document.getElementById('btnCleanup').addEventListener('click', executeCleanup);
+
+  // Cleanup hours input live preview
+  document.getElementById('cleanupHours').addEventListener('input', function() {
+    const hours = parseInt(this.value) || 480;
+    const cutoff = new Date(Date.now() - hours * 3600 * 1000);
+    document.getElementById('cleanupPreview').textContent =
+      'Screenshots before ' + cutoff.toLocaleDateString() + ' will be deleted';
+  });
+
   // Confirm dialog
   document.getElementById('btnConfirmCancel').addEventListener('click', hideConfirmDialog);
   document.getElementById('btnConfirmOk').addEventListener('click', executeDelete);
@@ -796,6 +827,7 @@ async function api(path) {
 
 async function refreshAll() {
   await loadStats();
+  await loadStorageStats();
   await loadAgents();
   if (selectedAgent) {
     await Promise.all([
@@ -818,6 +850,24 @@ async function loadStats() {
       <div class="stat-item"><span>Events</span><span class="val">${d.today_app_events ?? 0}</span></div>
       <div class="stat-item"><span>URLs</span><span class="val">${d.total_browser_records ?? 0}</span></div>`;
   } catch(e) { console.error('Stats:', e); }
+}
+
+// ============ Storage ============
+async function loadStorageStats() {
+  try {
+    const data = await api('/api/storage/stats');
+    document.getElementById('storageTotalSize').textContent = formatBytes(data.total_size_bytes || 0);
+    document.getElementById('storageTotalCount').textContent = (data.total_count || 0).toLocaleString();
+    document.getElementById('storageEarliest').textContent = data.earliest_screenshot
+      ? data.earliest_screenshot.substring(0, 10) : '-';
+  } catch(e) { console.error('Storage:', e); }
+}
+
+function formatBytes(bytes) {
+  if (!bytes || bytes === 0) return '0 KB';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024*1024)).toFixed(1) + ' MB';
+  return (bytes / (1024*1024*1024)).toFixed(2) + ' GB';
 }
 
 // ============ Calendar ============
@@ -1353,7 +1403,40 @@ function hideConfirmDialog() {
   document.getElementById('confirmDialog').classList.remove('open');
 }
 
+async function executeCleanup() {
+  const hours = parseInt(document.getElementById('cleanupHours').value) || 480;
+  pendingDeleteAgent = null;
+  pendingDeleteIds = [];
+  document.getElementById('confirmMsg').textContent =
+    `Delete all screenshots older than ${hours} hours? This cannot be undone.`;
+  // Override executeDelete to run cleanup instead
+  pendingDeleteIds = ['__CLEANUP__'];  // sentinel
+  showConfirmDialog();
+}
+
 async function executeDelete() {
+  hideConfirmDialog();
+  // Storage cleanup — uses special sentinel
+  if (pendingDeleteIds.length === 1 && pendingDeleteIds[0] === '__CLEANUP__') {
+    pendingDeleteIds = [];
+    const hours = parseInt(document.getElementById('cleanupHours').value) || 480;
+    try {
+      const resp = await fetch('/api/storage/cleanup', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({older_than_hours: hours}),
+      });
+      const result = await resp.json();
+      console.log(`Cleaned ${result.deleted_count} screenshots, freed ${formatBytes(result.freed_bytes)}`);
+      await loadStorageStats();
+      await loadStats();
+      if (selectedAgent) {
+        await loadScreenshots(selectedAgent);
+        await loadCalendarData();
+      }
+    } catch(e) { console.error('Cleanup failed:', e); }
+    return;
+  }
   hideConfirmDialog();
   // Screenshot batch delete
   if (pendingDeleteIds.length) {
