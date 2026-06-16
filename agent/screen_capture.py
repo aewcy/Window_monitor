@@ -1,8 +1,7 @@
 """
 屏幕截图采集模块
-Windows: Win32 GDI 直接捕获（处理负坐标/非标准布局）
-其他平台: mss / pyautogui 回退
-多显示器: 每屏独立截图 → 分别缩放 → 逐张上报 (Dashboard 可选屏)
+多显示器: 全虚拟桌面一次捕获(PIL all_screens=True) → 逐屏裁切 → 分别缩放上报
+all_screens=True 是 Pillow 官方推荐的多屏方案, 正确处理负坐标
 """
 import sys
 import time
@@ -12,19 +11,15 @@ import ctypes
 import threading
 from ctypes import wintypes
 from datetime import datetime
-from PIL import Image
+from PIL import Image, ImageGrab
 
 IS_WINDOWS = sys.platform == "win32"
 
 from config import SCREENSHOT_QUALITY, SCREENSHOT_MAX_WIDTH
 
 
-# ============================================
-# Windows: Win32 GDI 捕获 — 无负坐标问题
-# ============================================
-
 def _get_monitors_win32() -> list[dict]:
-    """EnumDisplayMonitors — 获取所有物理显示器矩形"""
+    """EnumDisplayMonitors — 获取所有物理显示器矩形（屏幕坐标）"""
     monitors = []
 
     class RECT(ctypes.Structure):
@@ -67,45 +62,8 @@ def _get_monitors_win32() -> list[dict]:
     return monitors
 
 
-def _capture_rect_win32(left: int, top: int, width: int, height: int) -> Image.Image:
-    """BitBlt 捕获指定屏幕矩形 → PIL Image (RGB)"""
-    import win32gui
-    import win32ui
-    import win32con
-
-    hdesktop = win32gui.GetDesktopWindow()
-    desktop_dc = win32gui.GetWindowDC(hdesktop)
-    img_dc = win32ui.CreateDCFromHandle(desktop_dc)
-    mem_dc = img_dc.CreateCompatibleDC()
-
-    bitmap = win32ui.CreateBitmap()
-    bitmap.CreateCompatibleBitmap(img_dc, width, height)
-    mem_dc.SelectObject(bitmap)
-    mem_dc.BitBlt((0, 0), (width, height), img_dc, (left, top), win32con.SRCCOPY)
-
-    bmpinfo = bitmap.GetInfo()
-    bmpbits = bitmap.GetBitmapBits(True)
-    img = Image.frombuffer(
-        'RGB',
-        (bmpinfo['bmWidth'], bmpinfo['bmHeight']),
-        bmpbits, 'raw', 'BGRX', 0, 1,
-    )
-
-    # 清理
-    mem_dc.DeleteDC()
-    img_dc.DeleteDC()
-    win32gui.ReleaseDC(hdesktop, desktop_dc)
-    win32gui.DeleteObject(bitmap.GetHandle())
-
-    return img
-
-
-# ============================================
-# ScreenCapture
-# ============================================
-
 class ScreenCapture:
-    """定时屏幕截图采集器 — 多屏独立捕获"""
+    """定时屏幕截图采集器 — 全桌面捕获 + 逐屏裁切"""
 
     def __init__(self, interval: int = 30):
         self.interval = interval
@@ -114,13 +72,13 @@ class ScreenCapture:
         self._listeners = []
         self._capture_lock = threading.Lock()
         self.monitor_count = 1
+        self._virtual_bounds = None  # (left, top, width, height) 缓存
 
     def add_listener(self, callback):
-        """添加截图回调 - callback(data_dict) 每屏调用一次"""
         self._listeners.append(callback)
 
     def _capture_all(self) -> list:
-        """捕获所有显示器，返回 [(b64, timestamp, mon_idx, mon_total), ...]"""
+        """全虚拟桌面一次捕获 → 按显示器矩形裁切 → 返回每屏数据"""
         results = []
         try:
             if IS_WINDOWS:
@@ -136,22 +94,18 @@ class ScreenCapture:
                         ]
                 except Exception:
                     import pyautogui
-                    pil_img = pyautogui.screenshot()
-                    return self._encode_fallback(pil_img)
+                    return self._fallback_single(pyautogui.screenshot())
 
             if not monitors:
                 return results
 
-            # 去重: 坐标相同的只算一个
-            seen = set()
-            unique = []
+            # 去重
+            seen, unique = set(), []
             for m in monitors:
-                key = (m['left'], m['top'], m['width'], m['height'])
-                if key not in seen:
-                    seen.add(key)
+                k = (m['left'], m['top'], m['width'], m['height'])
+                if k not in seen:
+                    seen.add(k)
                     unique.append(m)
-            if len(unique) < len(monitors):
-                print(f"[ScreenCapture] 报告 {len(monitors)} 屏, 去重后 {len(unique)} 屏")
 
             # 首次打印布局
             if not hasattr(self, '_layout_printed'):
@@ -163,76 +117,90 @@ class ScreenCapture:
             self.monitor_count = max(total, 1)
             timestamp = datetime.now().isoformat()
 
-            for idx, mon in enumerate(unique):
-                try:
-                    if IS_WINDOWS:
-                        frame = _capture_rect_win32(
-                            mon['left'], mon['top'],
-                            mon['width'], mon['height'],
-                        )
-                    else:
-                        import mss as mss_lib
-                        with mss_lib.mss() as sct:
-                            img = sct.grab(mon)
-                            frame = Image.frombytes("RGB", img.size, img.bgra, "raw", "BGRX")
+            if total == 1:
+                # 单屏: 直接抓
+                m = unique[0]
+                bbox = (m['left'], m['top'], m['left'] + m['width'], m['top'] + m['height'])
+                if IS_WINDOWS:
+                    full = ImageGrab.grab(bbox=bbox, all_screens=True)
+                else:
+                    import mss as mss_lib
+                    with mss_lib.mss() as sct:
+                        img = sct.grab(m)
+                        full = Image.frombytes("RGB", img.size, img.bgra, "raw", "BGRX")
+                frame = self._scale(full)
+                b64_data = self._encode(frame)
+                results.append((b64_data, timestamp, 0, 1))
+            else:
+                # 多屏: 全桌面一次捕获 → 裁切
+                min_left  = min(m['left'] for m in unique)
+                min_top   = min(m['top'] for m in unique)
+                max_right = max(m['left'] + m['width'] for m in unique)
+                max_bottom = max(m['top'] + m['height'] for m in unique)
 
-                    # 缩放
-                    if frame.width > SCREENSHOT_MAX_WIDTH:
-                        ratio = SCREENSHOT_MAX_WIDTH / frame.width
-                        frame = frame.resize(
-                            (SCREENSHOT_MAX_WIDTH, int(frame.height * ratio)),
-                            Image.LANCZOS,
-                        )
+                full_bbox = (min_left, min_top, max_right, max_bottom)
+                if IS_WINDOWS:
+                    full = ImageGrab.grab(bbox=full_bbox, all_screens=True)
+                else:
+                    import mss as mss_lib
+                    with mss_lib.mss() as sct:
+                        img = sct.grab({'left': min_left, 'top': min_top,
+                                        'width': max_right - min_left,
+                                        'height': max_bottom - min_top})
+                        full = Image.frombytes("RGB", img.size, img.bgra, "raw", "BGRX")
 
-                    # JPEG 压缩
-                    buf = io.BytesIO()
-                    frame.save(buf, format="JPEG", quality=SCREENSHOT_QUALITY)
-                    b64_data = base64.b64encode(buf.getvalue()).decode("ascii")
-                    results.append((b64_data, timestamp, idx, total))
-
-                except Exception as e:
-                    print(f"[ScreenCapture] 屏{idx+1} 捕获失败: {e}")
+                for idx, m in enumerate(unique):
+                    try:
+                        # 裁切坐标 = 屏幕坐标 - 全桌面原点
+                        crop_l = m['left'] - min_left
+                        crop_t = m['top'] - min_top
+                        crop_r = crop_l + m['width']
+                        crop_b = crop_t + m['height']
+                        frame = full.crop((crop_l, crop_t, crop_r, crop_b))
+                        frame = self._scale(frame)
+                        b64_data = self._encode(frame)
+                        results.append((b64_data, timestamp, idx, total))
+                    except Exception as e:
+                        print(f"[ScreenCapture] 屏{idx+1} 裁切失败: {e}")
 
         except Exception as e:
             print(f"[ScreenCapture] 截图失败: {e}")
 
         return results
 
-    def _encode_fallback(self, pil_img: Image.Image) -> list:
-        """pyautogui 单屏回退"""
-        if pil_img.width > SCREENSHOT_MAX_WIDTH:
-            ratio = SCREENSHOT_MAX_WIDTH / pil_img.width
-            pil_img = pil_img.resize(
-                (SCREENSHOT_MAX_WIDTH, int(pil_img.height * ratio)),
-                Image.LANCZOS,
-            )
+    def _scale(self, img: Image.Image) -> Image.Image:
+        if img.width > SCREENSHOT_MAX_WIDTH:
+            ratio = SCREENSHOT_MAX_WIDTH / img.width
+            return img.resize((SCREENSHOT_MAX_WIDTH, int(img.height * ratio)), Image.LANCZOS)
+        return img
+
+    def _encode(self, img: Image.Image) -> str:
         buf = io.BytesIO()
-        pil_img.save(buf, format="JPEG", quality=SCREENSHOT_QUALITY)
-        b64_data = base64.b64encode(buf.getvalue()).decode("ascii")
-        timestamp = datetime.now().isoformat()
-        return [(b64_data, timestamp, 0, 1)]
+        img.save(buf, format="JPEG", quality=SCREENSHOT_QUALITY)
+        return base64.b64encode(buf.getvalue()).decode("ascii")
+
+    def _fallback_single(self, img: Image.Image) -> list:
+        img = self._scale(img)
+        b64 = self._encode(img)
+        return [(b64, datetime.now().isoformat(), 0, 1)]
 
     def capture_once(self) -> list[dict]:
-        """执行一次截图（全屏），返回每屏的结构化数据列表（线程安全）"""
         with self._capture_lock:
             raw = self._capture_all()
-
-        shots = []
-        for b64_data, timestamp, mon_idx, mon_total in raw:
-            shots.append({
-                "timestamp": timestamp,
-                "image_base64": b64_data,
+        return [
+            {
+                "timestamp": ts,
+                "image_base64": b64,
                 "format": "jpeg",
-                "monitor_index": mon_idx,
-                "monitor_total": mon_total,
-            })
-        return shots
+                "monitor_index": idx,
+                "monitor_total": total,
+            }
+            for b64, ts, idx, total in raw
+        ]
 
     def _loop(self):
-        """后台循环 — 每屏独立回调"""
         while self._running:
-            shots = self.capture_once()
-            for data in shots:
+            for data in self.capture_once():
                 for cb in self._listeners:
                     try:
                         cb(data)
@@ -241,7 +209,6 @@ class ScreenCapture:
             time.sleep(self.interval)
 
     def start(self):
-        """启动后台截图"""
         if self._running:
             return
         self._running = True
@@ -250,7 +217,6 @@ class ScreenCapture:
         print(f"[ScreenCapture] 已启动，间隔 {self.interval}s")
 
     def stop(self):
-        """停止后台截图"""
         self._running = False
         if self._thread:
             self._thread.join(timeout=5)
