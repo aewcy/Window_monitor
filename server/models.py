@@ -116,6 +116,18 @@ def init_db():
     except sqlite3.OperationalError:
         pass  # 列已存在
 
+    # 向前兼容迁移: 为 screenshots 表添加 monitor_index / monitor_total
+    try:
+        db.execute("ALTER TABLE screenshots ADD COLUMN monitor_index INTEGER DEFAULT 0")
+        db.commit()
+    except sqlite3.OperationalError:
+        pass
+    try:
+        db.execute("ALTER TABLE screenshots ADD COLUMN monitor_total INTEGER DEFAULT 1")
+        db.commit()
+    except sqlite3.OperationalError:
+        pass
+
 
 # ============================================
 # Agent 管理
@@ -197,7 +209,8 @@ def delete_agent(name: str) -> dict | None:
 # 截图管理
 # ============================================
 
-def save_screenshot(agent_name: str, timestamp: str, image_b64: str) -> int | None:
+def save_screenshot(agent_name: str, timestamp: str, image_b64: str,
+                    monitor_index: int = 0, monitor_total: int = 1) -> int | None:
     """将截图保存到文件系统，索引写入数据库
 
     去重策略: 2 秒窗口内只保留最新一张 (4fps 采集 → ~0.5fps 存储)
@@ -247,9 +260,10 @@ def save_screenshot(agent_name: str, timestamp: str, image_b64: str) -> int | No
 
         # 写入数据库索引
         cursor = db.execute(
-            """INSERT INTO screenshots (agent_name, timestamp, file_path, file_size)
-               VALUES (?, ?, ?, ?)""",
-            (agent_name, timestamp, file_path, file_size)
+            """INSERT INTO screenshots (agent_name, timestamp, file_path, file_size,
+                       monitor_index, monitor_total)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (agent_name, timestamp, file_path, file_size, monitor_index, monitor_total)
         )
         db.commit()
         return cursor.lastrowid
@@ -260,7 +274,8 @@ def save_screenshot(agent_name: str, timestamp: str, image_b64: str) -> int | No
 
 
 def get_screenshots(agent_name: str = None, limit: int = 50, offset: int = 0,
-                    date_from: str = None, date_to: str = None) -> list[dict]:
+                    date_from: str = None, date_to: str = None,
+                    monitor_index: int = None) -> list[dict]:
     """查询截图列表"""
     db = get_db()
     conditions = []
@@ -275,6 +290,9 @@ def get_screenshots(agent_name: str = None, limit: int = 50, offset: int = 0,
     if date_to:
         conditions.append("timestamp <= ?")
         params.append(date_to)
+    if monitor_index is not None:
+        conditions.append("monitor_index = ?")
+        params.append(monitor_index)
 
     where = "WHERE " + " AND ".join(conditions) if conditions else ""
     sql = f"""SELECT * FROM screenshots {where}

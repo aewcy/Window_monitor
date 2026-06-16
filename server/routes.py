@@ -98,6 +98,8 @@ async def screenshot(data: dict):
     agent_name = data.get("agent_name", "unknown")
     timestamp = data.get("timestamp", datetime.now().isoformat())
     image_b64 = data.get("image_base64", "")
+    monitor_index = data.get("monitor_index", 0)
+    monitor_total = data.get("monitor_total", 1)
 
     if not image_b64:
         raise HTTPException(status_code=400, detail="缺少截图数据")
@@ -106,7 +108,8 @@ async def screenshot(data: dict):
     upsert_agent(agent_name, "online")
 
     # 保存截图
-    screenshot_id = save_screenshot(agent_name, timestamp, image_b64)
+    screenshot_id = save_screenshot(agent_name, timestamp, image_b64,
+                                    monitor_index, monitor_total)
     return {"status": "ok", "id": screenshot_id}
 
 
@@ -232,9 +235,10 @@ async def list_screenshots(
     offset: int = Query(0),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
+    monitor: Optional[int] = Query(None),
 ):
-    """截图列表，支持日期范围过滤"""
-    return get_screenshots(agent, limit, offset, date_from, date_to)
+    """截图列表，支持日期范围/显示器筛选"""
+    return get_screenshots(agent, limit, offset, date_from, date_to, monitor)
 
 
 @router.get("/screenshots/latest")

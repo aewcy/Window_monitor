@@ -1,6 +1,7 @@
 """
 屏幕截图采集模块
 使用 mss 库进行高效屏幕捕获，兼容多显示器
+多显示器: 每屏独立截图 → 分别缩放 → 逐张上报 (Dashboard 可选屏)
 """
 import time
 import io
@@ -20,98 +21,100 @@ from config import SCREENSHOT_QUALITY, SCREENSHOT_MAX_WIDTH
 
 
 class ScreenCapture:
-    """定时屏幕截图采集器"""
+    """定时屏幕截图采集器 — 多屏独立捕获"""
 
     def __init__(self, interval: int = 30):
         self.interval = interval
         self._running = False
         self._thread = None
-        self._last_screenshot = None
         self._listeners = []
         self._capture_lock = threading.Lock()
+        self.monitor_count = 1  # 首次捕获后更新
 
     def add_listener(self, callback):
-        """添加截图回调 - callback(b64_data, timestamp)"""
+        """添加截图回调 - callback(data_dict) 每屏调用一次"""
         self._listeners.append(callback)
 
-    def _capture(self) -> tuple[str, str] | None:
-        """执行一次截图，返回 (base64_str, timestamp_iso)
+    def _capture_one(self, sct, monitor: dict, mon_idx: int) -> tuple | None:
+        """捕获单个显示器，返回 (b64_str, timestamp, mon_idx, mon_total)"""
+        try:
+            img = sct.grab(monitor)
+            frame = Image.frombytes("RGB", img.size, img.bgra, "raw", "BGRX")
 
-        多显示器: 逐个捕获 → 分别缩放 → 纵向拼接，确保每屏内容可读
-        """
+            # 缩放到最大宽度
+            if frame.width > SCREENSHOT_MAX_WIDTH:
+                ratio = SCREENSHOT_MAX_WIDTH / frame.width
+                frame = frame.resize(
+                    (SCREENSHOT_MAX_WIDTH, int(frame.height * ratio)),
+                    Image.LANCZOS
+                )
+
+            # JPEG 压缩
+            buf = io.BytesIO()
+            frame.save(buf, format="JPEG", quality=SCREENSHOT_QUALITY)
+            b64_data = base64.b64encode(buf.getvalue()).decode("ascii")
+
+            return b64_data, mon_idx
+        except Exception as e:
+            print(f"[ScreenCapture] 屏{mon_idx+1} 捕获失败: {e}")
+            return None
+
+    def _capture_all(self) -> list:
+        """捕获所有显示器，返回 [(b64, timestamp, mon_idx, mon_total), ...]"""
+        results = []
         try:
             if HAS_MSS:
                 with mss.mss() as sct:
                     monitors = sct.monitors[1:]  # 跳过 monitors[0] (虚拟全屏)
-                    if not monitors:
-                        return None
+                    total = len(monitors)
+                    self.monitor_count = max(total, 1)
 
-                    frames = []
-                    for mon in monitors:
-                        img = sct.grab(mon)
-                        frame = Image.frombytes("RGB", img.size, img.bgra, "raw", "BGRX")
-                        # 每屏独立缩放
-                        if frame.width > SCREENSHOT_MAX_WIDTH:
-                            ratio = SCREENSHOT_MAX_WIDTH / frame.width
-                            frame = frame.resize(
-                                (SCREENSHOT_MAX_WIDTH, int(frame.height * ratio)),
-                                Image.LANCZOS
-                            )
-                        frames.append(frame)
-
-                    if len(frames) == 1:
-                        pil_img = frames[0]
-                    else:
-                        # 纵向拼接多屏
-                        total_h = sum(f.height for f in frames)
-                        max_w = max(f.width for f in frames)
-                        pil_img = Image.new("RGB", (max_w, total_h))
-                        y = 0
-                        for f in frames:
-                            pil_img.paste(f, (0, y))
-                            y += f.height
+                    timestamp = datetime.now().isoformat()
+                    for idx, mon in enumerate(monitors):
+                        shot = self._capture_one(sct, mon, idx)
+                        if shot:
+                            b64_data, mon_idx = shot
+                            results.append((b64_data, timestamp, mon_idx, total))
             else:
                 import pyautogui
                 pil_img = pyautogui.screenshot()
-                # 单屏 fallback 仍需缩放
                 if pil_img.width > SCREENSHOT_MAX_WIDTH:
                     ratio = SCREENSHOT_MAX_WIDTH / pil_img.width
                     pil_img = pil_img.resize(
                         (SCREENSHOT_MAX_WIDTH, int(pil_img.height * ratio)),
                         Image.LANCZOS
                     )
-
-            # 压缩为 JPEG base64
-            buf = io.BytesIO()
-            pil_img.save(buf, format="JPEG", quality=SCREENSHOT_QUALITY)
-            b64_data = base64.b64encode(buf.getvalue()).decode("ascii")
-
-            timestamp = datetime.now().isoformat()
-            self._last_screenshot = (b64_data, timestamp)
-            return b64_data, timestamp
-
+                buf = io.BytesIO()
+                pil_img.save(buf, format="JPEG", quality=SCREENSHOT_QUALITY)
+                b64_data = base64.b64encode(buf.getvalue()).decode("ascii")
+                timestamp = datetime.now().isoformat()
+                results.append((b64_data, timestamp, 0, 1))
         except Exception as e:
             print(f"[ScreenCapture] 截图失败: {e}")
-            return None
 
-    def capture_once(self) -> dict | None:
-        """执行一次截图并返回结构化数据（线程安全）"""
+        return results
+
+    def capture_once(self) -> list[dict]:
+        """执行一次截图（全屏），返回每屏的结构化数据列表（线程安全）"""
         with self._capture_lock:
-            result = self._capture()
-        if result is None:
-            return None
-        b64_data, timestamp = result
-        return {
-            "timestamp": timestamp,
-            "image_base64": b64_data,
-            "format": "jpeg",
-        }
+            raw = self._capture_all()
+
+        shots = []
+        for b64_data, timestamp, mon_idx, mon_total in raw:
+            shots.append({
+                "timestamp": timestamp,
+                "image_base64": b64_data,
+                "format": "jpeg",
+                "monitor_index": mon_idx,
+                "monitor_total": mon_total,
+            })
+        return shots
 
     def _loop(self):
-        """后台循环"""
+        """后台循环 — 每屏独立回调"""
         while self._running:
-            data = self.capture_once()
-            if data:
+            shots = self.capture_once()
+            for data in shots:
                 for cb in self._listeners:
                     try:
                         cb(data)
