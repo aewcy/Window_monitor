@@ -59,13 +59,14 @@ monitor-demo/
 │   ├── README.md              #   部署与 API 文档
 │   ├── main.py                #   FastAPI 入口
 │   ├── config.py              #   配置
-│   ├── models.py              #   SQLite 数据层
-│   ├── routes.py              #   REST API
+│   ├── models.py              #   SQLite 数据层 (5 表)
+│   ├── routes.py              #   REST API (26 端点)
+│   ├── logger.py              #   日志模块 (按天轮转)
 │   ├── Dockerfile             #   Docker 镜像
 │   ├── docker-compose.yml     #   Docker 编排
 │   ├── requirements.txt       #   依赖
 │   └── static/
-│       └── dashboard.html     #   Web 面板
+│       └── dashboard.html     #   Web 面板 (原生 HTML/CSS/JS)
 ├── tests/                     # 测试
 ├── .gitignore
 └── README.md                  # ← 本文件

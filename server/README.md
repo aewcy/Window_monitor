@@ -70,6 +70,14 @@ python main.py
 | GET | `/api/app_usage?agent=xx` | 应用使用汇总 |
 | GET | `/api/app_events?agent=xx` | 事件时间线 (支持 with_screenshots) |
 | GET | `/api/browser_history?agent=xx` | 浏览器历史 (支持 with_screenshots) |
+| GET | `/api/screenshots/dates?agent=xx` | 有截图的日期列表 |
+| GET | `/api/screenshots/hours?agent=xx&date=YYY-MM-DD` | 指定日期有截图的小时列表 |
+| DELETE | `/api/agents/{name}` | 删除 Agent 及全部关联数据 |
+| GET | `/api/storage/stats` | 存储用量统计 |
+| POST | `/api/storage/cleanup` | 清理过期截图 `{older_than_hours: 480}` |
+| POST | `/api/diagnostics` | Agent 上报诊断信息 |
+| GET | `/api/logs` | 诊断日志查询 (支持 category/level/pattern) |
+| GET | `/api/logs/categories` | 日志分类及计数 |
 
 ## 数据库
 
@@ -79,7 +87,7 @@ SQLite，自动建表。表结构见 [models.py](models.py)：
 - `screenshots` — 截图索引 (文件存文件系统)
 - `app_events` — 应用事件 (含 screenshot_timestamp 精确关联)
 - `browser_history` — 浏览器历史
-- `event_log` — 系统事件日志
+- `diagnostic_logs` — 诊断日志 (Agent 上报 + Server 内部)
 
 ## 文件清单
 
@@ -93,6 +101,7 @@ server/
 ├── Dockerfile              # Docker 镜像
 ├── docker-compose.yml      # Docker 编排
 ├── .dockerignore
+├── logger.py                # 日志模块 (按天轮转)
 ├── static/
 │   └── dashboard.html      # Web 监控面板 (SPA)
 ├── templates/              # (预留)
