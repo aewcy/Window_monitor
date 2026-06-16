@@ -82,8 +82,17 @@
   }
   .agent-card:hover { border-color:var(--accent); }
   .agent-card.active { border-color:var(--accent); background:rgba(79,140,255,.08); }
-  .agent-card .name { font-weight:600; font-size:0.9rem; }
+  .agent-card .name { font-weight:600; font-size:0.9rem; display:flex; align-items:center; gap:6px; }
   .agent-card .meta { font-size:0.72rem; color:var(--text-muted); margin-top:3px; }
+  .agent-card .agent-delete {
+    margin-left:auto; width:20px; height:20px; border-radius:50%;
+    border:none; background:transparent; color:var(--text-muted);
+    font-size:1rem; cursor:pointer; display:none; align-items:center;
+    justify-content:center; line-height:1; padding:0; flex-shrink:0;
+    transition: color .15s, background .15s;
+  }
+  .agent-card:hover .agent-delete { display:flex; }
+  .agent-card .agent-delete:hover { color:#ef4444; background:rgba(239,68,68,.12); }
   .status-dot { width:7px; height:7px; border-radius:50%; display:inline-block; margin-right:5px; }
   .status-dot.online { background:var(--accent2); }
   .status-dot.offline { background:var(--text-muted); }
@@ -542,6 +551,7 @@ const PAGE_SIZE = 2000;  // max screenshots per page
 let gridMode = false;   // true=grid thumbnail view
 let gridSelected = new Set();  // selected screenshot IDs in grid mode
 let pendingDeleteIds = [];     // IDs awaiting confirm
+let pendingDeleteAgent = null;   // Agent name awaiting confirm delete
 let currentCalendarMonth = null;  // {year, month} — 0-indexed month
 let selectedDate = null;          // 'YYYY-MM-DD' or null (null = all dates)
 let selectedHour = null;          // 0-23 or null (null = all hours)
@@ -597,6 +607,13 @@ function bindEvents() {
 
   // Agent list (event delegation)
   document.getElementById('agentList').addEventListener('click', function(e) {
+    // Delete button clicked — stop propagation, don't select
+    const delBtn = e.target.closest('.agent-delete');
+    if (delBtn && delBtn.dataset.agent) {
+      e.stopPropagation();
+      confirmDeleteAgent(delBtn.dataset.agent);
+      return;
+    }
     const card = e.target.closest('.agent-card');
     if (card && card.dataset.agent) {
       selectAgent(card.dataset.agent);
@@ -962,7 +979,7 @@ async function loadAgents() {
               type="button"
               data-agent="${escAttr(a.name)}"
               aria-pressed="${selectedAgent===a.name}">
-        <div class="name"><span class="status-dot ${a.status==='online'?'online':'offline'}" aria-hidden="true"></span>${escHtml(a.name)}</div>
+        <div class="name"><span class="status-dot ${a.status==='online'?'online':'offline'}" aria-hidden="true"></span>${escHtml(a.name)}<span class="agent-delete" data-agent="${escAttr(a.name)}" title="Delete agent" aria-label="Delete agent ${escAttr(a.name)}">&times;</span></div>
         <div class="meta">${escHtml(a.status)} | ${fpsLabel} | ${escHtml(a.last_seen||'-')}</div>
       </button>`;
     }).join('');
@@ -1324,26 +1341,64 @@ function showConfirmDialog() {
   document.getElementById('confirmDialog').focus();
 }
 
+function confirmDeleteAgent(name) {
+  pendingDeleteAgent = name;
+  pendingDeleteIds = [];
+  document.getElementById('confirmMsg').textContent =
+    `Delete agent "${name}" and ALL its data (screenshots, events, browser history)? This cannot be undone.`;
+  showConfirmDialog();
+}
+
 function hideConfirmDialog() {
   document.getElementById('confirmDialog').classList.remove('open');
 }
 
 async function executeDelete() {
   hideConfirmDialog();
-  if (!pendingDeleteIds.length) return;
-  try {
-    const resp = await fetch('/api/screenshots/delete-batch', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ids: pendingDeleteIds}),
-    });
-    const result = await resp.json();
-    console.log(`Deleted ${result.deleted} screenshots`);
-    pendingDeleteIds = [];
-    // Refresh grid and screenshot list
-    if (gridMode) renderGrid();
-    if (selectedAgent) loadScreenshots(selectedAgent);
-  } catch(e) { console.error('Delete failed:', e); }
+  // Screenshot batch delete
+  if (pendingDeleteIds.length) {
+    try {
+      const resp = await fetch('/api/screenshots/delete-batch', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ids: pendingDeleteIds}),
+      });
+      const result = await resp.json();
+      console.log(`Deleted ${result.deleted} screenshots`);
+      pendingDeleteIds = [];
+      // Refresh grid and screenshot list
+      if (gridMode) renderGrid();
+      if (selectedAgent) loadScreenshots(selectedAgent);
+    } catch(e) { console.error('Delete failed:', e); }
+    return;
+  }
+  // Agent delete
+  if (pendingDeleteAgent) {
+    try {
+      const resp = await fetch(`/api/agents/${encodeURIComponent(pendingDeleteAgent)}`, {
+        method: 'DELETE',
+      });
+      const result = await resp.json();
+      console.log(`Agent ${pendingDeleteAgent} deleted: ${JSON.stringify(result.deleted)}`);
+      // If the deleted agent was selected, clear selection
+      if (selectedAgent === pendingDeleteAgent) {
+        selectedAgent = null;
+        currentScreenshotIndex = 0; screenshotList = [];
+        document.getElementById('screenshotAgentLabel').textContent = '';
+        document.getElementById('screenshotFpsBadge').textContent = '';
+        document.getElementById('screenshotViewer').innerHTML = '<span class="no-data">Select an agent</span>';
+        document.getElementById('screenshotTime').textContent = '';
+        document.getElementById('timelineBody').innerHTML = '<div style="color:var(--text-muted);padding:12px;text-align:center">Select an agent</div>';
+        document.getElementById('appUsageBody').innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted)">Select an agent</td></tr>';
+        document.getElementById('browserBody').innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">Select an agent</td></tr>';
+        if (gridMode) { gridMode = false; toggleGridView(); }
+      }
+      pendingDeleteAgent = null;
+      await loadAgents();
+      await loadStats();
+    } catch(e) { console.error('Agent delete failed:', e); }
+    return;
+  }
 }
 
 // ============ Screenshot Modal ============

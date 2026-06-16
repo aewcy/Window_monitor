@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 
 from models import (
-    init_db, upsert_agent, get_agents, get_db,
+    init_db, upsert_agent, get_agents, delete_agent, get_db,
     save_screenshot, get_screenshots, get_latest_screenshot,
     get_screenshot_dates, get_screenshot_hours,
     delete_screenshot, delete_screenshots_batch,
@@ -144,6 +144,15 @@ async def list_agents():
     for a in agents:
         a["screenshot_interval"] = _agent_intervals.get(a["name"], 0)
     return agents
+
+
+@router.delete("/agents/{agent_name}")
+async def remove_agent(agent_name: str):
+    """删除 Agent 及其所有关联数据（截图、事件、浏览器历史）"""
+    result = delete_agent(agent_name)
+    # 清理内存中的状态
+    _agent_intervals.pop(agent_name, None)
+    return {"status": "ok", **result}
 
 
 @router.get("/screenshots")

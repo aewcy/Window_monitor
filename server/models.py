@@ -128,6 +128,43 @@ def get_agents() -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def delete_agent(name: str) -> dict:
+    """删除 Agent 及其所有关联数据（截图文件+DB、应用事件、浏览器历史）
+
+    返回: {"deleted": {"screenshots": N, "app_events": N, "browser_history": N}}
+    """
+    import shutil
+
+    db = get_db()
+    result = {"deleted": {"screenshots": 0, "app_events": 0, "browser_history": 0}}
+
+    # 1. 删除截图文件（文件系统）
+    agent_shot_dir = os.path.join(SCREENSHOT_DIR, name)
+    if os.path.isdir(agent_shot_dir):
+        try:
+            shutil.rmtree(agent_shot_dir)
+        except OSError:
+            pass
+
+    # 2. 删除截图数据库记录（先于 agent 删除，因为有外键）
+    cursor = db.execute("DELETE FROM screenshots WHERE agent_name = ?", (name,))
+    result["deleted"]["screenshots"] = cursor.rowcount
+
+    # 3. 删除应用事件
+    cursor = db.execute("DELETE FROM app_events WHERE agent_name = ?", (name,))
+    result["deleted"]["app_events"] = cursor.rowcount
+
+    # 4. 删除浏览器历史
+    cursor = db.execute("DELETE FROM browser_history WHERE agent_name = ?", (name,))
+    result["deleted"]["browser_history"] = cursor.rowcount
+
+    # 5. 删除 Agent 自身
+    db.execute("DELETE FROM agents WHERE name = ?", (name,))
+    db.commit()
+
+    return result
+
+
 # ============================================
 # 截图管理
 # ============================================
