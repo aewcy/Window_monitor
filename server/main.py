@@ -71,7 +71,7 @@ async def security_headers_middleware(request: Request, call_next):
         "form-action 'self'"
     )
     # 禁止浏览器缓存 HTML，确保更新后立即生效
-    if request.url.path in ("/", "/static/dashboard.html"):
+    if request.url.path in ("/", "/static/dashboard.html", "/static/dashboard-v0-raycast.html"):
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
@@ -89,7 +89,7 @@ if os.path.exists(STATIC_DIR):
 @app.get("/", response_class=HTMLResponse)
 async def dashboard():
     """监控面板主页"""
-    index_path = os.path.join(STATIC_DIR, "dashboard.html")
+    index_path = os.path.join(STATIC_DIR, "dashboard-v0-raycast.html")
     if os.path.exists(index_path):
         with open(index_path, "r", encoding="utf-8") as f:
             return HTMLResponse(f.read())
