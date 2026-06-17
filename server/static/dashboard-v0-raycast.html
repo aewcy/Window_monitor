@@ -805,6 +805,215 @@ body {
 }
 
 /* ============================================
+   Grid View — Screenshot Thumbnails
+   ============================================ */
+.screenshot-viewer { display: flex; flex-direction: column; height: 100%; }
+.screenshot-viewer.hidden { display: none; }
+.grid-view { display: none; flex-direction: column; height: 100%; }
+.grid-view.active { display: flex; }
+
+.grid-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--hairline);
+  flex-shrink: 0;
+}
+.grid-select-all {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.grid-select-all input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 14px; height: 14px;
+}
+.grid-info {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted);
+}
+.grid-delete-bar {
+  display: none;
+  align-items: center;
+  gap: 8px;
+}
+.grid-delete-bar.visible { display: flex; }
+.grid-delete-btn {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  padding: 3px 10px;
+  border: 1px solid rgba(242,54,69,.3);
+  border-radius: 6px;
+  background: rgba(242,54,69,.08);
+  color: var(--red);
+  cursor: pointer;
+  transition: all .15s;
+}
+.grid-delete-btn:hover {
+  background: rgba(242,54,69,.15);
+  border-color: var(--red);
+}
+
+.grid-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 6px;
+  padding: 8px;
+  overflow-y: auto;
+  flex: 1;
+  align-content: start;
+}
+
+.grid-item {
+  position: relative;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: border-color .15s, transform .15s;
+  background: rgba(0,0,0,0.4);
+  aspect-ratio: 16 / 10;
+}
+.grid-item:hover {
+  border-color: var(--accent);
+  transform: scale(1.02);
+}
+.grid-item.selected {
+  border-color: var(--green);
+}
+.grid-item img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.grid-item .grid-check {
+  position: absolute;
+  top: 6px; left: 6px;
+  z-index: 2;
+  width: 16px; height: 16px;
+  accent-color: var(--accent);
+  opacity: 0;
+  transition: opacity .15s;
+}
+.grid-item:hover .grid-check,
+.grid-item.selected .grid-check { opacity: 1; }
+.grid-item .grid-delete {
+  position: absolute;
+  top: 4px; right: 4px;
+  z-index: 2;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0,0,0,0.6);
+  color: var(--red);
+  font-size: 12px;
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  transition: background .15s;
+}
+.grid-item:hover .grid-delete { display: flex; }
+.grid-item .grid-delete:hover { background: rgba(242,54,69,.3); }
+.grid-item .grid-time {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  background: linear-gradient(transparent, rgba(0,0,0,0.8));
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  padding: 16px 6px 4px;
+  pointer-events: none;
+}
+
+.grid-status {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 12px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* ============================================
+   Confirm Dialog
+   ============================================ */
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.7);
+  backdrop-filter: blur(8px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .2s;
+}
+.confirm-overlay.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+.confirm-box {
+  background: rgba(15,15,17,0.95);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  padding: 24px;
+  max-width: 360px;
+  text-align: center;
+  box-shadow: var(--shadow-lift);
+}
+.confirm-box p {
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.confirm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+.confirm-actions .btn-cancel {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 6px 16px;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all .15s;
+}
+.confirm-actions .btn-cancel:hover {
+  border-color: var(--text-secondary);
+  color: var(--text);
+}
+.confirm-actions .btn-danger {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 6px 16px;
+  border: 1px solid rgba(242,54,69,.3);
+  border-radius: 6px;
+  background: rgba(242,54,69,.1);
+  color: var(--red);
+  cursor: pointer;
+  transition: all .15s;
+}
+.confirm-actions .btn-danger:hover {
+  background: rgba(242,54,69,.2);
+  border-color: var(--red);
+}
+
+/* ============================================
    Theme Picker
    ============================================ */
 .theme-picker {
@@ -933,29 +1142,45 @@ body {
         截图
       </span>
       <div style="display:flex;align-items:center;gap:8px">
-        <button class="expand-btn" onclick="openLive()">
+        <button class="expand-btn" id="expandBtn" onclick="openLive()">
           <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="4,1 1,1 1,4"/><line x1="1" y1="1" x2="6" y2="6"/><polyline points="12,15 15,15 15,12"/><line x1="15" y1="15" x2="10" y2="10"/></svg>
           放大
         </button>
-        <div class="card-tabs">
-          <button class="card-tab active">实时</button>
-          <button class="card-tab">历史</button>
-          <button class="card-tab">网格</button>
+        <div class="card-tabs" id="screenshotTabs">
+          <button class="card-tab active" data-mode="live">实时</button>
+          <button class="card-tab" data-mode="history">历史</button>
+          <button class="card-tab" data-mode="grid">网格</button>
         </div>
       </div>
     </div>
     <div class="card-body">
-      <div class="screenshot-stage" id="screenshotStage">
-        <div class="screenshot-placeholder" id="screenshotPlaceholder">
-          <span class="icon-big">[ ]</span>
-          选择被控端查看截图
+      <!-- Viewer mode (live / history) -->
+      <div class="screenshot-viewer" id="screenshotViewer">
+        <div class="screenshot-stage" id="screenshotStage">
+          <div class="screenshot-placeholder" id="screenshotPlaceholder">
+            <span class="icon-big">[ ]</span>
+            选择被控端查看截图
+          </div>
+          <div class="monitor-chips" id="monitorChips" style="display:none"></div>
+          <span class="screenshot-time" id="screenshotTime"></span>
+          <div class="screenshot-nav">
+            <button class="nav-pill" onclick="prevScreenshot()">◀ 上一张</button>
+            <button class="nav-pill" onclick="nextScreenshot()">下一张 ▶</button>
+          </div>
         </div>
-        <div class="monitor-chips" id="monitorChips" style="display:none"></div>
-        <span class="screenshot-time" id="screenshotTime"></span>
-        <div class="screenshot-nav">
-          <button class="nav-pill" onclick="prevScreenshot()">◀ 上一张</button>
-          <button class="nav-pill" onclick="nextScreenshot()">下一张 ▶</button>
+      </div>
+      <!-- Grid mode -->
+      <div class="grid-view" id="gridView">
+        <div class="grid-toolbar">
+          <label class="grid-select-all">
+            <input type="checkbox" id="selectAll"> 全选
+          </label>
+          <span class="grid-info" id="gridInfo"></span>
+          <div class="grid-delete-bar" id="gridDeleteBar">
+            <button class="grid-delete-btn" onclick="deleteSelectedGrid()">删除选中</button>
+          </div>
         </div>
+        <div class="grid-container" id="gridContainer"></div>
       </div>
     </div>
   </div>
@@ -1113,6 +1338,17 @@ body {
   </div>
 </div>
 
+<!-- ====== Confirm Dialog ====== -->
+<div class="confirm-overlay" id="confirmDialog" onclick="if(event.target===this)closeConfirm()">
+  <div class="confirm-box">
+    <p id="confirmMsg">确定删除？</p>
+    <div class="confirm-actions">
+      <button class="btn-cancel" onclick="closeConfirm()">取消</button>
+      <button class="btn-danger" id="confirmOk">删除</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ============================================
 // State
@@ -1124,6 +1360,15 @@ let liveMode = true;
 let refreshTimer = null;
 let screenshotList = [];
 let currentScreenshotIndex = 0;
+
+// ============================================
+// Utilities
+// ============================================
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s || '';
+  return d.innerHTML;
+}
 
 // ============================================
 // API Helper
@@ -1526,6 +1771,215 @@ function closeLive() {
 }
 
 // ============================================
+// Grid View
+// ============================================
+let gridMode = false;
+let gridLoading = false;
+let gridExhausted = false;
+let gridOffset = 0;
+let gridSelected = new Set();
+const GRID_BATCH = 30;
+
+function switchScreenshotMode(mode) {
+  const viewer = document.getElementById('screenshotViewer');
+  const grid = document.getElementById('gridView');
+  const expandBtn = document.getElementById('expandBtn');
+  const tabs = document.querySelectorAll('#screenshotTabs .card-tab');
+
+  tabs.forEach(t => t.classList.toggle('active', t.dataset.mode === mode));
+
+  if (mode === 'grid') {
+    viewer.classList.add('hidden');
+    grid.classList.add('active');
+    expandBtn.style.display = 'none';
+    gridMode = true;
+    resetGridAndLoad();
+  } else {
+    viewer.classList.remove('hidden');
+    grid.classList.remove('active');
+    expandBtn.style.display = '';
+    gridMode = false;
+    if (mode === 'live') {
+      liveMode = true;
+      loadLatestScreenshot();
+    } else {
+      liveMode = false;
+      loadHistoryScreenshots();
+    }
+  }
+}
+
+function resetGridAndLoad() {
+  gridOffset = 0;
+  gridExhausted = false;
+  gridSelected.clear();
+  gridLoading = false;
+  document.getElementById('gridContainer').innerHTML = '';
+  document.getElementById('gridInfo').textContent = '';
+  document.getElementById('selectAll').checked = false;
+  updateGridDeleteBar();
+  loadGridBatch(false);
+}
+
+async function loadGridBatch(append) {
+  if (!selectedAgent || gridLoading || (append && gridExhausted)) return;
+  gridLoading = true;
+  try {
+    const offset = append ? gridOffset : 0;
+    const data = await api(`/api/screenshots?agent=${selectedAgent}&limit=${GRID_BATCH}&offset=${offset}`);
+    if (!append) {
+      gridOffset = 0;
+      gridExhausted = false;
+      gridSelected.clear();
+      document.getElementById('gridContainer').innerHTML = '';
+    }
+    if (data.length < GRID_BATCH) gridExhausted = true;
+    gridOffset += data.length;
+
+    const container = document.getElementById('gridContainer');
+    const info = document.getElementById('gridInfo');
+
+    if (data.length === 0 && !append) {
+      container.innerHTML = '<div class="grid-status">暂无截图</div>';
+      info.textContent = '';
+    } else {
+      const html = data.map(s => {
+        const src = `/api/screenshots/image/${s.id}`;
+        const t = (s.timestamp || '').replace('T', ' ').substring(0, 19);
+        return `<div class="grid-item${gridSelected.has(s.id) ? ' selected' : ''}" data-id="${s.id}">
+          <input type="checkbox" class="grid-check" data-id="${s.id}" ${gridSelected.has(s.id) ? 'checked' : ''}>
+          <button class="grid-delete" data-id="${s.id}">×</button>
+          <img src="${src}" alt="${t}" loading="lazy">
+          <div class="grid-time">${escHtml(t)}</div>
+        </div>`;
+      }).join('');
+      container.insertAdjacentHTML('beforeend', html);
+
+      const existing = container.querySelector('.grid-status');
+      if (existing) existing.remove();
+      const status = document.createElement('div');
+      status.className = 'grid-status';
+      status.textContent = gridExhausted ? `已加载 ${gridOffset} 张截图` : '加载中...';
+      container.appendChild(status);
+      info.textContent = `${gridOffset} 张`;
+    }
+
+    if (!append || !container.onclick) {
+      container.onclick = function(e) {
+        const check = e.target.closest('.grid-check');
+        const del = e.target.closest('.grid-delete');
+        const item = e.target.closest('.grid-item');
+        if (check) {
+          e.stopPropagation();
+          toggleGridItem(parseInt(check.dataset.id));
+        } else if (del) {
+          e.stopPropagation();
+          pendingDeleteIds = [parseInt(del.dataset.id)];
+          showConfirm('删除此截图？', executeDelete);
+        } else if (item) {
+          openLive();
+        }
+      };
+    }
+  } catch(e) { console.error('Grid:', e); }
+  finally { gridLoading = false; }
+}
+
+function toggleGridItem(id) {
+  if (gridSelected.has(id)) {
+    gridSelected.delete(id);
+  } else {
+    gridSelected.add(id);
+  }
+  const item = document.querySelector(`.grid-item[data-id="${id}"]`);
+  if (item) {
+    item.classList.toggle('selected', gridSelected.has(id));
+    const cb = item.querySelector('.grid-check');
+    if (cb) cb.checked = gridSelected.has(id);
+  }
+  updateGridDeleteBar();
+}
+
+function updateGridDeleteBar() {
+  const bar = document.getElementById('gridDeleteBar');
+  if (gridSelected.size > 0) {
+    bar.classList.add('visible');
+  } else {
+    bar.classList.remove('visible');
+  }
+}
+
+function deleteSelectedGrid() {
+  if (!gridSelected.size) return;
+  showConfirm(`删除 ${gridSelected.size} 张截图？此操作不可撤销。`, executeDelete);
+}
+
+// Grid scroll — auto-load more
+function onGridScroll() {
+  if (gridLoading || gridExhausted || !gridMode) return;
+  const container = document.getElementById('gridContainer');
+  if (container.scrollTop + container.clientHeight >= container.scrollHeight - 100) {
+    loadGridBatch(true);
+  }
+}
+
+// Confirm dialog
+let confirmCallback = null;
+function showConfirm(msg, callback) {
+  document.getElementById('confirmMsg').textContent = msg;
+  confirmCallback = callback;
+  document.getElementById('confirmDialog').classList.add('open');
+}
+function closeConfirm() {
+  document.getElementById('confirmDialog').classList.remove('open');
+  confirmCallback = null;
+}
+async function executeDelete() {
+  closeConfirm();
+  if (!pendingDeleteIds.length) return;
+  try {
+    await api('/api/screenshots/delete', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ids: pendingDeleteIds}),
+    });
+    pendingDeleteIds = [];
+    gridSelected.clear();
+    if (gridMode) resetGridAndLoad();
+  } catch(e) { console.error('Delete failed:', e); }
+}
+
+let pendingDeleteIds = [];
+
+// Tab click handler
+document.getElementById('screenshotTabs').addEventListener('click', e => {
+  const tab = e.target.closest('.card-tab');
+  if (!tab) return;
+  switchScreenshotMode(tab.dataset.mode);
+});
+
+// Select all
+document.getElementById('selectAll').addEventListener('change', function() {
+  const items = document.querySelectorAll('.grid-item');
+  items.forEach(item => {
+    const id = parseInt(item.dataset.id);
+    if (this.checked) {
+      gridSelected.add(id);
+      item.classList.add('selected');
+    } else {
+      gridSelected.delete(id);
+      item.classList.remove('selected');
+    }
+    const cb = item.querySelector('.grid-check');
+    if (cb) cb.checked = this.checked;
+  });
+  updateGridDeleteBar();
+});
+
+// Grid scroll listener
+document.getElementById('gridContainer').addEventListener('scroll', onGridScroll);
+
+// ============================================
 // Theme Picker
 // ============================================
 function toggleThemePanel() {
@@ -1567,9 +2021,9 @@ function updateBackdrop(accent) {
 // Keyboard Shortcuts
 // ============================================
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closeLive(); closeThemePanel(); }
+  if (e.key === 'Escape') { closeLive(); closeThemePanel(); closeConfirm(); }
   if (e.key === 'l' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); liveMode = !liveMode; if (liveMode) loadLatestScreenshot(); else loadHistoryScreenshots(); }
-  if (e.key === 'g' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); /* grid mode placeholder */ }
+  if (e.key === 'g' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); switchScreenshotMode(gridMode ? 'live' : 'grid'); }
   if (e.key === 'r' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); refreshAll(); }
 });
 
