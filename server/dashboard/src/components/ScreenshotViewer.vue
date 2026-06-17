@@ -60,21 +60,19 @@ watch(() => ss.currentDisplayItem, (item) => {
   }
 }, { immediate: true })
 
-// 监听 liveMode 切换回实时
-watch(() => ss.liveMode, (v) => {
-  if (v && ss.displaySource === 'live') {
+// 监听 liveMode 或 displaySource 变化 — 切回实时模式时重新加载
+watch([() => ss.liveMode, () => ss.displaySource], ([live, src]) => {
+  if (live && src === 'live') {
     load()
   }
 })
 
-// 监听 displaySource 变化
-watch(() => ss.displaySource, (src) => {
-  if (src === 'live' && ss.liveMode) {
+watch(() => agent.selectedAgent, () => {
+  if (agent.selectedAgent) {
+    ss.goLive()  // 切换 Agent 时回到实时模式
     load()
   }
 })
-
-watch(() => agent.selectedAgent, () => { if (agent.selectedAgent) load() })
 watch(() => agent.selectedMonitor, () => { if (agent.selectedAgent) load() })
 
 defineExpose({ load })
