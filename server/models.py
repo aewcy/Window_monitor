@@ -780,7 +780,7 @@ def query_diagnostics(
             regex = re.compile(pattern, re.IGNORECASE)
             results = [r for r in results if regex.search(r["message"])]
         except re.error:
-            pass
+            return [{"error": f"无效正则: {pattern}"}]
 
     return results
 

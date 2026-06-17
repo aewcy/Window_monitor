@@ -25,8 +25,8 @@ _HIDDEN_IMPORTS = [
     'pythoncom', 'pywintypes',
     # mss 屏幕截图
     'mss', 'mss.windows',
-    # Pillow JPEG codec
-    'PIL', 'PIL.Image', 'PIL._imaging',
+    # Pillow JPEG codec + 屏幕截图
+    'PIL', 'PIL.Image', 'PIL.ImageGrab', 'PIL._imaging',
     # psutil
     'psutil', 'psutil._pswindows',
     # requests 依赖

@@ -417,12 +417,12 @@
 <div class="header" role="banner">
   <div class="header-left">
     <button class="btn btn-icon" id="sidebarToggleBtn" title="Toggle sidebar" aria-label="Toggle sidebar" aria-expanded="true">☰</button>
-    <h1>Monitor Dashboard</h1>
+    <h1>监控面板</h1>
   </div>
   <div class="refresh-bar">
     <input type="checkbox" id="autoRefresh" checked aria-label="Auto refresh">
-    <label for="autoRefresh">Auto</label>
-    <button class="btn" id="refreshBtn" aria-label="Refresh all data">Refresh</button>
+    <label for="autoRefresh">自动</label>
+    <button class="btn" id="refreshBtn" aria-label="刷新全部数据">刷新</button>
   </div>
 </div>
 
@@ -432,7 +432,7 @@
   <div class="sidebar" id="sidebar" role="complementary" aria-label="Dashboard sidebar">
     <div class="stats" role="region" aria-label="Statistics">
       <h3>Stats</h3>
-      <div id="statsContent">Loading...</div>
+      <div id="statsContent">加载中...</div>
     </div>
     <div class="calendar" id="calendarWidget" role="region" aria-label="Screenshot date calendar">
       <div class="calendar-header">
@@ -445,35 +445,35 @@
       </div>
       <div class="calendar-grid" id="calGrid" role="grid" aria-label="Calendar days"></div>
       <div class="calendar-quick">
-        <button class="btn" id="calToday">Today</button>
-        <button class="btn active-filter" id="calAll">All dates</button>
+        <button class="btn" id="calToday">今天</button>
+        <button class="btn active-filter" id="calAll">全部日期</button>
       </div>
       <div class="hour-selector" id="hourSelector">
-        <span class="hour-selector-label">Hours</span>
+        <span class="hour-selector-label">时段</span>
         <div id="hourChips" style="display:flex;flex-wrap:wrap;gap:3px">
-          <button class="hour-chip active" data-hour="all">All</button>
+          <button class="hour-chip active" data-hour="all">全部</button>
         </div>
       </div>
     </div>
     <div class="agent-list" role="region" aria-label="Agent list">
-      <h3>Agents</h3>
-      <div id="agentList">Loading...</div>
+      <h3>被控端</h3>
+      <div id="agentList">加载中...</div>
     </div>
     <div class="storage-panel" role="region" aria-label="Storage management">
-      <h3>Storage</h3>
+      <h3>存储管理</h3>
       <div id="storageStats" style="font-size:0.82rem">
-        <div class="stat-item"><span>Total</span><span class="val" id="storageTotalSize">-</span></div>
-        <div class="stat-item"><span>Screenshots</span><span class="val" id="storageTotalCount">-</span></div>
-        <div class="stat-item"><span>Earliest</span><span class="val" id="storageEarliest">-</span></div>
+        <div class="stat-item"><span>总量</span><span class="val" id="storageTotalSize">-</span></div>
+        <div class="stat-item"><span>截图数</span><span class="val" id="storageTotalCount">-</span></div>
+        <div class="stat-item"><span>最早</span><span class="val" id="storageEarliest">-</span></div>
       </div>
       <div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px">
-        <label style="font-size:0.72rem;color:var(--text-muted)">Retention (hours)</label>
+        <label style="font-size:0.72rem;color:var(--text-muted)">保留时长（小时）</label>
         <div style="display:flex;gap:4px;margin-top:4px">
           <input type="number" id="cleanupHours" value="480" min="1" max="8760"
             style="width:70px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 6px;font-size:0.78rem;font-family:inherit"
             aria-label="Retention hours">
-          <button class="btn btn-danger" id="btnCleanup" style="flex:1;font-size:0.72rem;padding:4px 8px" aria-label="Clean up old screenshots">
-            Clean
+          <button class="btn btn-danger" id="btnCleanup" style="flex:1;font-size:0.72rem;padding:4px 8px" aria-label="清理旧截图">
+            清理
           </button>
         </div>
         <div id="cleanupPreview" style="font-size:0.65rem;color:var(--text-muted);margin-top:3px;min-height:14px"></div>
@@ -487,7 +487,7 @@
     <!-- Screenshot Panel -->
     <div class="panel" id="screenshotPanel" role="region" aria-label="Screenshot viewer">
       <div class="panel-header" role="button" tabindex="0" aria-expanded="true" data-panel="screenshotPanel">
-        <h3>Screenshot <span id="screenshotAgentLabel" style="color:var(--accent)"></span><span id="monitorChips" style="display:none;margin-left:8px"></span><span id="screenshotFpsBadge" style="font-size:0.65rem;color:var(--text-muted);margin-left:6px"></span></h3>
+        <h3>截图 <span id="screenshotAgentLabel" style="color:var(--accent)"></span><span id="monitorChips" style="display:none;margin-left:8px"></span><span id="screenshotFpsBadge" style="font-size:0.65rem;color:var(--text-muted);margin-left:6px"></span></h3>
         <span class="toggle-icon" aria-hidden="true">▼</span>
       </div>
       <div class="panel-body">
@@ -497,17 +497,17 @@
         <div class="screenshot-info">
           <span id="screenshotTime"></span>
           <div class="screenshot-nav">
-            <button class="btn" id="btnLiveMode" title="Switch to History mode" aria-label="Toggle live/history screenshot mode">🔴 LIVE</button>
-            <button class="btn" id="btnPrev" disabled title="Previous screenshot" aria-label="Previous screenshot">◀</button>
-            <button class="btn" id="btnNext" disabled title="Next screenshot" aria-label="Next screenshot">▶</button>
-            <button class="btn" id="btnGridView" title="Grid view" aria-label="Toggle grid view">⊞</button>
-            <button class="btn btn-danger" id="btnDeleteSelected" title="Delete selected" style="display:none" aria-label="Delete selected screenshots">🗑</button>
+            <button class="btn" id="btnLiveMode" title="切换到历史模式" aria-label="切换实时/历史截图模式">🔴 实时</button>
+            <button class="btn" id="btnPrev" disabled title="上一张截图" aria-label="上一张截图">◀</button>
+            <button class="btn" id="btnNext" disabled title="下一张截图" aria-label="下一张截图">▶</button>
+            <button class="btn" id="btnGridView" title="网格视图" aria-label="切换网格视图">⊞</button>
+            <button class="btn btn-danger" id="btnDeleteSelected" title="删除选中" style="display:none" aria-label="删除选中截图">🗑</button>
           </div>
         </div>
         <!-- Grid view -->
         <div class="grid-view" id="gridView" style="display:none">
           <div class="grid-toolbar">
-            <label class="grid-check-all"><input type="checkbox" id="selectAll"> Select All</label>
+            <label class="grid-check-all"><input type="checkbox" id="selectAll"> 全选</label>
             <span id="gridInfo" style="color:var(--text-muted);font-size:0.78rem"></span>
           </div>
           <div class="grid-container" id="gridContainer"></div>
@@ -518,7 +518,7 @@
     <!-- Timeline Panel -->
     <div class="panel" id="timelinePanel" role="region" aria-label="Activity timeline">
       <div class="panel-header" role="button" tabindex="0" aria-expanded="true" data-panel="timelinePanel">
-        <h3>Activity <span style="color:var(--accent2);font-size:0.65rem">LIVE</span></h3>
+        <h3>活动记录 <span style="color:var(--accent2);font-size:0.65rem">实时</span></h3>
         <span class="toggle-icon" aria-hidden="true">▼</span>
       </div>
       <div class="panel-body scroll-body" id="timelineBody">
@@ -529,7 +529,7 @@
     <!-- App Usage Panel -->
     <div class="panel" id="appUsagePanel" role="region" aria-label="Application usage statistics">
       <div class="panel-header" role="button" tabindex="0" aria-expanded="true" data-panel="appUsagePanel">
-        <h3>App Usage</h3>
+        <h3>应用使用</h3>
         <span class="toggle-icon" aria-hidden="true">▼</span>
       </div>
       <div class="panel-body scroll-body">
@@ -543,12 +543,12 @@
     <!-- Browser History Panel -->
     <div class="panel" id="browserPanel" role="region" aria-label="Browser history">
       <div class="panel-header" role="button" tabindex="0" aria-expanded="true" data-panel="browserPanel">
-        <h3>Browser History</h3>
+        <h3>浏览器历史</h3>
         <span class="toggle-icon" aria-hidden="true">▼</span>
       </div>
       <div class="panel-body scroll-body" id="browserBodyWrap">
         <table>
-          <thead><tr><th>Screenshot</th><th>Browser</th><th>Title</th><th>URL</th><th>Time</th><th>#</th></tr></thead>
+          <thead><tr><th>截图</th><th>浏览器</th><th>标题</th><th>URL</th><th>时间</th><th>#</th></tr></thead>
           <tbody id="browserBody"><tr><td colspan="6" style="text-align:center;color:var(--text-muted)">Select an agent</td></tr></tbody>
         </table>
       </div>
@@ -557,24 +557,24 @@
     <!-- System Log Panel -->
     <div class="panel" id="logPanel" role="region" aria-label="System logs">
       <div class="panel-header" role="button" tabindex="0" aria-expanded="true" data-panel="logPanel">
-        <h3>System Log</h3>
+        <h3>系统日志</h3>
         <span class="toggle-icon" aria-hidden="true">▼</span>
       </div>
       <div class="panel-body">
         <div class="log-toolbar">
           <div id="logCatChips" style="display:flex;gap:3px;flex-wrap:wrap">
-            <button class="log-chip active" data-cat="">All</button>
+            <button class="log-chip active" data-cat="">全部</button>
           </div>
           <div id="logLevelChips" style="display:flex;gap:3px;margin-left:auto">
-            <button class="log-chip active" data-level="">All</button>
-            <button class="log-chip" data-level="INFO">INFO</button>
-            <button class="log-chip" data-level="WARNING">WARN</button>
-            <button class="log-chip" data-level="ERROR">ERROR</button>
+            <button class="log-chip active" data-level="">全部</button>
+            <button class="log-chip" data-level="INFO">信息</button>
+            <button class="log-chip" data-level="WARNING">警告</button>
+            <button class="log-chip" data-level="ERROR">错误</button>
           </div>
-          <input type="text" class="log-search" id="logSearch" placeholder="Regex search..." aria-label="Regex search logs">
+          <input type="text" class="log-search" id="logSearch" placeholder="正则搜索..." aria-label="Regex search logs">
         </div>
         <div class="scroll-body" id="logBody" style="max-height:300px">
-          <div style="color:var(--text-muted);padding:12px;text-align:center">Loading...</div>
+          <div style="color:var(--text-muted);padding:12px;text-align:center">加载中...</div>
         </div>
       </div>
     </div>
@@ -588,12 +588,12 @@
 </div>
 
 <!-- Confirm Delete Dialog -->
-<div class="confirm-overlay" id="confirmDialog" role="dialog" aria-label="Confirm delete" tabindex="-1">
+<div class="confirm-overlay" id="confirmDialog" role="dialog" aria-label="确认删除" tabindex="-1">
   <div class="confirm-box">
-    <p id="confirmMsg">Delete selected screenshots?</p>
+    <p id="confirmMsg">删除选中的截图？</p>
     <div class="confirm-actions">
-      <button class="btn" id="btnConfirmCancel">Cancel</button>
-      <button class="btn btn-danger" id="btnConfirmOk">Delete</button>
+      <button class="btn" id="btnConfirmCancel">取消</button>
+      <button class="btn btn-danger" id="btnConfirmOk">删除</button>
     </div>
   </div>
 </div>
@@ -811,13 +811,13 @@ function toggleScreenshotMode(skipLoad) {
   liveMode = !liveMode;
   const btn = document.getElementById('btnLiveMode');
   if (liveMode) {
-    btn.innerHTML = '🔴 LIVE';
-    btn.title = 'Switch to History mode';
+    btn.innerHTML = '🔴 实时';
+    btn.title = '切换到历史模式';
     document.getElementById('btnPrev').disabled = true;
     document.getElementById('btnNext').disabled = true;
   } else {
-    btn.innerHTML = '📷 HIST';
-    btn.title = 'Switch to Live mode';
+    btn.innerHTML = '📷 历史';
+    btn.title = '切换到实时模式';
     // 仅在手动切换时加载无过滤截图；日历/小时选择时由调用方控制加载
     if (!skipLoad && selectedAgent) loadScreenshots(selectedAgent);
   }
@@ -888,7 +888,10 @@ async function api(path) {
 async function refreshAll() {
   await loadStats();
   await loadStorageStats();
-  await loadLogs();
+  const logPanel = document.getElementById('logPanel');
+  if (logPanel && !logPanel.classList.contains('collapsed')) {
+    await loadLogs();
+  }
   await loadAgents();
   if (selectedAgent) {
     await Promise.all([
@@ -906,10 +909,10 @@ async function loadStats() {
   try {
     const d = await api('/api/dashboard/stats');
     document.getElementById('statsContent').innerHTML = `
-      <div class="stat-item"><span>Online</span><span class="val">${d.online_agents ?? 0}</span></div>
-      <div class="stat-item"><span>Shots</span><span class="val">${d.total_screenshots ?? 0}</span></div>
-      <div class="stat-item"><span>Events</span><span class="val">${d.today_app_events ?? 0}</span></div>
-      <div class="stat-item"><span>URLs</span><span class="val">${d.total_browser_records ?? 0}</span></div>`;
+      <div class="stat-item"><span>在线</span><span class="val">${d.online_agents ?? 0}</span></div>
+      <div class="stat-item"><span>截图</span><span class="val">${d.total_screenshots ?? 0}</span></div>
+      <div class="stat-item"><span>事件</span><span class="val">${d.today_app_events ?? 0}</span></div>
+      <div class="stat-item"><span>网址</span><span class="val">${d.total_browser_records ?? 0}</span></div>`;
   } catch(e) { console.error('Stats:', e); }
 }
 
@@ -923,8 +926,12 @@ async function loadLogs(resetChips) {
     params.set('limit', '300');
     const data = await api('/api/logs?' + params.toString());
     const body = document.getElementById('logBody');
+    if (data.length && data[0].error) {
+      body.innerHTML = `<div style="color:var(--error,#ef4444);padding:12px;text-align:center">${escHtml(data[0].error)}</div>`;
+      return;
+    }
     if (!data.length) {
-      body.innerHTML = '<div style="color:var(--text-muted);padding:12px;text-align:center">No logs</div>';
+      body.innerHTML = '<div style="color:var(--text-muted);padding:12px;text-align:center">暂无日志</div>';
       return;
     }
     body.innerHTML = data.map(e => {
@@ -950,7 +957,7 @@ async function loadLogCategories() {
     // Build category map
     const catMap = {};
     data.forEach(d => { catMap[d.category] = (catMap[d.category] || 0) + d.count; });
-    let chips = '<button class="log-chip' + (!logCategory ? ' active' : '') + '" data-cat="">All</button>';
+    let chips = '<button class="log-chip' + (!logCategory ? ' active' : '') + '" data-cat="">全部</button>';
     const labels = {network:'网络问题',storage:'存储问题',capture:'采集异常',system:'系统状态',security:'安全警告',server:'服务端'};
     Object.entries(catMap).forEach(([cat, count]) => {
       const label = labels[cat] || cat;
@@ -1020,7 +1027,7 @@ function updateMonitorChips(total) {
     return;
   }
   chips.style.display = 'inline';
-  let html = '<button class="log-chip' + (selectedMonitor === null ? ' active' : '') + '" data-mon="-1">All</button>';
+  let html = '<button class="log-chip' + (selectedMonitor === null ? ' active' : '') + '" data-mon="-1">全部</button>';
   for (let m = 0; m < monitorTotal; m++) {
     html += '<button class="log-chip' + (selectedMonitor === m ? ' active' : '') + '" data-mon="' + m + '">屏' + (m+1) + '</button>';
   }
@@ -1145,7 +1152,7 @@ function renderHourSelector() {
   if (!selectedDate) { sel.classList.remove('visible'); return; }
   sel.classList.add('visible');
 
-  let html = '<button class="hour-chip' + (selectedHour === null ? ' active' : '') + '" data-hour="all">All</button>';
+  let html = '<button class="hour-chip' + (selectedHour === null ? ' active' : '') + '" data-hour="all">全部</button>';
   for (let h = 0; h < 24; h++) {
     const hh = String(h).padStart(2, '0');
     const count = hourCounts[hh] || 0;
@@ -1168,7 +1175,7 @@ async function loadAgents() {
     const agents = await api('/api/agents');
     const el = document.getElementById('agentList');
     if (!agents.length) {
-      el.innerHTML = '<div style="color:var(--text-muted);font-size:0.82rem">No agents</div>';
+      el.innerHTML = '<div style="color:var(--text-muted);font-size:0.82rem">暂无被控端</div>';
       return;
     }
     // Update stored interval for selected agent
@@ -1188,7 +1195,7 @@ async function loadAgents() {
               type="button"
               data-agent="${escAttr(a.name)}"
               aria-pressed="${selectedAgent===a.name}">
-        <div class="name"><span class="status-dot ${a.status==='online'?'online':'offline'}" aria-hidden="true"></span>${escHtml(a.name)}<span class="agent-delete" data-agent="${escAttr(a.name)}" title="Delete agent" aria-label="Delete agent ${escAttr(a.name)}">&times;</span></div>
+        <div class="name"><span class="status-dot ${a.status==='online'?'online':'offline'}" aria-hidden="true"></span>${escHtml(a.name)}<span class="agent-delete" data-agent="${escAttr(a.name)}" title="删除被控端" aria-label="删除被控端 ${escAttr(a.name)}">&times;</span></div>
         <div class="meta">${escHtml(a.status)} | ${fpsLabel} | ${escHtml(a.last_seen||'-')}</div>
       </button>`;
     }).join('');
@@ -1310,7 +1317,7 @@ async function loadScreenshotLatest(agent) {
     };
     img.src = src;
 
-    document.getElementById('screenshotTime').textContent = 'LIVE - ' + data.timestamp;
+    document.getElementById('screenshotTime').textContent = '实时 - ' + data.timestamp;
   } catch(e) { /* 网络错误 — 保持现有图片 */ }
 }
 
@@ -1385,7 +1392,7 @@ async function loadScreenshotsPageOffset(offset, targetIndex) {
     currentScreenshotIndex = Math.min(targetIndex, screenshotList.length - 1);
     if (screenshotList.length === 0) {
       currentScreenshotIndex = 0;
-      document.getElementById('screenshotTime').textContent = 'No more screenshots';
+      document.getElementById('screenshotTime').textContent = '没有更多截图';
     }
     displayScreenshot();
     updateNavButtons();
@@ -1437,7 +1444,7 @@ async function loadGridBatch(append) {
         const t = (s.timestamp || '').replace('T', ' ').substring(0, 19);
         return `<div class="grid-item" data-id="${s.id}">
           <input type="checkbox" class="grid-check" data-id="${s.id}" title="Select">
-          <button class="grid-delete" data-id="${s.id}" title="Delete">×</button>
+          <button class="grid-delete" data-id="${s.id}" title="删除">×</button>
           <img src="${src}" alt="${t}" loading="lazy">
           <div class="grid-time">${escHtml(t)}</div>
         </div>`;
@@ -1450,7 +1457,7 @@ async function loadGridBatch(append) {
       const status = document.createElement('div');
       status.className = 'grid-status';
       status.style.cssText = 'text-align:center;padding:10px;color:var(--text-muted);font-size:0.75rem;grid-column:1/-1';
-      status.textContent = gridExhausted ? `— All ${gridOffset} screenshots loaded —` : 'Loading more...';
+      status.textContent = gridExhausted ? `— 已加载 ${gridOffset} 张截图 —` : '加载中...';
       container.appendChild(status);
       info.textContent = `${gridOffset} screenshots`;
     }
@@ -1467,7 +1474,7 @@ async function loadGridBatch(append) {
         } else if (del) {
           e.stopPropagation();
           pendingDeleteIds = [parseInt(del.dataset.id)];
-          document.getElementById('confirmMsg').textContent = 'Delete this screenshot?';
+          document.getElementById('confirmMsg').textContent = '删除此截图？';
           showConfirmDialog();
         } else if (item) {
           openModal(`/api/screenshots/image/${parseInt(item.dataset.id)}`);
@@ -1512,7 +1519,7 @@ function toggleGridView() {
     if (liveMode) toggleScreenshotMode(true);
     if (selectedAgent) resetGridAndLoad();
   } else {
-    btn.textContent = '⊞';  btn.title = 'Grid view';
+    btn.textContent = '⊞';  btn.title = '网格视图';
     grid.style.display = 'none';
     viewer.style.display = 'flex';
     delBtn.style.display = 'none';
@@ -1552,7 +1559,7 @@ function showDeleteConfirm() {
   if (!gridSelected.size) return;
   pendingDeleteIds = [...gridSelected];
   document.getElementById('confirmMsg').textContent =
-    `Delete ${pendingDeleteIds.length} screenshot(s)? This cannot be undone.`;
+    `删除 ${pendingDeleteIds.length} 张截图？此操作不可撤销。`;
   document.getElementById('confirmDialog').classList.add('open');
   document.getElementById('confirmDialog').focus();
 }
@@ -1566,7 +1573,7 @@ function confirmDeleteAgent(name) {
   pendingDeleteAgent = name;
   pendingDeleteIds = [];
   document.getElementById('confirmMsg').textContent =
-    `Delete agent "${name}" and ALL its data (screenshots, events, browser history)? This cannot be undone.`;
+    `删除被控端 "${name}" 及其所有数据（截图、事件、浏览器历史）？此操作不可撤销。`;
   showConfirmDialog();
 }
 
@@ -1579,7 +1586,7 @@ async function executeCleanup() {
   pendingDeleteAgent = null;
   pendingDeleteIds = [];
   document.getElementById('confirmMsg').textContent =
-    `Delete all screenshots older than ${hours} hours? This cannot be undone.`;
+    `删除 ${hours} 小时前的所有截图？此操作不可撤销。`;
   // Override executeDelete to run cleanup instead
   pendingDeleteIds = ['__CLEANUP__'];  // sentinel
   showConfirmDialog();

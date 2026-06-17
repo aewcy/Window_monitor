@@ -20,6 +20,8 @@ from config import SCREENSHOT_QUALITY, SCREENSHOT_MAX_WIDTH
 
 def _get_monitors_win32() -> list[dict]:
     """EnumDisplayMonitors — 获取所有物理显示器矩形（屏幕坐标）"""
+    if not IS_WINDOWS:
+        return []
     monitors = []
 
     class RECT(ctypes.Structure):
