@@ -13,6 +13,7 @@ import BrowserCard from './components/BrowserCard.vue'
 import LogCard from './components/LogCard.vue'
 import StatsBar from './components/StatsBar.vue'
 import LiveOverlay from './components/LiveOverlay.vue'
+import GridOverlay from './components/GridOverlay.vue'
 import ThemePicker from './components/ThemePicker.vue'
 import ConfirmDialog from './components/ConfirmDialog.vue'
 
@@ -43,7 +44,7 @@ onMounted(async () => {
 onUnmounted(stopAll)
 
 function onKey(e) {
-  if (e.key === 'Escape') { ss.liveOpen = false; theme.closePanel() }
+  if (e.key === 'Escape') { ss.liveOpen = false; ss.gridMode = false; theme.closePanel() }
   if (e.key === 'l' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); ss.liveMode = !ss.liveMode }
   if (e.key === 'g' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); ss.gridMode = !ss.gridMode }
   if (e.key === 'r' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); refreshSlow() }
@@ -62,6 +63,7 @@ function onKey(e) {
   </div>
   <StatsBar ref="statsRef" />
   <LiveOverlay />
+  <GridOverlay />
   <ThemePicker />
   <ConfirmDialog />
 </template>

@@ -1,7 +1,6 @@
 <script setup>
 import { useScreenshotStore } from '../stores/screenshot'
 import ScreenshotViewer from './ScreenshotViewer.vue'
-import ScreenshotGrid from './ScreenshotGrid.vue'
 
 const ss = useScreenshotStore()
 </script>
@@ -11,7 +10,7 @@ const ss = useScreenshotStore()
     <div class="card-header">
       <span class="card-title"><span class="dot" style="background:var(--blue)"></span> 截图</span>
       <div style="display:flex;align-items:center;gap:8px">
-        <button class="expand-btn" @click="ss.liveOpen = true" v-show="!ss.gridMode">
+        <button class="expand-btn" @click="ss.liveOpen = true">
           <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="4,1 1,1 1,4"/><line x1="1" y1="1" x2="6" y2="6"/><polyline points="12,15 15,15 15,12"/><line x1="15" y1="15" x2="10" y2="10"/></svg>
           放大
         </button>
@@ -22,8 +21,7 @@ const ss = useScreenshotStore()
       </div>
     </div>
     <div class="card-body">
-      <ScreenshotViewer v-show="!ss.gridMode" />
-      <ScreenshotGrid v-show="ss.gridMode" />
+      <ScreenshotViewer />
     </div>
   </div>
 </template>
@@ -33,7 +31,7 @@ const ss = useScreenshotStore()
 .card-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--hairline); flex-shrink: 0; }
 .card-title { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; display: flex; align-items: center; gap: 8px; }
 .dot { width: 6px; height: 6px; border-radius: 50%; }
-.card-body { flex: 1; overflow: hidden; min-height: 0; display: flex; flex-direction: column; }
+.card-body { flex: 1; overflow: hidden; min-height: 0; }
 .card-tabs { display: flex; gap: 4px; }
 .tab {
   font-family: var(--font-mono); font-size: 10px; font-weight: 500;
