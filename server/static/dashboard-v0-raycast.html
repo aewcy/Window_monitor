@@ -904,22 +904,8 @@ body {
 </div>
 
 <!-- ====== Agent Strip ====== -->
-<div class="agent-strip">
-  <div class="agent-pill active">
-    <span class="dot online"></span>
-    <span class="name">试验机-01</span>
-    <span class="meta">0.25s</span>
-  </div>
-  <div class="agent-pill">
-    <span class="dot online"></span>
-    <span class="name">试验机-02</span>
-    <span class="meta">1s</span>
-  </div>
-  <div class="agent-pill">
-    <span class="dot offline"></span>
-    <span class="name">办公室-03</span>
-    <span class="meta">离线</span>
-  </div>
+<div class="agent-strip" id="agentStrip">
+  <div class="agent-pill" style="opacity:0.5"><span class="name">加载中...</span></div>
 </div>
 
 <!-- ====== Main Grid ====== -->
@@ -945,19 +931,16 @@ body {
       </div>
     </div>
     <div class="card-body">
-      <div class="screenshot-stage">
-        <div class="screenshot-placeholder">
+      <div class="screenshot-stage" id="screenshotStage">
+        <div class="screenshot-placeholder" id="screenshotPlaceholder">
           <span class="icon-big">[ ]</span>
           选择被控端查看截图
         </div>
-        <div class="monitor-chips">
-          <span class="monitor-chip active">屏1</span>
-          <span class="monitor-chip">屏2</span>
-        </div>
-        <span class="screenshot-time">实时 14:32:05</span>
+        <div class="monitor-chips" id="monitorChips" style="display:none"></div>
+        <span class="screenshot-time" id="screenshotTime"></span>
         <div class="screenshot-nav">
-          <button class="nav-pill">◀ 上一张</button>
-          <button class="nav-pill">下一张 ▶</button>
+          <button class="nav-pill" onclick="prevScreenshot()">◀ 上一张</button>
+          <button class="nav-pill" onclick="nextScreenshot()">下一张 ▶</button>
         </div>
       </div>
     </div>
@@ -976,49 +959,8 @@ body {
         <button class="card-tab">聊天</button>
       </div>
     </div>
-    <div class="card-body">
-      <div class="timeline-row">
-        <span class="time">14:31</span>
-        <span class="type-badge window">窗口</span>
-        <span class="app">chrome.exe</span>
-        <span class="title">GitHub — monitor-demo</span>
-      </div>
-      <div class="timeline-row">
-        <span class="time">14:28</span>
-        <span class="type-badge window">窗口</span>
-        <span class="app">Code.exe</span>
-        <span class="title">dashboard.html — Visual Studio Code</span>
-      </div>
-      <div class="timeline-row">
-        <span class="time">14:25</span>
-        <span class="type-badge chat">聊天</span>
-        <span class="app">WeChat.exe</span>
-        <span class="title">[Enter 发送]</span>
-      </div>
-      <div class="timeline-row">
-        <span class="time">14:20</span>
-        <span class="type-badge window">窗口</span>
-        <span class="app">chrome.exe</span>
-        <span class="title">Claude — 对话</span>
-      </div>
-      <div class="timeline-row">
-        <span class="time">14:15</span>
-        <span class="type-badge window">窗口</span>
-        <span class="app">explorer.exe</span>
-        <span class="title">Downloads</span>
-      </div>
-      <div class="timeline-row">
-        <span class="time">14:10</span>
-        <span class="type-badge window">窗口</span>
-        <span class="app">chrome.exe</span>
-        <span class="title">百度搜索 — PyInstaller 打包</span>
-      </div>
-      <div class="timeline-row">
-        <span class="time">14:05</span>
-        <span class="type-badge chat">聊天</span>
-        <span class="app">DingTalk.exe</span>
-        <span class="title">[Enter 发送]</span>
-      </div>
+    <div class="card-body" id="timelineBody">
+      <div style="padding:20px;text-align:center;color:var(--muted)">选择被控端查看活动</div>
     </div>
   </div>
 
@@ -1035,49 +977,8 @@ body {
         <button class="card-tab">Edge</button>
       </div>
     </div>
-    <div class="card-body">
-      <div class="browser-row">
-        <span class="browser-icon chrome">C</span>
-        <span class="br-title">GitHub — ConardLi/web-design-skill</span>
-        <span class="br-url">github.com/ConardLi/...</span>
-        <span class="br-time">14:31</span>
-        <span class="br-count">3</span>
-      </div>
-      <div class="browser-row">
-        <span class="browser-icon chrome">C</span>
-        <span class="br-title">Claude — 对话</span>
-        <span class="br-url">claude.ai/chat/abc123</span>
-        <span class="br-time">14:20</span>
-        <span class="br-count">12</span>
-      </div>
-      <div class="browser-row">
-        <span class="browser-icon edge">E</span>
-        <span class="br-title">PyInstaller 文档</span>
-        <span class="br-url">pyinstaller.org/en/stable/</span>
-        <span class="br-time">14:10</span>
-        <span class="br-count">2</span>
-      </div>
-      <div class="browser-row">
-        <span class="browser-icon chrome">C</span>
-        <span class="br-title">百度搜索 — PyInstaller 打包</span>
-        <span class="br-url">baidu.com/s?wd=pyinstaller</span>
-        <span class="br-time">14:08</span>
-        <span class="br-count">1</span>
-      </div>
-      <div class="browser-row">
-        <span class="browser-icon chrome">C</span>
-        <span class="br-title">Stack Overflow — PIL ImageGrab</span>
-        <span class="br-url">stackoverflow.com/questions/...</span>
-        <span class="br-time">13:55</span>
-        <span class="br-count">1</span>
-      </div>
-      <div class="browser-row">
-        <span class="browser-icon edge">E</span>
-        <span class="br-title">FastAPI 文档</span>
-        <span class="br-url">fastapi.tiangolo.com</span>
-        <span class="br-time">13:40</span>
-        <span class="br-count">5</span>
-      </div>
+    <div class="card-body" id="browserBody">
+      <div style="padding:20px;text-align:center;color:var(--muted)">选择被控端查看浏览器历史</div>
     </div>
   </div>
 
@@ -1095,49 +996,8 @@ body {
         <button class="card-tab">错误</button>
       </div>
     </div>
-    <div class="card-body">
-      <div class="log-row">
-        <span class="log-time">14:32</span>
-        <span class="log-level INFO">信息</span>
-        <span class="log-cat">采集</span>
-        <span class="log-msg">截图成功 — 试验机-01 屏1 1280x720</span>
-      </div>
-      <div class="log-row">
-        <span class="log-time">14:32</span>
-        <span class="log-level INFO">信息</span>
-        <span class="log-cat">网络</span>
-        <span class="log-msg">Agent 试验机-01 心跳正常</span>
-      </div>
-      <div class="log-row">
-        <span class="log-time">14:31</span>
-        <span class="log-level WARNING">警告</span>
-        <span class="log-cat">网络</span>
-        <span class="log-msg">Agent 办公室-03 连接超时，已标记离线</span>
-      </div>
-      <div class="log-row">
-        <span class="log-time">14:30</span>
-        <span class="log-level INFO">信息</span>
-        <span class="log-cat">存储</span>
-        <span class="log-msg">截图去重 — 试验机-01 屏2 已替换旧图</span>
-      </div>
-      <div class="log-row">
-        <span class="log-time">14:28</span>
-        <span class="log-level ERROR">错误</span>
-        <span class="log-cat">采集</span>
-        <span class="log-msg">Agent 办公室-03 截图失败: 屏幕锁定</span>
-      </div>
-      <div class="log-row">
-        <span class="log-time">14:25</span>
-        <span class="log-level INFO">信息</span>
-        <span class="log-cat">系统</span>
-        <span class="log-msg">Server 启动完成 — 0.0.0.0:8899</span>
-      </div>
-      <div class="log-row">
-        <span class="log-time">14:25</span>
-        <span class="log-level INFO">信息</span>
-        <span class="log-cat">系统</span>
-        <span class="log-msg">数据库初始化完成 — 5 表就绪</span>
-      </div>
+    <div class="card-body" id="logBody">
+      <div style="padding:20px;text-align:center;color:var(--muted)">加载中...</div>
     </div>
   </div>
 
@@ -1201,11 +1061,11 @@ body {
 <div class="stats-bar">
   <div class="stat-pill">
     <span class="dot-live"></span>
-    在线 <span class="val">2</span>/3
+    在线 <span class="val" id="statOnline">0</span>
   </div>
-  <div class="stat-pill">截图 <span class="val">1,247</span></div>
-  <div class="stat-pill">事件 <span class="val">89</span></div>
-  <div class="stat-pill">网址 <span class="val">356</span></div>
+  <div class="stat-pill">截图 <span class="val" id="statScreenshots">0</span></div>
+  <div class="stat-pill">事件 <span class="val" id="statEvents">0</span></div>
+  <div class="stat-pill">网址 <span class="val" id="statBrowser">0</span></div>
 </div>
 
 <!-- ====== Live Overlay ====== -->
@@ -1215,7 +1075,7 @@ body {
       <span class="live-box-title">
         <span class="live-dot"></span>
         <span class="live-text">Live</span>
-        <span class="agent-name">试验机-01</span>
+        <span class="agent-name" id="liveAgentName">-</span>
       </span>
       <div class="live-box-controls">
         <button class="live-btn close-btn" onclick="closeLive()">
@@ -1224,25 +1084,330 @@ body {
         </button>
       </div>
     </div>
-    <div class="live-box-body">
-      <div class="live-placeholder">
+    <div class="live-box-body" id="liveBoxBody">
+      <div class="live-placeholder" id="livePlaceholder">
         <span class="big">[ ]</span>
         实时截图画面
       </div>
-      <div class="live-box-monitor">
-        <span class="mon-chip active">屏1</span>
-        <span class="mon-chip">屏2</span>
-      </div>
-      <span class="live-box-timestamp">Live 14:32:05</span>
+      <div class="live-box-monitor" id="liveMonitorChips" style="display:none"></div>
+      <span class="live-box-timestamp" id="liveTimestamp"></span>
       <div class="live-box-nav">
-        <button class="nav-pill">◀ 上一张</button>
-        <button class="nav-pill">下一张 ▶</button>
+        <button class="nav-pill" onclick="prevScreenshot()">◀ 上一张</button>
+        <button class="nav-pill" onclick="nextScreenshot()">下一张 ▶</button>
       </div>
     </div>
   </div>
 </div>
 
 <script>
+// ============================================
+// State
+// ============================================
+let selectedAgent = null;
+let selectedMonitor = null;
+let monitorTotal = 1;
+let liveMode = true;
+let refreshTimer = null;
+let screenshotList = [];
+let currentScreenshotIndex = 0;
+
+// ============================================
+// API Helper
+// ============================================
+async function api(path) {
+  const resp = await fetch(path);
+  if (!resp.ok) throw new Error(`${resp.status}`);
+  return resp.json();
+}
+
+// ============================================
+// Agent List
+// ============================================
+async function loadAgents() {
+  try {
+    const agents = await api('/api/agents');
+    const strip = document.getElementById('agentStrip');
+    if (!agents.length) {
+      strip.innerHTML = '<div class="agent-pill" style="opacity:0.5"><span class="name">暂无被控端</span></div>';
+      return;
+    }
+    strip.innerHTML = agents.map(a => {
+      const isOnline = a.status === 'online';
+      const interval = a.screenshot_interval ? a.screenshot_interval + 's' : (isOnline ? '在线' : '离线');
+      return `<div class="agent-pill${a.name === selectedAgent ? ' active' : ''}" data-agent="${a.name}" onclick="selectAgent('${a.name}')">
+        <span class="dot ${isOnline ? 'online' : 'offline'}"></span>
+        <span class="name">${a.name}</span>
+        <span class="meta">${interval}</span>
+      </div>`;
+    }).join('');
+    // Auto-select first agent if none selected
+    if (!selectedAgent && agents.length) {
+      selectAgent(agents[0].name);
+    }
+  } catch(e) {
+    console.error('loadAgents failed:', e);
+  }
+}
+
+function selectAgent(name) {
+  selectedAgent = name;
+  selectedMonitor = null;
+  document.querySelectorAll('.agent-pill').forEach(el => {
+    el.classList.toggle('active', el.dataset.agent === name);
+  });
+  document.getElementById('liveAgentName').textContent = name;
+  refreshAll();
+  startAutoRefresh();
+}
+
+// ============================================
+// Screenshots
+// ============================================
+async function loadLatestScreenshot() {
+  if (!selectedAgent) return;
+  try {
+    let url = `/api/screenshots/latest?agent=${encodeURIComponent(selectedAgent)}`;
+    if (selectedMonitor !== null) url += `&monitor=${selectedMonitor}`;
+    const data = await api(url);
+    if (!data.id) return;
+    const src = `/api/screenshots/image/${data.id}`;
+    monitorTotal = data.monitor_total || 1;
+
+    // Update card screenshot
+    const stage = document.getElementById('screenshotStage');
+    const placeholder = document.getElementById('screenshotPlaceholder');
+    if (placeholder) placeholder.style.display = 'none';
+    let img = stage.querySelector('img.screenshot-img');
+    if (!img) {
+      img = document.createElement('img');
+      img.className = 'screenshot-img';
+      img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;position:absolute;inset:0;margin:auto;';
+      stage.insertBefore(img, stage.firstChild);
+    }
+    img.src = src;
+
+    // Update time
+    document.getElementById('screenshotTime').textContent = '实时 ' + new Date(data.timestamp).toTimeString().slice(0, 8);
+
+    // Update monitor chips
+    updateMonitorChips(monitorTotal);
+
+    // Update live overlay
+    const liveBody = document.getElementById('liveBoxBody');
+    const livePh = document.getElementById('livePlaceholder');
+    if (livePh) livePh.style.display = 'none';
+    let liveImg = liveBody.querySelector('img.live-img');
+    if (!liveImg) {
+      liveImg = document.createElement('img');
+      liveImg.className = 'live-img';
+      liveImg.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;position:absolute;inset:0;margin:auto;';
+      liveBody.insertBefore(liveImg, liveBody.firstChild);
+    }
+    liveImg.src = src;
+    document.getElementById('liveTimestamp').textContent = 'Live ' + new Date(data.timestamp).toTimeString().slice(0, 8);
+
+  } catch(e) { /* keep existing image */ }
+}
+
+function updateMonitorChips(total) {
+  monitorTotal = total || 1;
+  // Card chips
+  const chips = document.getElementById('monitorChips');
+  if (monitorTotal <= 1) { chips.style.display = 'none'; return; }
+  chips.style.display = 'flex';
+  chips.innerHTML = `<span class="monitor-chip${selectedMonitor === null ? ' active' : ''}" onclick="selectMonitor(null)">全部</span>` +
+    Array.from({length: monitorTotal}, (_, i) =>
+      `<span class="monitor-chip${selectedMonitor === i ? ' active' : ''}" onclick="selectMonitor(${i})">屏${i+1}</span>`
+    ).join('');
+  // Live chips
+  const liveChips = document.getElementById('liveMonitorChips');
+  liveChips.style.display = 'flex';
+  liveChips.innerHTML = chips.innerHTML;
+}
+
+function selectMonitor(idx) {
+  selectedMonitor = idx;
+  updateMonitorChips(monitorTotal);
+  loadLatestScreenshot();
+}
+
+function prevScreenshot() {
+  // In live mode, switch to history
+  if (liveMode) { liveMode = false; loadHistoryScreenshots(); }
+  else if (currentScreenshotIndex > 0) {
+    currentScreenshotIndex--;
+    displayHistoryScreenshot();
+  }
+}
+
+function nextScreenshot() {
+  if (!liveMode && currentScreenshotIndex < screenshotList.length - 1) {
+    currentScreenshotIndex++;
+    displayHistoryScreenshot();
+  }
+}
+
+async function loadHistoryScreenshots() {
+  if (!selectedAgent) return;
+  try {
+    let url = `/api/screenshots?agent=${encodeURIComponent(selectedAgent)}&limit=50`;
+    if (selectedMonitor !== null) url += `&monitor=${selectedMonitor}`;
+    screenshotList = await api(url);
+    currentScreenshotIndex = 0;
+    if (screenshotList.length) displayHistoryScreenshot();
+  } catch(e) { console.error('loadHistoryScreenshots:', e); }
+}
+
+function displayHistoryScreenshot() {
+  if (!screenshotList.length) return;
+  const item = screenshotList[currentScreenshotIndex];
+  const src = `/api/screenshots/image/${item.id}`;
+  const stage = document.getElementById('screenshotStage');
+  const placeholder = document.getElementById('screenshotPlaceholder');
+  if (placeholder) placeholder.style.display = 'none';
+  let img = stage.querySelector('img.screenshot-img');
+  if (!img) {
+    img = document.createElement('img');
+    img.className = 'screenshot-img';
+    img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;position:absolute;inset:0;margin:auto;';
+    stage.insertBefore(img, stage.firstChild);
+  }
+  img.src = src;
+  document.getElementById('screenshotTime').textContent =
+    `${item.timestamp}  (${currentScreenshotIndex+1}/${screenshotList.length})`;
+}
+
+// ============================================
+// Timeline
+// ============================================
+async function loadTimeline() {
+  if (!selectedAgent) return;
+  try {
+    const events = await api(`/api/app_events?agent=${encodeURIComponent(selectedAgent)}&limit=20&with_screenshots=true`);
+    const body = document.getElementById('timelineBody');
+    if (!events.length) {
+      body.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted)">暂无活动记录</div>';
+      return;
+    }
+    body.innerHTML = events.map(e => {
+      const t = new Date(e.timestamp);
+      const time = t.toTimeString().slice(0, 5);
+      const isChat = e.event_type === 'chat_enter';
+      const badge = isChat ? '<span class="type-badge chat">聊天</span>' : '<span class="type-badge window">窗口</span>';
+      const proc = e.process_name || '';
+      const title = isChat ? (e.display_name ? `[${e.display_name} Enter]` : '[Enter 发送]') : (e.window_title || '');
+      return `<div class="timeline-row">
+        <span class="time">${time}</span>
+        ${badge}
+        <span class="app">${proc}</span>
+        <span class="title">${title}</span>
+      </div>`;
+    }).join('');
+  } catch(e) { console.error('loadTimeline:', e); }
+}
+
+// ============================================
+// Browser History
+// ============================================
+async function loadBrowserHistory() {
+  if (!selectedAgent) return;
+  try {
+    const records = await api(`/api/browser_history?agent=${encodeURIComponent(selectedAgent)}&limit=20&with_screenshots=true`);
+    const body = document.getElementById('browserBody');
+    if (!records.length) {
+      body.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted)">暂无浏览器历史</div>';
+      return;
+    }
+    body.innerHTML = records.map(r => {
+      const t = new Date(r.last_visit);
+      const time = t.toTimeString().slice(0, 5);
+      const browser = (r.browser || 'unknown').toLowerCase();
+      const icon = browser.includes('edge') ? 'E' : 'C';
+      const iconClass = browser.includes('edge') ? 'edge' : 'chrome';
+      const url = r.url || '';
+      const shortUrl = url.length > 40 ? url.slice(0, 40) + '...' : url;
+      return `<div class="browser-row">
+        <span class="browser-icon ${iconClass}">${icon}</span>
+        <span class="br-title">${r.title || '(无标题)'}</span>
+        <span class="br-url">${shortUrl}</span>
+        <span class="br-time">${time}</span>
+        <span class="br-count">${r.visit_count || 1}</span>
+      </div>`;
+    }).join('');
+  } catch(e) { console.error('loadBrowserHistory:', e); }
+}
+
+// ============================================
+// System Logs
+// ============================================
+async function loadLogs() {
+  try {
+    const logs = await api('/api/logs?limit=20');
+    const body = document.getElementById('logBody');
+    if (!logs.length) {
+      body.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted)">暂无日志</div>';
+      return;
+    }
+    body.innerHTML = logs.map(l => {
+      const t = new Date(l.timestamp);
+      const time = t.toTimeString().slice(0, 5);
+      const levelMap = {INFO: '信息', WARNING: '警告', ERROR: '错误'};
+      const catMap = {network: '网络', storage: '存储', capture: '采集', system: '系统', security: '安全', server: '服务'};
+      return `<div class="log-row">
+        <span class="log-time">${time}</span>
+        <span class="log-level ${l.level}">${levelMap[l.level] || l.level}</span>
+        <span class="log-cat">${catMap[l.category] || l.category}</span>
+        <span class="log-msg">${l.message}</span>
+      </div>`;
+    }).join('');
+  } catch(e) { console.error('loadLogs:', e); }
+}
+
+// ============================================
+// Stats
+// ============================================
+async function loadStats() {
+  try {
+    const stats = await api(`/api/dashboard/stats${selectedAgent ? '?agent=' + encodeURIComponent(selectedAgent) : ''}`);
+    document.getElementById('statOnline').textContent = stats.online_agents || 0;
+    document.getElementById('statScreenshots').textContent = (stats.total_screenshots || 0).toLocaleString();
+    document.getElementById('statEvents').textContent = (stats.today_app_events || 0).toLocaleString();
+    document.getElementById('statBrowser').textContent = (stats.total_browser_records || 0).toLocaleString();
+  } catch(e) { console.error('loadStats:', e); }
+}
+
+// ============================================
+// Viewer Heartbeat
+// ============================================
+function startHeartbeat() {
+  setInterval(() => {
+    fetch('/api/viewer/heartbeat', { method: 'POST' }).catch(() => {});
+  }, 1000);
+}
+
+// ============================================
+// Auto Refresh
+// ============================================
+function startAutoRefresh() {
+  if (refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = setInterval(() => {
+    if (liveMode) loadLatestScreenshot();
+  }, 1000);
+  // Slower refreshes
+  setInterval(() => { loadTimeline(); loadBrowserHistory(); loadLogs(); loadStats(); }, 5000);
+}
+
+function refreshAll() {
+  loadLatestScreenshot();
+  loadTimeline();
+  loadBrowserHistory();
+  loadLogs();
+  loadStats();
+}
+
+// ============================================
+// Live Overlay
+// ============================================
 function openLive() {
   document.getElementById('liveOverlay').classList.add('open');
   document.body.style.overflow = 'hidden';
@@ -1251,12 +1416,10 @@ function closeLive() {
   document.getElementById('liveOverlay').classList.remove('open');
   document.body.style.overflow = '';
 }
-// ESC 关闭
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closeLive(); closeThemePanel(); }
-});
 
+// ============================================
 // Theme Picker
+// ============================================
 function toggleThemePanel() {
   document.getElementById('themePanel').classList.toggle('open');
 }
@@ -1291,17 +1454,31 @@ function updateBackdrop(accent) {
      radial-gradient(ellipse at 70% 30%, ${c[1]} 0%, transparent 50%),
      radial-gradient(ellipse at 50% 80%, ${c[2]} 0%, transparent 50%)`;
 }
-// 点击外部关闭 theme panel
+
+// ============================================
+// Keyboard Shortcuts
+// ============================================
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeLive(); closeThemePanel(); }
+  if (e.key === 'l' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); liveMode = !liveMode; if (liveMode) loadLatestScreenshot(); else loadHistoryScreenshots(); }
+  if (e.key === 'g' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); /* grid mode placeholder */ }
+  if (e.key === 'r' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); refreshAll(); }
+});
+
 document.addEventListener('click', e => {
   if (!e.target.closest('.theme-picker')) closeThemePanel();
 });
 
-// 实时时钟
-function updateClock() {
-  const el = document.getElementById('clock');
-  if (el) el.textContent = new Date().toTimeString().slice(0, 8);
-}
-setInterval(updateClock, 1000);
+// ============================================
+// Init
+// ============================================
+document.addEventListener('DOMContentLoaded', () => {
+  loadAgents();
+  startHeartbeat();
+  startAutoRefresh();
+  loadLogs();
+  loadStats();
+});
 </script>
 
 </body>
