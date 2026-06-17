@@ -61,7 +61,7 @@ async function deleteOne(id) {
 </template>
 
 <style scoped>
-.grid-wrapper { display: flex; flex-direction: column; height: 100%; }
+.grid-wrapper { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .grid-toolbar {
   display: flex; align-items: center; gap: 12px;
   padding: 8px 12px; border-bottom: 1px solid var(--hairline); flex-shrink: 0;
@@ -76,13 +76,15 @@ async function deleteOne(id) {
 }
 .delete-btn:hover { background: rgba(242,54,69,.15); border-color: var(--red); }
 .grid-container {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 6px; padding: 8px; overflow-y: auto; flex: 1; align-content: start;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 8px; padding: 10px; overflow-y: auto; flex: 1; min-height: 0;
 }
 .grid-item {
   position: relative; border-radius: 6px; overflow: hidden;
   border: 2px solid transparent; cursor: pointer; transition: border-color .15s, transform .15s;
-  background: rgba(0,0,0,0.4); aspect-ratio: 16/10;
+  background: rgba(0,0,0,0.4); aspect-ratio: 16 / 10;
+  min-width: 0;
 }
 .grid-item:hover { border-color: var(--accent); transform: scale(1.02); }
 .grid-item.selected { border-color: var(--green); }

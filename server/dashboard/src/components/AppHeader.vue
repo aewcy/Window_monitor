@@ -17,7 +17,7 @@ const { startFast, stopFast } = usePolling()
         {{ ss.liveMode ? '实时模式' : '历史模式' }}
         <span class="shortcut">⌘L</span>
       </button>
-      <button class="header-chip" @click="ss.gridMode = !ss.gridMode">
+      <button class="header-chip" :class="{ active: ss.gridMode }" @click="ss.gridMode = !ss.gridMode">
         网格视图 <span class="shortcut">⌘G</span>
       </button>
     </div>

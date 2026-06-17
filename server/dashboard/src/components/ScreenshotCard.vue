@@ -16,9 +16,8 @@ const ss = useScreenshotStore()
           放大
         </button>
         <div class="card-tabs">
-          <button class="tab" :class="{ active: !ss.gridMode && ss.liveMode }" @click="ss.gridMode = false; ss.liveMode = true">实时</button>
-          <button class="tab" :class="{ active: !ss.gridMode && !ss.liveMode }" @click="ss.gridMode = false; ss.liveMode = false">历史</button>
-          <button class="tab" :class="{ active: ss.gridMode }" @click="ss.gridMode = true">网格</button>
+          <button class="tab" :class="{ active: ss.liveMode }" @click="ss.liveMode = true">实时</button>
+          <button class="tab" :class="{ active: !ss.liveMode }" @click="ss.liveMode = false">历史</button>
         </div>
       </div>
     </div>
