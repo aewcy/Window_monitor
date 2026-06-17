@@ -9,6 +9,17 @@ const agent = useAgentStore()
 const imgSrc = ref(null)
 const timestamp = ref('')
 
+const fpsLabel = () => {
+  const d = agent.selectedAgentData
+  if (!d || !d.screenshot_interval) return null
+  const v = d.screenshot_interval
+  if (v <= 0.5) return '4fps'
+  if (v <= 1.5) return '1fps'
+  if (v <= 6) return '1/5s'
+  if (v <= 61) return '1/min'
+  return null
+}
+
 async function load() {
   const data = await ss.loadLatest()
   if (data && data.id) {
@@ -40,7 +51,10 @@ onMounted(() => { if (agent.selectedAgent) load() })
       <button class="mon-chip" :class="{ active: agent.selectedMonitor === null }"
         @click="agent.selectMonitor(null)">全部</button>
     </div>
-    <span class="timestamp" v-if="timestamp">{{ timestamp }}</span>
+    <div class="top-right">
+      <span class="fps-badge" v-if="fpsLabel()">{{ fpsLabel() }}</span>
+      <span class="timestamp" v-if="timestamp">{{ timestamp }}</span>
+    </div>
     <div class="nav">
       <button class="nav-pill" @click="ss.prev()">◀ 上一张</button>
       <button class="nav-pill" @click="ss.next()">下一张 ▶</button>
@@ -62,8 +76,16 @@ onMounted(() => { if (agent.selectedAgent) load() })
 }
 .mon-chip:hover { border-color: var(--blue); color: var(--blue); }
 .mon-chip.active { border-color: var(--blue); color: var(--blue); background: rgba(96,165,250,.15); }
-.timestamp {
+.top-right {
   position: absolute; top: 10px; right: 12px;
+  display: flex; gap: 6px; align-items: center;
+}
+.fps-badge {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+  padding: 2px 8px; background: rgba(0,0,0,0.5); border: 1px solid var(--hairline);
+  border-radius: 6px; color: var(--amber);
+}
+.timestamp {
   font-family: var(--font-mono); font-size: 10px; color: var(--green); font-weight: 500;
   padding: 2px 8px; background: rgba(0,0,0,0.4); border-radius: 6px;
 }
