@@ -13,9 +13,9 @@ async function load() {
   try { events.value = await api.getAppEvents(agent.selectedAgent, 20) } catch {}
 }
 
-function onClick(e) {
+function onClick(e, idx) {
   if (e.screenshot_id) {
-    ss.showById(e.screenshot_id)
+    ss.browseTimeline(events.value, idx)
   }
 }
 
@@ -28,9 +28,9 @@ defineExpose({ load })
       <span class="card-title"><span class="dot" style="background:var(--purple)"></span> 活动记录</span>
     </div>
     <div class="card-body">
-      <div v-for="e in events" :key="e.id"
+      <div v-for="(e, idx) in events" :key="e.id"
         class="tl-row" :class="{ clickable: e.screenshot_id }"
-        @click="onClick(e)">
+        @click="onClick(e, idx)">
         <span class="tl-time">{{ (e.timestamp||'').replace('T',' ').substring(11,16) }}</span>
         <span class="tl-badge" :class="e.event_type === 'chat' ? 'chat' : 'window'">
           {{ e.event_type === 'chat' ? '聊天' : '窗口' }}

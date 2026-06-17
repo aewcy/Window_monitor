@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import * as api from '../api'
 import { useAgentStore } from './agent'
 
@@ -14,9 +14,15 @@ export const useScreenshotStore = defineStore('screenshot', () => {
   const gridLoading = ref(false)
   const gridExhausted = ref(false)
   const liveOpen = ref(false)
-  const displayId = ref(null)  // 点击时间线/浏览器行时显示特定截图
+
+  // 浏览模式: 'live' | 'timeline' | 'browser'
+  const displaySource = ref('live')
+  const displayItems = ref([])  // 带 screenshot_id + title 的条目列表
+  const displayIndex = ref(0)
 
   const BATCH = 30
+
+  const currentDisplayItem = computed(() => displayItems.value[displayIndex.value] || null)
 
   async function loadLatest() {
     const agent = useAgentStore()
@@ -36,11 +42,53 @@ export const useScreenshotStore = defineStore('screenshot', () => {
   }
 
   function prev() {
-    if (currentIndex.value > 0) currentIndex.value--
+    if (displayItems.value.length && displaySource.value !== 'live') {
+      if (displayIndex.value > 0) displayIndex.value--
+      else displayIndex.value = displayItems.value.length - 1 // 循环
+    } else {
+      if (currentIndex.value > 0) currentIndex.value--
+    }
   }
 
   function next() {
-    if (currentIndex.value < screenshotList.value.length - 1) currentIndex.value++
+    if (displayItems.value.length && displaySource.value !== 'live') {
+      if (displayIndex.value < displayItems.value.length - 1) displayIndex.value++
+      else displayIndex.value = 0 // 循环
+    } else {
+      if (currentIndex.value < screenshotList.value.length - 1) currentIndex.value++
+    }
+  }
+
+  // 进入时间线浏览模式
+  function browseTimeline(items, startIndex) {
+    displaySource.value = 'timeline'
+    displayItems.value = items.filter(e => e.screenshot_id)
+    displayIndex.value = Math.max(0, displayItems.value.findIndex(e => e === items[startIndex]))
+    liveMode.value = false
+  }
+
+  // 进入浏览器历史浏览模式
+  function browseBrowser(items, startIndex) {
+    displaySource.value = 'browser'
+    displayItems.value = items.filter(r => r.screenshot_id)
+    displayIndex.value = Math.max(0, displayItems.value.findIndex(r => r === items[startIndex]))
+    liveMode.value = false
+  }
+
+  // 回到实时模式
+  function goLive() {
+    displaySource.value = 'live'
+    displayItems.value = []
+    displayIndex.value = 0
+    liveMode.value = true
+  }
+
+  // 回到历史模式
+  function goHistory() {
+    displaySource.value = 'live'
+    displayItems.value = []
+    displayIndex.value = 0
+    liveMode.value = false
   }
 
   async function loadGrid(append = false) {
@@ -95,20 +143,12 @@ export const useScreenshotStore = defineStore('screenshot', () => {
     gridLoading.value = false
   }
 
-  function showById(id) {
-    displayId.value = id
-  }
-
-  function clearDisplay() {
-    displayId.value = null
-  }
-
   return {
     liveMode, screenshotList, currentIndex,
     gridMode, gridItems, gridSelected, gridOffset, gridLoading, gridExhausted,
-    liveOpen, displayId, BATCH,
+    liveOpen, displaySource, displayItems, displayIndex, currentDisplayItem, BATCH,
     loadLatest, loadHistory, prev, next,
+    browseTimeline, browseBrowser, goLive, goHistory,
     loadGrid, toggleGridItem, selectAllGrid, deleteSelected, resetGrid,
-    showById, clearDisplay,
   }
 })

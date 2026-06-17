@@ -15,8 +15,10 @@ const ss = useScreenshotStore()
           放大
         </button>
         <div class="card-tabs">
-          <button class="tab" :class="{ active: ss.liveMode }" @click="ss.liveMode = true">实时</button>
-          <button class="tab" :class="{ active: !ss.liveMode }" @click="ss.liveMode = false">历史</button>
+          <button class="tab" :class="{ active: ss.displaySource === 'live' && ss.liveMode }" @click="ss.goLive()">实时</button>
+          <button class="tab" :class="{ active: ss.displaySource === 'live' && !ss.liveMode }" @click="ss.goHistory()">历史</button>
+          <span class="tab-indicator" v-if="ss.displaySource === 'timeline'">活动</span>
+          <span class="tab-indicator" v-if="ss.displaySource === 'browser'">浏览</span>
         </div>
       </div>
     </div>
@@ -40,6 +42,11 @@ const ss = useScreenshotStore()
 }
 .tab:hover { color: var(--text-secondary); background: var(--surface); }
 .tab.active { color: var(--text); background: var(--surface-hover); }
+.tab-indicator {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+  padding: 3px 8px; border-radius: 6px; color: var(--purple);
+  background: rgba(167,139,250,.12); border: none;
+}
 .expand-btn {
   font-family: var(--font-mono); font-size: 10px; font-weight: 500;
   padding: 3px 10px; border: 1px solid var(--hairline); border-radius: 6px;

@@ -13,9 +13,9 @@ async function load() {
   try { records.value = await api.getBrowserHistory(agent.selectedAgent, 20) } catch {}
 }
 
-function onClick(r) {
+function onClick(r, idx) {
   if (r.screenshot_id) {
-    ss.showById(r.screenshot_id)
+    ss.browseBrowser(records.value, idx)
   }
 }
 
@@ -28,9 +28,9 @@ defineExpose({ load })
       <span class="card-title"><span class="dot" style="background:var(--amber)"></span> 浏览器历史</span>
     </div>
     <div class="card-body">
-      <div v-for="r in records" :key="r.id"
+      <div v-for="(r, idx) in records" :key="r.id"
         class="br-row" :class="{ clickable: r.screenshot_id }"
-        @click="onClick(r)">
+        @click="onClick(r, idx)">
         <span class="br-icon" :class="(r.browser||'').toLowerCase().includes('edge') ? 'edge' : 'chrome'">
           {{ (r.browser||'').toLowerCase().includes('edge') ? 'E' : 'C' }}
         </span>
