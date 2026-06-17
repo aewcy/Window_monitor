@@ -89,7 +89,7 @@ if os.path.exists(STATIC_DIR):
 @app.get("/", response_class=HTMLResponse)
 async def dashboard():
     """监控面板主页"""
-    index_path = os.path.join(STATIC_DIR, "dashboard-v0-raycast.html")
+    index_path = os.path.join(STATIC_DIR, "dashboard.html")
     if os.path.exists(index_path):
         with open(index_path, "r", encoding="utf-8") as f:
             return HTMLResponse(f.read())
