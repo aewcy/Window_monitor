@@ -229,6 +229,18 @@ body {
   font-size: 12px;
   font-weight: 600;
 }
+.agent-pill .name-input {
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--ground);
+  color: var(--text);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 1px 6px;
+  width: 100px;
+  outline: none;
+  font-family: inherit;
+}
 .agent-pill .meta {
   font-family: var(--font-mono);
   font-size: 10px;
@@ -1136,9 +1148,11 @@ async function loadAgents() {
     strip.innerHTML = agents.map(a => {
       const isOnline = a.status === 'online';
       const interval = a.screenshot_interval ? a.screenshot_interval + 's' : (isOnline ? '在线' : '离线');
-      return `<div class="agent-pill${a.name === selectedAgent ? ' active' : ''}" data-agent="${a.name}" onclick="selectAgent('${a.name}')">
+      const displayName = a.display_name || a.name;
+      const safeName = displayName.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      return `<div class="agent-pill${a.name === selectedAgent ? ' active' : ''}" data-agent="${a.name}" onclick="selectAgent('${a.name}')" ondblclick="startRename(this, '${a.name}', '${safeName}')">
         <span class="dot ${isOnline ? 'online' : 'offline'}"></span>
-        <span class="name">${a.name}</span>
+        <span class="name">${displayName}</span>
         <span class="meta">${interval}</span>
       </div>`;
     }).join('');
@@ -1155,11 +1169,57 @@ function selectAgent(name) {
   selectedAgent = name;
   selectedMonitor = null;
   document.querySelectorAll('.agent-pill').forEach(el => {
-    el.classList.toggle('active', el.dataset.agent === name);
+    const isActive = el.dataset.agent === name;
+    el.classList.toggle('active', isActive);
+    if (isActive) {
+      const nameEl = el.querySelector('.name');
+      document.getElementById('liveAgentName').textContent = nameEl ? nameEl.textContent : name;
+    }
   });
-  document.getElementById('liveAgentName').textContent = name;
   refreshAll();
   startAutoRefresh();
+}
+
+function startRename(pill, agentName, currentDisplay) {
+  // 防止触发 selectAgent
+  event.stopPropagation();
+  const nameSpan = pill.querySelector('.name');
+  const input = document.createElement('input');
+  input.className = 'name-input';
+  input.value = currentDisplay;
+  nameSpan.replaceWith(input);
+  input.focus();
+  input.select();
+
+  const commit = async () => {
+    const newName = input.value.trim();
+    if (newName && newName !== currentDisplay) {
+      await renameAgent(agentName, newName);
+    }
+    loadAgents(); // 重新渲染
+  };
+
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); commit(); }
+    if (e.key === 'Escape') { loadAgents(); }
+  });
+  input.addEventListener('blur', commit);
+}
+
+async function renameAgent(agentName, displayName) {
+  try {
+    const resp = await fetch(`/api/agents/${encodeURIComponent(agentName)}`, {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({display_name: displayName})
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      alert('重命名失败: ' + (err.detail || resp.status));
+    }
+  } catch(e) {
+    alert('重命名失败: ' + e.message);
+  }
 }
 
 // ============================================

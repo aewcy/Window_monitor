@@ -18,7 +18,8 @@ Agent ──HTTP POST──▶ FastAPI Server ──▶ SQLite DB
 | 列 | 类型 | 说明 |
 |----|------|------|
 | id | INTEGER PK | 自增 |
-| name | TEXT UNIQUE | Agent 名称 |
+| name | TEXT UNIQUE | Agent 原始名称（由 AGENT_NAME 环境变量决定） |
+| display_name | TEXT | Web 端自定义显示名（空则回退到 name） |
 | status | TEXT | online/offline |
 | last_seen | TEXT | 最后心跳时间 |
 | first_seen | TEXT | 首次上线时间 |
@@ -147,7 +148,14 @@ Agent 诊断上报。
 ### 数据查询 (Dashboard → Server)
 
 #### GET /api/agents
-返回 Agent 列表，附带当前截图间隔。
+返回 Agent 列表，附带当前截图间隔和 display_name。
+
+#### PATCH /api/agents/{name}
+修改 Agent 显示名称。
+```json
+{"display_name": "新名字"}
+```
+**响应**: `{"status": "ok", "display_name": "新名字"}`
 
 #### GET /api/screenshots/latest?agent=X&monitor=N
 返回最新截图记录。`monitor` 可选，筛选特定显示器。

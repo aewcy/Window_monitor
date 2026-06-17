@@ -128,6 +128,13 @@ def init_db():
     except sqlite3.OperationalError:
         pass
 
+    # 向前兼容迁移: 为 agents 表添加 display_name 列（Web 端自定义显示名）
+    try:
+        db.execute("ALTER TABLE agents ADD COLUMN display_name TEXT DEFAULT ''")
+        db.commit()
+    except sqlite3.OperationalError:
+        pass  # 列已存在
+
 
 # ============================================
 # Agent 管理
@@ -203,6 +210,19 @@ def delete_agent(name: str) -> dict | None:
 
     print(f"[DB] Agent 已删除: {name} — 截图:{result['deleted']['screenshots']} 事件:{result['deleted']['app_events']} 历史:{result['deleted']['browser_history']}")
     return result
+
+
+def rename_agent(name: str, display_name: str) -> bool:
+    """设置 Agent 显示名称（不影响 Agent 端上报的原始 name）"""
+    if not name or not display_name:
+        return False
+    db = get_db()
+    cursor = db.execute(
+        "UPDATE agents SET display_name = ? WHERE name = ?",
+        (display_name.strip(), name)
+    )
+    db.commit()
+    return cursor.rowcount > 0
 
 
 # ============================================

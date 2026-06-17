@@ -27,7 +27,8 @@
 ### Agent 选择
 - **数据源**: `GET /api/agents`
 - **行为**: 点击 Agent 贴片 → 设置 `selectedAgent` → 触发所有卡片刷新
-- **显示**: 名称、在线/离线状态、当前截图间隔
+- **显示**: 名称（display_name 优先）、在线/离线状态、当前截图间隔
+- **重命名**: 双击 Agent 名称 → 变为输入框 → 回车提交 → `PATCH /api/agents/{name}`
 
 ### 截图卡片
 - **实时模式**: `GET /api/screenshots/latest?agent=X&monitor=N`，每秒刷新
@@ -120,6 +121,7 @@ currentScreenshotIndex  // 历史截图当前索引
 | 端点 | 方法 | 用途 |
 |------|------|------|
 | `/api/agents` | GET | Agent 列表 |
+| `/api/agents/{name}` | PATCH | 修改显示名称 |
 | `/api/screenshots/latest` | GET | 最新截图 |
 | `/api/screenshots` | GET | 截图列表（历史） |
 | `/api/screenshots/image/{id}` | GET | 截图文件 |

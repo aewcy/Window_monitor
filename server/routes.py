@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 
 from models import (
-    init_db, upsert_agent, get_agents, delete_agent, get_db,
+    init_db, upsert_agent, get_agents, delete_agent, rename_agent, get_db,
     save_screenshot, get_screenshots, get_latest_screenshot,
     get_screenshot_dates, get_screenshot_hours,
     delete_screenshot, delete_screenshots_batch,
@@ -214,6 +214,8 @@ async def list_agents():
     agents = get_agents()
     for a in agents:
         a["screenshot_interval"] = _agent_intervals.get(a["name"], 0)
+        # display_name 为空时回退到 name
+        a["display_name"] = a.get("display_name") or a["name"]
     return agents
 
 
@@ -226,6 +228,18 @@ async def remove_agent(agent_name: str):
     # 清理内存中的状态
     _agent_intervals.pop(agent_name, None)
     return {"status": "ok", **result}
+
+
+@router.patch("/agents/{agent_name}")
+async def update_agent_display_name(agent_name: str, data: dict):
+    """修改 Agent 显示名称"""
+    display_name = data.get("display_name", "").strip()
+    if not display_name:
+        raise HTTPException(status_code=400, detail="display_name 不能为空")
+    ok = rename_agent(agent_name, display_name)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Agent 不存在")
+    return {"status": "ok", "display_name": display_name}
 
 
 @router.get("/screenshots")
