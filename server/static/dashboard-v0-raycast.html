@@ -1938,7 +1938,7 @@ async function executeDelete() {
   closeConfirm();
   if (!pendingDeleteIds.length) return;
   try {
-    await api('/api/screenshots/delete', {
+    await api('/api/screenshots/delete-batch', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ids: pendingDeleteIds}),
