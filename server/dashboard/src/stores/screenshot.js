@@ -14,6 +14,7 @@ export const useScreenshotStore = defineStore('screenshot', () => {
   const gridLoading = ref(false)
   const gridExhausted = ref(false)
   const liveOpen = ref(false)
+  const displayId = ref(null)  // 点击时间线/浏览器行时显示特定截图
 
   const BATCH = 30
 
@@ -94,11 +95,20 @@ export const useScreenshotStore = defineStore('screenshot', () => {
     gridLoading.value = false
   }
 
+  function showById(id) {
+    displayId.value = id
+  }
+
+  function clearDisplay() {
+    displayId.value = null
+  }
+
   return {
     liveMode, screenshotList, currentIndex,
     gridMode, gridItems, gridSelected, gridOffset, gridLoading, gridExhausted,
-    liveOpen, BATCH,
+    liveOpen, displayId, BATCH,
     loadLatest, loadHistory, prev, next,
     loadGrid, toggleGridItem, selectAllGrid, deleteSelected, resetGrid,
+    showById, clearDisplay,
   }
 })

@@ -30,8 +30,19 @@ async function load() {
 
 watch(() => agent.selectedAgent, () => { if (agent.selectedAgent) load() })
 watch(() => agent.selectedMonitor, () => { if (agent.selectedAgent) load() })
+watch(() => ss.displayId, (id) => {
+  if (id) {
+    imgSrc.value = getScreenshotImage(id)
+    timestamp.value = ''
+  }
+})
 
-defineExpose({ load })
+function showById(id) {
+  imgSrc.value = getScreenshotImage(id)
+  timestamp.value = ''
+}
+
+defineExpose({ load, showById })
 onMounted(() => { if (agent.selectedAgent) load() })
 </script>
 
