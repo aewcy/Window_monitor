@@ -185,6 +185,18 @@ def _get_idle_seconds():
 def main():
     global _server_interval
     platform = "Windows" if IS_WINDOWS else ("Linux" if IS_LINUX else "?")
+
+    # DPI 感知 — 必须在任何 GUI/截图操作前设置，解决高 DPI 多屏截图内容相同的问题
+    if IS_WINDOWS:
+        try:
+            import ctypes
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)  # Per-monitor DPI aware
+        except Exception:
+            try:
+                ctypes.windll.user32.SetProcessDPIAware()
+            except Exception:
+                print("  [WARN] DPI 感知设置失败，多屏截图可能内容相同")
+
     reporter = Reporter(SERVER_URL, AGENT_NAME)
 
     print("=" * 50)

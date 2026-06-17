@@ -213,7 +213,7 @@ def save_screenshot(agent_name: str, timestamp: str, image_b64: str,
                     monitor_index: int = 0, monitor_total: int = 1) -> int | None:
     """将截图保存到文件系统，索引写入数据库
 
-    去重策略: 每屏 2 秒窗口内只保留最新一张 (4fps 采集 → ~0.5fps/屏 存储)
+    节流策略: 每屏 2 秒窗口内已有截图则跳过，保留最早一张 (4fps 采集 → ~0.5fps/屏 存储)
     """
     import base64
     from datetime import datetime, timedelta
@@ -221,26 +221,21 @@ def save_screenshot(agent_name: str, timestamp: str, image_b64: str,
     try:
         db = get_db()
 
-        # 去重: 2 秒窗口内替换旧截图
+        # 节流: 2 秒窗口内已有截图则跳过
         try:
             parsed = datetime.fromisoformat(timestamp)
             window_start = (parsed - timedelta(seconds=2)).isoformat()
         except ValueError:
-            window_start = timestamp  # 解析失败则不做去重
+            window_start = timestamp  # 解析失败则不做节流
 
         existing = db.execute(
-            """SELECT id, file_path FROM screenshots
+            """SELECT id FROM screenshots
                WHERE agent_name = ? AND timestamp >= ? AND monitor_index = ?
-               ORDER BY timestamp DESC LIMIT 1""",
+               ORDER BY timestamp ASC LIMIT 1""",
             (agent_name, window_start, monitor_index)
         ).fetchone()
         if existing:
-            try:
-                if os.path.exists(existing["file_path"]):
-                    os.remove(existing["file_path"])
-            except OSError:
-                pass
-            db.execute("DELETE FROM screenshots WHERE id = ?", (existing["id"],))
+            return existing["id"]  # 已有截图，跳过保存
 
         # 生成文件路径: data/screenshots/{agent}/{date}/{timestamp}.jpg
         date_str = timestamp[:10]  # YYYY-MM-DD
@@ -248,7 +243,7 @@ def save_screenshot(agent_name: str, timestamp: str, image_b64: str,
         os.makedirs(dir_path, exist_ok=True)
 
         ts_safe = timestamp.replace(":", "-").replace("T", "_")
-        file_name = f"{ts_safe}.jpg"
+        file_name = f"{ts_safe}_m{monitor_index}.jpg"
         file_path = os.path.join(dir_path, file_name)
 
         # 解码并写入
