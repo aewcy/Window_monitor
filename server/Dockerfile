@@ -27,8 +27,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 复制服务端代码
 COPY . /app/
 
-# 从 Stage 1 复制 Vue 构建产物
-COPY --from=frontend /build/dist /app/static/dist
+# 从 Stage 1 复制 Vue 构建产物 (vite outDir: ../static/dist)
+COPY --from=frontend /static/dist /app/static/dist
 
 # 数据目录
 RUN mkdir -p /app/data/screenshots
