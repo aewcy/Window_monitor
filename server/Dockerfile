@@ -2,6 +2,16 @@
 # Monitor Server - Docker 镜像
 # 在 server/ 目录下构建
 # ============================================
+
+# Stage 1: 构建 Vue Dashboard
+FROM node:20-slim AS frontend
+WORKDIR /build
+COPY dashboard/package.json dashboard/package-lock.json ./
+RUN npm ci
+COPY dashboard/ .
+RUN npm run build
+
+# Stage 2: Python 服务
 FROM python:3.11-slim
 
 LABEL org.opencontainers.image.title="monitor-server"
@@ -16,6 +26,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # 复制服务端代码
 COPY . /app/
+
+# 从 Stage 1 复制 Vue 构建产物
+COPY --from=frontend /build/dist /app/static/dist
 
 # 数据目录
 RUN mkdir -p /app/data/screenshots
