@@ -1,0 +1,65 @@
+/* Design Tokens — Raycast Style */
+:root {
+  --ground:    #0F0F11;
+  --surface:   rgba(255,255,255,0.06);
+  --surface-hover: rgba(255,255,255,0.10);
+  --hairline:  rgba(255,255,255,0.10);
+  --text:      #FFFFFF;
+  --text-secondary: #B0B3B8;
+  --muted:     #6B7280;
+  --accent:    #FF6363;
+  --green:     #4ADE80;
+  --blue:      #60A5FA;
+  --amber:     #FBBF24;
+  --purple:    #A78BFA;
+  --cyan:      #22D3EE;
+  --red:       #F23645;
+  --font:      'Inter', -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Consolas', monospace;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --shadow-card: 0 8px 32px rgba(0,0,0,0.4);
+  --shadow-lift: 0 16px 48px rgba(0,0,0,0.5);
+}
+
+/* Accent variants */
+[data-accent="coral"]   { --accent: #FF6363; }
+[data-accent="blue"]    { --accent: #3B82F6; }
+[data-accent="amber"]   { --accent: #F59E0B; }
+[data-accent="violet"]  { --accent: #8B5CF6; }
+[data-accent="emerald"] { --accent: #10B981; }
+[data-accent="cyan"]    { --accent: #06B6D4; }
+
+/* Background variants */
+[data-bg="charcoal"] {
+  --ground: #0F0F11;
+  --surface: rgba(255,255,255,0.06);
+  --surface-hover: rgba(255,255,255,0.10);
+  --hairline: rgba(255,255,255,0.10);
+}
+[data-bg="navy"] {
+  --ground: #0A0E1A;
+  --surface: rgba(255,255,255,0.05);
+  --surface-hover: rgba(255,255,255,0.09);
+  --hairline: rgba(255,255,255,0.08);
+}
+[data-bg="black"] {
+  --ground: #000000;
+  --surface: rgba(255,255,255,0.06);
+  --surface-hover: rgba(255,255,255,0.11);
+  --hairline: rgba(255,255,255,0.10);
+}
+[data-bg="slate"] {
+  --ground: #1E293B;
+  --surface: rgba(255,255,255,0.07);
+  --surface-hover: rgba(255,255,255,0.12);
+  --hairline: rgba(255,255,255,0.10);
+}
+[data-bg="warm"] {
+  --ground: #171412;
+  --surface: rgba(255,255,255,0.05);
+  --surface-hover: rgba(255,255,255,0.09);
+  --hairline: rgba(255,255,255,0.08);
+}
