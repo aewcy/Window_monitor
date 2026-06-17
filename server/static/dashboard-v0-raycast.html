@@ -408,7 +408,8 @@ body {
   transition: background .1s;
   font-size: 12px;
 }
-.timeline-row:hover { background: rgba(255,255,255,.03); }
+.timeline-row:hover { background: rgba(255,255,255,.03); cursor: pointer; }
+.timeline-row.active { background: rgba(96,165,250,.08); border-left: 2px solid var(--blue); padding-left: 14px; }
 .timeline-row .time {
   font-family: var(--font-mono);
   font-size: 10px;
@@ -457,7 +458,8 @@ body {
   font-size: 12px;
   transition: background .1s;
 }
-.browser-row:hover { background: rgba(255,255,255,.03); }
+.browser-row:hover { background: rgba(255,255,255,.03); cursor: pointer; }
+.browser-row.active { background: rgba(251,191,36,.08); border-left: 2px solid var(--amber); padding-left: 14px; }
 .browser-row .browser-icon {
   width: 16px; height: 16px;
   border-radius: 4px;
@@ -1231,6 +1233,36 @@ function selectMonitor(idx) {
   loadLatestScreenshot();
 }
 
+function showScreenshotById(id) {
+  const src = `/api/screenshots/image/${id}`;
+  // 更新卡片截图
+  const stage = document.getElementById('screenshotStage');
+  const placeholder = document.getElementById('screenshotPlaceholder');
+  if (placeholder) placeholder.style.display = 'none';
+  let img = stage.querySelector('img.screenshot-img');
+  if (!img) {
+    img = document.createElement('img');
+    img.className = 'screenshot-img';
+    img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;position:absolute;inset:0;margin:auto;';
+    stage.insertBefore(img, stage.firstChild);
+  }
+  img.src = src;
+  document.getElementById('screenshotTime').textContent = '关联截图 #' + id;
+  // 同步到放大视图
+  const liveBody = document.getElementById('liveBoxBody');
+  const livePh = document.getElementById('livePlaceholder');
+  if (livePh) livePh.style.display = 'none';
+  let liveImg = liveBody.querySelector('img.live-img');
+  if (!liveImg) {
+    liveImg = document.createElement('img');
+    liveImg.className = 'live-img';
+    liveImg.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;position:absolute;inset:0;margin:auto;';
+    liveBody.insertBefore(liveImg, liveBody.firstChild);
+  }
+  liveImg.src = src;
+  document.getElementById('liveTimestamp').textContent = '关联截图 #' + id;
+}
+
 function prevScreenshot() {
   // In live mode, switch to history
   if (liveMode) { liveMode = false; loadHistoryScreenshots(); }
@@ -1296,7 +1328,8 @@ async function loadTimeline() {
       const badge = isChat ? '<span class="type-badge chat">聊天</span>' : '<span class="type-badge window">窗口</span>';
       const proc = e.process_name || '';
       const title = isChat ? (e.display_name ? `[${e.display_name} Enter]` : '[Enter 发送]') : (e.window_title || '');
-      return `<div class="timeline-row">
+      const shotId = e.screenshot_id || '';
+      return `<div class="timeline-row" data-screenshot-id="${shotId}" onclick="onTimelineClick(this)">
         <span class="time">${time}</span>
         ${badge}
         <span class="app">${proc}</span>
@@ -1304,6 +1337,13 @@ async function loadTimeline() {
       </div>`;
     }).join('');
   } catch(e) { console.error('loadTimeline:', e); }
+}
+
+function onTimelineClick(el) {
+  const id = el.dataset.screenshotId;
+  document.querySelectorAll('.timeline-row').forEach(r => r.classList.remove('active'));
+  el.classList.add('active');
+  if (id) showScreenshotById(id);
 }
 
 // ============================================
@@ -1326,7 +1366,8 @@ async function loadBrowserHistory() {
       const iconClass = browser.includes('edge') ? 'edge' : 'chrome';
       const url = r.url || '';
       const shortUrl = url.length > 40 ? url.slice(0, 40) + '...' : url;
-      return `<div class="browser-row">
+      const shotId = r.screenshot_id || '';
+      return `<div class="browser-row" data-screenshot-id="${shotId}" onclick="onBrowserClick(this)">
         <span class="browser-icon ${iconClass}">${icon}</span>
         <span class="br-title">${r.title || '(无标题)'}</span>
         <span class="br-url">${shortUrl}</span>
@@ -1335,6 +1376,13 @@ async function loadBrowserHistory() {
       </div>`;
     }).join('');
   } catch(e) { console.error('loadBrowserHistory:', e); }
+}
+
+function onBrowserClick(el) {
+  const id = el.dataset.screenshotId;
+  document.querySelectorAll('.browser-row').forEach(r => r.classList.remove('active'));
+  el.classList.add('active');
+  if (id) showScreenshotById(id);
 }
 
 // ============================================
