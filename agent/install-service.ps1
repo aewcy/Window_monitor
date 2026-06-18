@@ -1,29 +1,29 @@
-# Monitor Agent - One-click Service Installer GUI
+# Monitor Agent - Service Installer GUI (Non-blocking)
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-$ServiceName = "MonitorAgent"
-$DisplayName = "Monitor Agent"
-$ExeName = "monitor-agent.exe"
+$script:ServiceName = "MonitorAgent"
+$script:DisplayName = "Monitor Agent"
+$script:ExePath = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) "monitor-agent.exe"
 
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ExePath = Join-Path $ScriptDir $ExeName
-
-if (-not (Test-Path $ExePath)) {
-    [System.Windows.Forms.MessageBox]::Show("Cannot find $ExeName in $ScriptDir", "Error", "OK", "Error")
+# Check exe
+if (-not (Test-Path $script:ExePath)) {
+    [System.Windows.Forms.MessageBox]::Show("monitor-agent.exe not found in same folder", "Error", "OK", "Error")
     exit 1
 }
 
+# Check admin
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $isAdmin) {
     Start-Process powershell.exe -ArgumentList "-ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
     exit
 }
 
+# Build GUI
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Monitor Agent Installer"
-$form.Size = New-Object System.Drawing.Size(420, 300)
+$form.Size = New-Object System.Drawing.Size(400, 260)
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = "FixedDialog"
 $form.MaximizeBox = $false
@@ -38,102 +38,87 @@ $title.AutoSize = $true
 $title.Location = New-Object System.Drawing.Point(20, 15)
 $form.Controls.Add($title)
 
-$statusLabel = New-Object System.Windows.Forms.Label
-$statusLabel.Font = New-Object System.Drawing.Font("Segoe UI", 10)
-$statusLabel.ForeColor = [System.Drawing.Color]::FromArgb(180, 180, 180)
-$statusLabel.Size = New-Object System.Drawing.Size(370, 50)
-$statusLabel.Location = New-Object System.Drawing.Point(20, 55)
-$form.Controls.Add($statusLabel)
+$lbl = New-Object System.Windows.Forms.Label
+$lbl.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+$lbl.ForeColor = [System.Drawing.Color]::FromArgb(180, 180, 180)
+$lbl.Size = New-Object System.Drawing.Size(350, 40)
+$lbl.Location = New-Object System.Drawing.Point(20, 55)
+$form.Controls.Add($lbl)
 
-$infoLabel = New-Object System.Windows.Forms.Label
-$infoLabel.Text = "Host: $env:COMPUTERNAME | Path: $ExePath"
-$infoLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8)
-$infoLabel.ForeColor = [System.Drawing.Color]::FromArgb(100, 100, 100)
-$infoLabel.Size = New-Object System.Drawing.Size(370, 20)
-$infoLabel.Location = New-Object System.Drawing.Point(20, 230)
-$form.Controls.Add($infoLabel)
+$lbl2 = New-Object System.Windows.Forms.Label
+$lbl2.Text = "Host: $env:COMPUTERNAME"
+$lbl2.Font = New-Object System.Drawing.Font("Segoe UI", 8)
+$lbl2.ForeColor = [System.Drawing.Color]::FromArgb(100, 100, 100)
+$lbl2.AutoSize = $true
+$lbl2.Location = New-Object System.Drawing.Point(20, 195)
+$form.Controls.Add($lbl2)
 
-function New-Button($text, $x, $y, $w, $h, $color) {
-    $btn = New-Object System.Windows.Forms.Button
-    $btn.Text = $text
-    $btn.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
-    $btn.Size = New-Object System.Drawing.Size($w, $h)
-    $btn.Location = New-Object System.Drawing.Point($x, $y)
-    $btn.FlatStyle = "Flat"
-    $btn.BackColor = $color
-    $btn.ForeColor = [System.Drawing.Color]::White
-    $btn.FlatAppearance.BorderSize = 0
-    $btn.Cursor = [System.Windows.Forms.Cursors]::Hand
-    return $btn
+function New-Btn($t, $x, $w, $c) {
+    $b = New-Object System.Windows.Forms.Button
+    $b.Text = $t; $b.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $b.Size = New-Object System.Drawing.Size($w, 36); $b.Location = New-Object System.Drawing.Point($x, 110)
+    $b.FlatStyle = "Flat"; $b.BackColor = $c; $b.ForeColor = [System.Drawing.Color]::White
+    $b.FlatAppearance.BorderSize = 0; $b.Cursor = [System.Windows.Forms.Cursors]::Hand
+    return $b
 }
 
-function UpdateStatus {
-    $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+$b1 = New-Btn "Install" 20 80 ([System.Drawing.Color]::FromArgb(46, 139, 87))
+$b2 = New-Btn "Uninstall" 110 80 ([System.Drawing.Color]::FromArgb(178, 34, 34))
+$b3 = New-Btn "Start" 200 80 ([System.Drawing.Color]::FromArgb(30, 100, 180))
+$b4 = New-Btn "Stop" 290 70 ([System.Drawing.Color]::FromArgb(120, 80, 30))
+$form.Controls.AddRange(@($b1, $b2, $b3, $b4))
+
+# Status refresh timer (non-blocking)
+$timer = New-Object System.Windows.Forms.Timer
+$timer.Interval = 2000
+$timer.Add_Tick({
+    $svc = Get-Service -Name $script:ServiceName -ErrorAction SilentlyContinue
     if ($svc) {
-        $statusLabel.Text = "Status: $($svc.Status) | StartType: $($svc.StartType)"
-        $installBtn.Enabled = $false
-        $uninstallBtn.Enabled = $true
-        $startBtn.Enabled = ($svc.Status -ne "Running")
-        $stopBtn.Enabled = ($svc.Status -eq "Running")
+        $lbl.Text = "Status: $($svc.Status)  |  StartType: $($svc.StartType)"
+        $b1.Enabled = $false; $b2.Enabled = $true
+        $b3.Enabled = ($svc.Status -ne "Running"); $b4.Enabled = ($svc.Status -eq "Running")
     } else {
-        $statusLabel.Text = "Not Installed"
-        $installBtn.Enabled = $true
-        $uninstallBtn.Enabled = $false
-        $startBtn.Enabled = $false
-        $stopBtn.Enabled = $false
+        $lbl.Text = "Not Installed"; $b1.Enabled = $true; $b2.Enabled = $false; $b3.Enabled = $false; $b4.Enabled = $false
     }
-}
+})
+$timer.Start()
 
-$installBtn = New-Button "Install" 20 120 90 40 ([System.Drawing.Color]::FromArgb(46, 139, 87))
-$uninstallBtn = New-Button "Uninstall" 120 120 90 40 ([System.Drawing.Color]::FromArgb(178, 34, 34))
-$startBtn = New-Button "Start" 220 120 90 40 ([System.Drawing.Color]::FromArgb(30, 100, 180))
-$stopBtn = New-Button "Stop" 320 120 70 40 ([System.Drawing.Color]::FromArgb(120, 80, 30))
+# All actions run in background (non-blocking)
+$b1.Add_Click({
+    $lbl.Text = "Installing..."
+    Start-Job -ScriptBlock {
+        param($name, $display, $exe)
+        New-Service -Name $name -BinaryPathName $exe -DisplayName $display -StartupType Automatic
+    } -ArgumentList $script:ServiceName, $script:DisplayName, $script:ExePath | Out-Null
+})
 
-$form.Controls.AddRange(@($installBtn, $uninstallBtn, $startBtn, $stopBtn))
-
-$installBtn.Add_Click({
-    try {
-        New-Service -Name $ServiceName -BinaryPathName $ExePath -DisplayName $DisplayName -Description "Monitor Agent - Screenshot, Activity, Browser History" -StartupType Automatic
-        [System.Windows.Forms.MessageBox]::Show("Install OK!`n`nService: $DisplayName`nStartType: Automatic (boot on startup)", "Success", "OK", "Information")
-        UpdateStatus
-    } catch {
-        [System.Windows.Forms.MessageBox]::Show("Install failed: $_", "Error", "OK", "Error")
+$b2.Add_Click({
+    $r = [System.Windows.Forms.MessageBox]::Show("Uninstall service?", "Confirm", "YesNo", "Question")
+    if ($r -eq "Yes") {
+        $lbl.Text = "Uninstalling..."
+        Start-Job -ScriptBlock {
+            param($name)
+            Stop-Service -Name $name -Force -ErrorAction SilentlyContinue
+            sc.exe delete $name | Out-Null
+        } -ArgumentList $script:ServiceName | Out-Null
     }
 })
 
-$uninstallBtn.Add_Click({
-    $result = [System.Windows.Forms.MessageBox]::Show("Uninstall Monitor Agent service?", "Confirm", "YesNo", "Question")
-    if ($result -eq "Yes") {
-        try {
-            Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
-            sc.exe delete $ServiceName | Out-Null
-            [System.Windows.Forms.MessageBox]::Show("Uninstalled", "Success", "OK", "Information")
-            UpdateStatus
-        } catch {
-            [System.Windows.Forms.MessageBox]::Show("Uninstall failed: $_", "Error", "OK", "Error")
-        }
-    }
+$b3.Add_Click({
+    $lbl.Text = "Starting..."
+    Start-Job -ScriptBlock { param($name) sc.exe start $name | Out-Null } -ArgumentList $script:ServiceName | Out-Null
 })
 
-$startBtn.Add_Click({
-    try {
-        sc.exe start $ServiceName | Out-Null
-        Start-Sleep -Seconds 2
-        UpdateStatus
-    } catch {
-        [System.Windows.Forms.MessageBox]::Show("Start failed: $_", "Error", "OK", "Error")
-    }
+$b4.Add_Click({
+    $lbl.Text = "Stopping..."
+    Start-Job -ScriptBlock { param($name) sc.exe stop $name | Out-Null } -ArgumentList $script:ServiceName | Out-Null
 })
 
-$stopBtn.Add_Click({
-    try {
-        sc.exe stop $ServiceName | Out-Null
-        Start-Sleep -Seconds 2
-        UpdateStatus
-    } catch {
-        [System.Windows.Forms.MessageBox]::Show("Stop failed: $_", "Error", "OK", "Error")
-    }
-})
+# Initial status
+$svc = Get-Service -Name $script:ServiceName -ErrorAction SilentlyContinue
+if ($svc) { $lbl.Text = "Status: $($svc.Status)  |  StartType: $($svc.StartType)" }
+else { $lbl.Text = "Not Installed" }
 
-UpdateStatus
 [void]$form.ShowDialog()
+$timer.Stop()
+$timer.Dispose()
