@@ -8,19 +8,25 @@ const ss = useScreenshotStore()
 const agent = useAgentStore()
 const imgSrc = ref(null)
 
-// 浏览模式下的当前项
+// 浏览模式 (活动记录/浏览器历史点击)
 const currentItem = computed(() => ss.currentDisplayItem)
 const isBrowse = computed(() => ss.displaySource !== 'live')
+// 历史模式 (日历筛选)
+const isHistory = computed(() => !ss.liveMode && ss.screenshotList.length > 0)
+// 需要显示标题和导航的状态
+const showUI = computed(() => isBrowse.value || isHistory.value)
 
 const sourceLabel = computed(() => {
   if (ss.displaySource === 'timeline') return '活动'
   if (ss.displaySource === 'browser') return '浏览'
+  if (isHistory.value) return '历史'
   return 'Live'
 })
 
 const itemIndex = computed(() => {
-  if (!isBrowse.value) return ''
-  return `${ss.displayIndex + 1}/${ss.displayItems.length}`
+  if (isBrowse.value) return `${ss.displayIndex + 1}/${ss.displayItems.length}`
+  if (isHistory.value) return `${ss.currentIndex + 1}/${ss.screenshotList.length}`
+  return ''
 })
 
 const itemTitle = computed(() => {
@@ -29,6 +35,10 @@ const itemTitle = computed(() => {
   }
   if (ss.displaySource === 'browser' && currentItem.value) {
     return currentItem.value.title || currentItem.value.url
+  }
+  if (isHistory.value && ss.screenshotList[ss.currentIndex]) {
+    const s = ss.screenshotList[ss.currentIndex]
+    return (s.timestamp || '').replace('T', ' ')
   }
   return ''
 })
@@ -48,20 +58,35 @@ function loadBrowseItem() {
   }
 }
 
+function loadHistoryItem() {
+  const item = ss.screenshotList[ss.currentIndex]
+  if (item && item.id) {
+    imgSrc.value = getScreenshotImage(item.id)
+  }
+}
+
 // 监听 overlay 打开
 watch(() => ss.liveOpen, (v) => {
   if (v) {
     if (isBrowse.value) loadBrowseItem()
+    else if (isHistory.value) loadHistoryItem()
     else loadLive()
   }
 })
 
-// 监听浏览模式下的当前项变化
+// 监听浏览模式下的当前项变化 (活动记录/浏览器历史)
 watch(() => ss.currentDisplayItem, (item) => {
   if (item && item.screenshot_id && ss.liveOpen) {
     imgSrc.value = getScreenshotImage(item.screenshot_id)
   }
 }, { immediate: true })
+
+// 监听历史模式下的当前截图变化 (日历筛选)
+watch(() => ss.currentIndex, () => {
+  if (isHistory.value && ss.liveOpen) {
+    loadHistoryItem()
+  }
+})
 
 function close() {
   ss.liveOpen = false
@@ -74,11 +99,21 @@ function goLive() {
 }
 
 function prev() {
-  ss.prev()
+  if (isHistory.value) {
+    if (ss.currentIndex > 0) ss.currentIndex--
+    else ss.currentIndex = ss.screenshotList.length - 1
+  } else {
+    ss.prev()
+  }
 }
 
 function next() {
-  ss.next()
+  if (isHistory.value) {
+    if (ss.currentIndex < ss.screenshotList.length - 1) ss.currentIndex++
+    else ss.currentIndex = 0
+  } else {
+    ss.next()
+  }
 }
 </script>
 
@@ -87,13 +122,13 @@ function next() {
     <div class="live-box">
       <div class="live-header">
         <span class="live-title">
-          <span v-if="!isBrowse" class="live-dot"></span>
-          <span v-if="!isBrowse" class="live-text">Live</span>
+          <span v-if="!showUI" class="live-dot"></span>
+          <span v-if="!showUI" class="live-text">Live</span>
           <span v-else class="browse-tag">{{ sourceLabel }} {{ itemIndex }}</span>
           <span class="agent-name">{{ agent.selectedAgent }}</span>
         </span>
         <div class="header-actions">
-          <button v-if="isBrowse" class="live-btn" @click="goLive">
+          <button v-if="showUI" class="live-btn" @click="goLive">
             <span class="live-dot-sm"></span> 实时
           </button>
           <button class="close-btn" @click="close">
@@ -105,7 +140,7 @@ function next() {
       <div class="live-body">
         <img v-if="imgSrc" :src="imgSrc" class="live-img" :key="imgSrc" />
         <div v-else class="placeholder"><span class="big">[ ]</span>暂无截图</div>
-        <div class="mon-chips" v-if="agent.monitorTotal > 1 && !isBrowse">
+        <div class="mon-chips" v-if="agent.monitorTotal > 1 && !showUI">
           <button v-for="i in agent.monitorTotal" :key="i"
             class="mon-chip" :class="{ active: agent.selectedMonitor === i-1 }"
             @click="agent.selectMonitor(i-1)">屏{{ i }}</button>
@@ -113,7 +148,7 @@ function next() {
         <div class="item-title" v-if="itemTitle">
           <span class="title-text">{{ itemTitle }}</span>
         </div>
-        <div class="nav" v-if="isBrowse && ss.displayItems.length > 1">
+        <div class="nav" v-if="showUI && (ss.displayItems.length > 1 || ss.screenshotList.length > 1)">
           <button class="nav-pill" @click="prev">◀ 上一个</button>
           <button class="nav-pill" @click="next">下一个 ▶</button>
         </div>

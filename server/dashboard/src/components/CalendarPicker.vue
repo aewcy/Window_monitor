@@ -78,6 +78,7 @@ async function applyFilter() {
     ss.screenshotList = data
     ss.currentIndex = 0
     ss.liveMode = false
+    ss.liveOpen = true   // 打开 overlay 显示筛选结果
     open.value = false
   } finally { loading.value = false }
 }
