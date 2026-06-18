@@ -320,11 +320,12 @@ async def app_usage(
 async def app_events_list(
     agent: str = Query(...),
     limit: int = Query(50, le=200),
+    offset: int = Query(0),
     with_screenshots: bool = Query(False),
 ):
     """最近应用事件时间线 - 可选关联截图"""
     if with_screenshots:
-        return get_app_events_with_screenshots(agent, limit)
+        return get_app_events_with_screenshots(agent, limit, offset)
     return get_app_events(agent, limit)
 
 

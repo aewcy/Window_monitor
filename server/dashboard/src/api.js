@@ -35,12 +35,18 @@ export const deleteScreenshots = (ids) =>
   })
 
 // App Events
-export const getAppEvents = (agent, limit = 20) =>
-  request(`/app_events?agent=${encodeURIComponent(agent)}&limit=${limit}&with_screenshots=true`)
+export const getAppEvents = (agent, limit = 20, offset = 0) =>
+  request(`/app_events?agent=${encodeURIComponent(agent)}&limit=${limit}&offset=${offset}&with_screenshots=true`)
 
 // Browser History
-export const getBrowserHistory = (agent, limit = 20) =>
-  request(`/browser_history?agent=${encodeURIComponent(agent)}&limit=${limit}&with_screenshots=true`)
+export const getBrowserHistory = (agent, limit = 20, offset = 0) =>
+  request(`/browser_history?agent=${encodeURIComponent(agent)}&limit=${limit}&offset=${offset}&with_screenshots=true`)
+
+// Screenshot dates/hours for calendar
+export const getScreenshotDates = (agent) =>
+  request(`/screenshots/dates?agent=${encodeURIComponent(agent)}`)
+export const getScreenshotHours = (agent, date) =>
+  request(`/screenshots/hours?agent=${encodeURIComponent(agent)}&date=${encodeURIComponent(date)}`)
 
 // Logs
 export const getLogs = (limit = 20) => request(`/logs?limit=${limit}`)

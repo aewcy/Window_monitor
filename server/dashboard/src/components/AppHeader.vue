@@ -1,6 +1,7 @@
 <script setup>
 import { useScreenshotStore } from '../stores/screenshot'
 import { usePolling } from '../composables/usePolling'
+import CalendarPicker from './CalendarPicker.vue'
 
 const ss = useScreenshotStore()
 const { startFast, stopFast } = usePolling()
@@ -12,6 +13,7 @@ const { startFast, stopFast } = usePolling()
       <div class="logo"><div class="icon">M</div> Monitor</div>
     </div>
     <div class="header-right">
+      <CalendarPicker />
       <button class="header-chip" :class="{ active: ss.liveMode }" @click="ss.liveMode = !ss.liveMode">
         <span class="live-dot"></span>
         {{ ss.liveMode ? '实时模式' : '历史模式' }}

@@ -453,7 +453,7 @@ def get_app_events(agent_name: str, limit: int = 50) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def get_app_events_with_screenshots(agent_name: str, limit: int = 50) -> list[dict]:
+def get_app_events_with_screenshots(agent_name: str, limit: int = 50, offset: int = 0) -> list[dict]:
     """最近应用事件时间线，每条关联最近时间的截图
 
     匹配策略 (按优先级):
@@ -493,8 +493,8 @@ def get_app_events_with_screenshots(agent_name: str, limit: int = 50) -> list[di
         FROM app_events ae
         WHERE ae.agent_name = ?
         ORDER BY ae.timestamp DESC
-        LIMIT ?
-    """, (agent_name, limit)).fetchall()
+        LIMIT ? OFFSET ?
+    """, (agent_name, limit, offset)).fetchall()
     return [dict(r) for r in rows]
 
 

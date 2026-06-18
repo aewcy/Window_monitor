@@ -36,3 +36,5 @@ Thumbs.db
 CLAUDE.md
 skills-lock.json
 CONTEXT_MIGRATION.md
+.mcp.json
+.playwright-mcp/
