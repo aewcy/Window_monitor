@@ -21,7 +21,7 @@ server/dashboard/
 │   │   ├── AppHeader.vue    # 顶部栏 (Logo + 模式按钮)
 │   │   ├── AgentStrip.vue   # Agent 横向滚动列表
 │   │   ├── ScreenshotCard.vue    # 截图卡片 (含放大按钮)
-│   │   ├── ScreenshotViewer.vue  # 截图显示 (实时/FPS/显示器切换)
+│   │   ├── ScreenshotViewer.vue  # 截图卡片内嵌显示 (实时/FPS/时间戳/显示器切换)
 │   │   ├── LiveOverlay.vue       # 70vw 放大叠加层 (实时+浏览模式)
 │   │   ├── GridOverlay.vue       # 网格视图叠加层 (80vw)
 │   │   ├── TimelineCard.vue      # 活动记录卡片
@@ -69,8 +69,8 @@ server/dashboard/
 
 ### 截图卡片 (ScreenshotViewer)
 - **实时模式**: `GET /api/screenshots/latest?agent=X&monitor=N`
-- **历史模式**: 日历筛选后，卡片内直接显示历史截图 (无需打开 overlay)
 - **FPS 标签**: 右上角显示当前截图间隔 (4fps / 1fps / 1/5s / 1/min)
+- **时间戳**: 右上角显示 "实时 HH:MM:SS"
 - **显示器切换**: 多屏时显示芯片，点击切换 `selectedMonitor`
 - **放大**: 点击「放大」按钮 → 打开 LiveOverlay (70vw × 70vh)
 
@@ -80,8 +80,7 @@ server/dashboard/
 
 #### 实时模式 (点击「放大」按钮)
 - 显示最新截图
-- 右上角 Live 绿色指示灯
-- 显示 Agent 名称
+- 左上角 Live 绿色指示灯 + Agent 名称
 - 显示显示器切换芯片
 - **关闭**: 点击「关闭」/ 点击遮罩 / ESC
 
@@ -93,10 +92,12 @@ server/dashboard/
 - **实时按钮**: 点击回到实时模式
 - **关闭**: 自动回到实时模式
 
-#### 历史模式 (日历筛选后)
-- 卡片内直接显示筛选结果的第一张截图
+#### 历史模式 (日历筛选后自动打开)
 - 顶部标签: `历史 1/479`
 - 底部标题: 截图时间戳
+- **上一个/下一个**: 切换同一天/同一时段的截图
+- **实时按钮**: 点击回到实时模式
+- **关闭**: 自动回到实时模式
 - **上一个/下一个**: 切换同一天/同一时段的截图
 - **实时按钮**: 点击回到实时模式
 - **关闭**: 自动回到实时模式
