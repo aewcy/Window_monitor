@@ -44,7 +44,7 @@ server/dashboard/
 
 ```
 ┌─────────────────────────────────────────────────┐
-│  Header (Logo + 实时模式/网格视图 按钮)            │
+│  Header (Logo + 日历/实时模式/网格视图 按钮)        │
 ├─────────────────────────────────────────────────┤
 │  Agent Strip (横向滚动，点击切换被控端)              │
 ├──────────────────┬──────────────────────────────┤
@@ -125,16 +125,27 @@ server/dashboard/
   - ESC 关闭
 
 ### 活动记录卡片
-- **数据源**: `GET /api/app_events?agent=X&limit=20&with_screenshots=true`
+- **数据源**: `GET /api/app_events?agent=X&limit=20&offset=0&with_screenshots=true`
 - **每 5 秒自动刷新**
+- **无限加载**: 底部"加载更多"按钮，每次 20 条，显示已加载条数
 - **点击行为**: 有 `screenshot_id` 的行可点击 → 打开浏览模式 overlay
 - **事件类型**: `窗口`（蓝色标签）/ `聊天`（紫色标签）
 
 ### 浏览器历史卡片
-- **数据源**: `GET /api/browser_history?agent=X&limit=20&with_screenshots=true`
+- **数据源**: `GET /api/browser_history?agent=X&limit=20&offset=0&with_screenshots=true`
 - **每 5 秒自动刷新**
+- **无限加载**: 底部"加载更多"按钮，每次 20 条，显示已加载条数
 - **点击行为**: 有 `screenshot_id` 的行可点击 → 打开浏览模式 overlay
 - **浏览器图标**: Chrome 蓝色 `C` / Edge 蓝色 `E`
+
+### 日历选择器 (CalendarPicker)
+- **位置**: 顶栏右侧，日历图标按钮
+- **功能**: 按日期/时段筛选历史截图
+- **数据源**: `GET /api/screenshots/dates?agent=X` (获取有截图的日期)
+- **时段筛选**: `GET /api/screenshots/hours?agent=X&date=YYYY-MM-DD` (获取某天的小时分布)
+- **筛选**: 点击日期 → 显示时段按钮 (含截图数量) → 选时段后点"查看" → 加载筛选结果
+- **交互**: 有截图的日期带圆点标记，可点击；无数据的日期灰色不可点
+- **清除**: 点"清除"按钮恢复实时模式
 
 ### 系统日志卡片
 - **数据源**: `GET /api/logs?limit=20`
@@ -224,11 +235,13 @@ liveOpen            // 是否打开放大 overlay
 | `/api/agents` | GET | Agent 列表 |
 | `/api/agents/{name}` | PATCH | 修改显示名称 |
 | `/api/screenshots/latest` | GET | 最新截图 |
-| `/api/screenshots` | GET | 截图列表（历史/网格） |
+| `/api/screenshots` | GET | 截图列表（支持 limit/offset/date_from/date_to/monitor） |
 | `/api/screenshots/image/{id}` | GET | 截图文件 |
 | `/api/screenshots/delete-batch` | POST | 批量删除截图 |
-| `/api/app_events` | GET | 活动记录 (with_screenshots=true 含截图关联) |
-| `/api/browser_history` | GET | 浏览器历史 (with_screenshots=true 含截图关联) |
+| `/api/screenshots/dates` | GET | 有截图的日期列表及每天数量 |
+| `/api/screenshots/hours` | GET | 指定日期内有截图的小时列表及每小时数量 |
+| `/api/app_events` | GET | 活动记录 (limit/offset/with_screenshots) |
+| `/api/browser_history` | GET | 浏览器历史 (limit/offset/with_screenshots) |
 | `/api/logs` | GET | 系统日志 |
 | `/api/logs/categories` | GET | 日志分类计数 |
 | `/api/dashboard/stats` | GET | 统计数据 |
@@ -242,6 +255,8 @@ liveOpen            // 是否打开放大 overlay
 - [x] 多显示器切换
 - [x] Live 放大 overlay (70vw)
 - [x] 活动记录/浏览器历史 → 浏览模式 overlay (带标题+上下切换)
+- [x] 活动记录/浏览器历史无限加载 ("加载更多"按钮)
+- [x] 日历日期筛选 (按日期/时段查看历史截图)
 - [x] 网格视图 overlay (80vw, 缩略图+全选+批量删除+无限滚动)
 - [x] 配色系统 (6 强调色 × 5 背景色)
 - [x] 底部统计栏

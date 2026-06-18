@@ -166,8 +166,14 @@ Agent 诊断上报。
 #### GET /api/screenshots/image/{id}
 返回截图 JPEG 文件。
 
-#### GET /api/app_events?agent=X&limit=20&with_screenshots=true
-活动记录。`with_screenshots=true` 时每条记录关联最近截图的 `screenshot_id`。
+#### GET /api/screenshots/dates?agent=X
+返回有截图的日期列表及每天数量。用于日历组件高亮有数据的日期。
+
+#### GET /api/screenshots/hours?agent=X&date=YYYY-MM-DD
+返回指定日期内有截图的小时列表及每小时数量。用于时段筛选。
+
+#### GET /api/app_events?agent=X&limit=20&offset=0&with_screenshots=true
+活动记录，支持分页。`with_screenshots=true` 时每条记录关联最近截图的 `screenshot_id`。
 
 **截图关联策略** (COALESCE 三级 fallback):
 1. 精确匹配 — 事件携带 `screenshot_timestamp` 时直接关联
