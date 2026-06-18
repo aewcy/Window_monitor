@@ -7,6 +7,7 @@ import { getScreenshotImage } from '../api'
 const ss = useScreenshotStore()
 const agent = useAgentStore()
 const imgSrc = ref(null)
+const zoom = ref(1)  // 缩放比例
 
 // 浏览模式 (活动记录/浏览器历史点击)
 const currentItem = computed(() => ss.currentDisplayItem)
@@ -48,6 +49,7 @@ async function loadLive() {
   const data = await ss.loadLatest()
   if (data && data.id) {
     imgSrc.value = getScreenshotImage(data.id)
+    zoom.value = 1
   }
 }
 
@@ -55,6 +57,7 @@ function loadBrowseItem() {
   const item = currentItem.value
   if (item && item.screenshot_id) {
     imgSrc.value = getScreenshotImage(item.screenshot_id)
+    zoom.value = 1
   }
 }
 
@@ -62,12 +65,14 @@ function loadHistoryItem() {
   const item = ss.screenshotList[ss.currentIndex]
   if (item && item.id) {
     imgSrc.value = getScreenshotImage(item.id)
+    zoom.value = 1
   }
 }
 
 // 监听 overlay 打开
 watch(() => ss.liveOpen, (v) => {
   if (v) {
+    zoom.value = 1
     if (isBrowse.value) loadBrowseItem()
     else if (isHistory.value) loadHistoryItem()
     else loadLive()
@@ -78,6 +83,7 @@ watch(() => ss.liveOpen, (v) => {
 watch(() => ss.currentDisplayItem, (item) => {
   if (item && item.screenshot_id && ss.liveOpen) {
     imgSrc.value = getScreenshotImage(item.screenshot_id)
+    zoom.value = 1
   }
 }, { immediate: true })
 
@@ -90,7 +96,7 @@ watch(() => ss.currentIndex, () => {
 
 function close() {
   ss.liveOpen = false
-  ss.goLive()  // 关闭时回到实时模式
+  if (!ss.gridMode) ss.goLive()  // 关闭时回到实时模式 (如果网格没打开)
 }
 
 function goLive() {
@@ -115,10 +121,24 @@ function next() {
     ss.next()
   }
 }
+
+// 滚轮切换图片
+function onWheel(e) {
+  if (e.ctrlKey || e.metaKey) {
+    // Ctrl+滚轮: 缩放
+    e.preventDefault()
+    const delta = e.deltaY > 0 ? -0.1 : 0.1
+    zoom.value = Math.min(3, Math.max(0.3, zoom.value + delta))
+  } else if (showUI.value) {
+    // 普通滚轮: 切换图片
+    if (e.deltaY > 0) next()
+    else if (e.deltaY < 0) prev()
+  }
+}
 </script>
 
 <template>
-  <div class="live-overlay" :class="{ open: ss.liveOpen }" @click.self="close">
+  <div class="live-overlay" :class="{ open: ss.liveOpen }" @click.self="close" @wheel.prevent="onWheel">
     <div class="live-box">
       <div class="live-header">
         <span class="live-title">
@@ -128,6 +148,7 @@ function next() {
           <span class="agent-name">{{ agent.selectedAgent }}</span>
         </span>
         <div class="header-actions">
+          <span class="zoom-label" v-if="zoom !== 1">{{ Math.round(zoom * 100) }}%</span>
           <button v-if="showUI" class="live-btn" @click="goLive">
             <span class="live-dot-sm"></span> 实时
           </button>
@@ -138,7 +159,8 @@ function next() {
         </div>
       </div>
       <div class="live-body">
-        <img v-if="imgSrc" :src="imgSrc" class="live-img" :key="imgSrc" />
+        <img v-if="imgSrc" :src="imgSrc" class="live-img" :key="imgSrc"
+          :style="{ transform: `scale(${zoom})`, transition: 'transform .15s' }" />
         <div v-else class="placeholder"><span class="big">[ ]</span>暂无截图</div>
         <div class="mon-chips" v-if="agent.monitorTotal > 1 && !showUI">
           <button v-for="i in agent.monitorTotal" :key="i"
@@ -151,6 +173,10 @@ function next() {
         <div class="nav" v-if="showUI && (ss.displayItems.length > 1 || ss.screenshotList.length > 1)">
           <button class="nav-pill" @click="prev">◀ 上一个</button>
           <button class="nav-pill" @click="next">下一个 ▶</button>
+        </div>
+        <div class="wheel-hint" v-if="showUI">
+          <span>滚轮切换</span>
+          <span>Ctrl+滚轮缩放</span>
         </div>
       </div>
     </div>
@@ -184,6 +210,10 @@ function next() {
 .browse-tag { font-family: var(--font-mono); color: var(--purple); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
 .agent-name { color: var(--text-secondary); font-family: var(--font-mono); font-size: 11px; }
 .header-actions { display: flex; gap: 8px; align-items: center; }
+.zoom-label {
+  font-family: var(--font-mono); font-size: 10px; color: var(--amber);
+  padding: 2px 8px; background: rgba(251,191,36,.1); border-radius: 4px;
+}
 .live-btn {
   font-family: var(--font-mono); font-size: 10px; font-weight: 500;
   padding: 4px 12px; border: 1px solid rgba(74,222,128,.3); border-radius: 6px;
@@ -198,8 +228,8 @@ function next() {
   display: flex; align-items: center; gap: 4px;
 }
 .close-btn:hover { border-color: var(--red); color: var(--red); }
-.live-body { flex: 1; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.3); position: relative; }
-.live-img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.live-body { flex: 1; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.3); position: relative; overflow: hidden; }
+.live-img { max-width: 100%; max-height: 100%; object-fit: contain; transform-origin: center center; }
 .placeholder { text-align: center; color: var(--muted); }
 .placeholder .big { font-size: 64px; opacity: 0.1; display: block; margin-bottom: 12px; }
 .mon-chips { position: absolute; top: 12px; left: 16px; display: flex; gap: 6px; }
@@ -228,6 +258,11 @@ function next() {
   border-radius: 20px; color: var(--text-secondary); cursor: pointer; backdrop-filter: blur(8px); transition: all .15s;
 }
 .nav-pill:hover { background: rgba(255,255,255,0.14); color: var(--text); border-color: rgba(255,255,255,0.2); }
+.wheel-hint {
+  position: absolute; bottom: 16px; right: 16px;
+  display: flex; gap: 12px; font-family: var(--font-mono); font-size: 9px; color: var(--muted);
+  opacity: 0.6;
+}
 
 @keyframes pulse {
   0%, 100% { opacity: 1; }

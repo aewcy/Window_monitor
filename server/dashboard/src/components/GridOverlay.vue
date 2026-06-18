@@ -12,10 +12,23 @@ const scrollEl = ref(null)
 
 function close() { ss.gridMode = false }
 
+// 双击截图 → 打开 overlay
+function onDblClick(s) {
+  ss.screenshotList = ss.gridItems
+  ss.currentIndex = ss.gridItems.indexOf(s)
+  ss.liveMode = false
+  ss.liveOpen = true
+}
+
 watch(() => ss.gridMode, (v) => {
-  if (v && agent.selectedAgent) {
+  if (v && agent.selectedAgent && !ss.gridItems.length) {
+    // 没有预加载数据时才重新加载
     ss.resetGrid()
     ss.loadGrid(false)
+  }
+  if (!v) {
+    // 关闭网格时清除预加载数据，下次打开重新加载
+    ss.resetGrid()
   }
 })
 
@@ -99,7 +112,8 @@ function scrollTo(date) {
           </div>
           <div class="grid-container">
             <div v-for="s in g.items" :key="s.id"
-              class="grid-item" :class="{ selected: ss.gridSelected.has(s.id) }">
+              class="grid-item" :class="{ selected: ss.gridSelected.has(s.id) }"
+              @dblclick="onDblClick(s)">
               <input type="checkbox" class="grid-check"
                 :checked="ss.gridSelected.has(s.id)" @change="ss.toggleGridItem(s.id)">
               <button class="grid-delete" @click.stop="deleteOne(s.id)">×</button>

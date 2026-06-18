@@ -73,12 +73,13 @@ async function applyFilter() {
       dateFrom = `${selectedDate.value}T${String(selectedHour.value).padStart(2,'0')}:00:00`
       dateTo = `${selectedDate.value}T${String(selectedHour.value).padStart(2,'0')}:59:59`
     }
-    // 用后端日期筛选参数
+    // 加载筛选结果到网格视图
     const data = await api.getScreenshots(agent.selectedAgent, 2000, 0, null, dateFrom, dateTo)
-    ss.screenshotList = data
-    ss.currentIndex = 0
-    ss.liveMode = false
-    ss.liveOpen = true   // 打开 overlay 显示筛选结果
+    ss.gridItems = data
+    ss.gridOffset = data.length
+    ss.gridExhausted = true
+    ss.gridSelected = new Set()
+    ss.gridMode = true   // 打开网格视图
     open.value = false
   } finally { loading.value = false }
 }

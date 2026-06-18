@@ -44,7 +44,19 @@ onMounted(async () => {
 onUnmounted(stopAll)
 
 function onKey(e) {
-  if (e.key === 'Escape') { ss.liveOpen = false; ss.gridMode = false; theme.closePanel() }
+  // ESC 逐层退出: overlay → 网格 → 主题面板
+  if (e.key === 'Escape') {
+    if (ss.liveOpen) {
+      ss.liveOpen = false
+      if (!ss.gridMode) ss.goLive()  // 如果网格没打开，回到实时模式
+    } else if (ss.gridMode) {
+      ss.gridMode = false
+      ss.goLive()
+    } else {
+      theme.closePanel()
+    }
+    return
+  }
   if (e.key === 'l' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); ss.liveMode = !ss.liveMode }
   if (e.key === 'g' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); ss.gridMode = !ss.gridMode }
   if (e.key === 'r' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); refreshSlow() }
