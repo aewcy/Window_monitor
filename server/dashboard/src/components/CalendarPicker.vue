@@ -66,24 +66,15 @@ async function applyFilter() {
   if (!selectedDate.value) return
   loading.value = true
   try {
-    const agent2 = useAgentStore()
     let dateFrom = selectedDate.value
     let dateTo = selectedDate.value
     if (selectedHour.value !== null) {
       dateFrom = `${selectedDate.value} ${String(selectedHour.value).padStart(2,'0')}:00:00`
       dateTo = `${selectedDate.value} ${String(selectedHour.value).padStart(2,'0')}:59:59`
     }
-    // 直接用 API 加载截图列表
-    const data = await api.getScreenshots(agent2.selectedAgent, 2000, 0)
-    // 按日期筛选
-    const filtered = data.filter(s => {
-      const ts = s.timestamp || ''
-      if (selectedHour.value !== null) {
-        return ts >= dateFrom && ts <= dateTo
-      }
-      return ts.startsWith(selectedDate.value)
-    })
-    ss.screenshotList = filtered
+    // 用后端日期筛选参数
+    const data = await api.getScreenshots(agent.selectedAgent, 2000, 0, null, dateFrom, dateTo)
+    ss.screenshotList = data
     ss.currentIndex = 0
     ss.liveMode = false
     open.value = false

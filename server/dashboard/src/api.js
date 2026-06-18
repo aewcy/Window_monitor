@@ -21,9 +21,11 @@ export const getLatestScreenshot = (agent, monitor) => {
   if (monitor !== null && monitor !== undefined) url += `&monitor=${monitor}`
   return request(url)
 }
-export const getScreenshots = (agent, limit = 50, offset = 0, monitor = null) => {
+export const getScreenshots = (agent, limit = 50, offset = 0, monitor = null, dateFrom = null, dateTo = null) => {
   let url = `/screenshots?agent=${encodeURIComponent(agent)}&limit=${limit}&offset=${offset}`
   if (monitor !== null) url += `&monitor=${monitor}`
+  if (dateFrom) url += `&date_from=${encodeURIComponent(dateFrom)}`
+  if (dateTo) url += `&date_to=${encodeURIComponent(dateTo)}`
   return request(url)
 }
 export const getScreenshotImage = (id) => `/api/screenshots/image/${id}`
