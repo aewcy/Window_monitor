@@ -4,6 +4,7 @@ Agent 配置文件 - 运行在试验机（被监控机器）上
 """
 import os
 import sys
+import socket
 
 # ============================================
 # 平台检测
@@ -19,9 +20,14 @@ SERVER_PORT = int(os.environ.get("MONITOR_SERVER_PORT", "8899"))
 SERVER_URL = f"http://{SERVER_HOST}:{SERVER_PORT}"
 
 # ============================================
-# Agent 标识
+# Agent 标识 — 默认用主机名，天然唯一
 # ============================================
-AGENT_NAME = os.environ.get("AGENT_NAME", "试验机-01")
+def _get_default_agent_name():
+    """基于主机名生成默认 Agent 名称"""
+    hostname = socket.gethostname()
+    return hostname.split('.')[0]  # 去掉域名后缀
+
+AGENT_NAME = os.environ.get("AGENT_NAME", _get_default_agent_name())
 
 # ============================================
 # 采集间隔配置（秒）

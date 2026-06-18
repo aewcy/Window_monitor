@@ -182,6 +182,27 @@ def _get_idle_seconds():
     return time.time() - _last_activity_time
 
 
+def _resolve_agent_name(base_name: str) -> str:
+    """检查名称是否已被在线 Agent 使用，冲突时自动加后缀"""
+    try:
+        r = requests.get(f"{SERVER_URL}/api/agents", timeout=5)
+        if r.status_code == 200:
+            agents = r.json()
+            online_names = {a['name'] for a in agents if a['status'] == 'online'}
+            if base_name not in online_names:
+                return base_name
+            # 名称冲突，自动加后缀
+            suffix = 2
+            while f"{base_name}-{suffix}" in online_names:
+                suffix += 1
+            new_name = f"{base_name}-{suffix}"
+            print(f"  [!] 名称 '{base_name}' 已被占用，自动切换为: {new_name}")
+            return new_name
+    except Exception:
+        pass  # 服务端不可达时用原名
+    return base_name
+
+
 def main():
     global _server_interval
     platform = "Windows" if IS_WINDOWS else ("Linux" if IS_LINUX else "?")
@@ -197,12 +218,15 @@ def main():
             except Exception:
                 print("  [WARN] DPI 感知设置失败，多屏截图可能内容相同")
 
-    reporter = Reporter(SERVER_URL, AGENT_NAME)
+    # 解析 Agent 名称（检测冲突并自动加后缀）
+    agent_name = _resolve_agent_name(AGENT_NAME)
+
+    reporter = Reporter(SERVER_URL, agent_name)
 
     print("=" * 50)
     print(f"  Monitor Agent - 精简版")
     print(f"  平台: {platform}")
-    print(f"  名称: {AGENT_NAME}")
+    print(f"  名称: {agent_name}")
     print(f"  服务端: {SERVER_URL}")
     print(f"  截图/{SCREENSHOT_INTERVAL}s  窗口/{APP_TRACK_INTERVAL}s  浏览器/{BROWSER_HISTORY_INTERVAL}s")
     print("=" * 50)
@@ -221,7 +245,7 @@ def main():
 
     # 上报上线
     reporter._post("status", {
-        "agent_name": AGENT_NAME,
+        "agent_name": agent_name,
         "status": "online",
         "message": f"Agent started ({platform})",
     })
@@ -286,7 +310,7 @@ def main():
         while True:
             try:
                 r = requests.get(
-                    f"{SERVER_URL}/api/config?agent={AGENT_NAME}",
+                    f"{SERVER_URL}/api/config?agent={agent_name}",
                     timeout=5
                 )
                 if r.status_code == 200:
@@ -355,7 +379,7 @@ def main():
     except KeyboardInterrupt:
         print("\n  正在停止...")
         reporter._post("status", {
-            "agent_name": AGENT_NAME,
+            "agent_name": agent_name,
             "status": "offline",
             "message": "Agent stopped",
         })
