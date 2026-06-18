@@ -67,7 +67,7 @@ function New-Button($text, $x, $y, $w, $h, $color) {
     return $btn
 }
 
-function Refresh-Status {
+function UpdateStatus {
     $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
     if ($svc) {
         $statusLabel.Text = "Status: $($svc.Status) | StartType: $($svc.StartType)"
@@ -95,7 +95,7 @@ $installBtn.Add_Click({
     try {
         New-Service -Name $ServiceName -BinaryPathName $ExePath -DisplayName $DisplayName -Description "Monitor Agent - Screenshot, Activity, Browser History" -StartupType Automatic
         [System.Windows.Forms.MessageBox]::Show("Install OK!`n`nService: $DisplayName`nStartType: Automatic (boot on startup)", "Success", "OK", "Information")
-        Refresh-Status
+        UpdateStatus
     } catch {
         [System.Windows.Forms.MessageBox]::Show("Install failed: $_", "Error", "OK", "Error")
     }
@@ -108,7 +108,7 @@ $uninstallBtn.Add_Click({
             Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
             sc.exe delete $ServiceName | Out-Null
             [System.Windows.Forms.MessageBox]::Show("Uninstalled", "Success", "OK", "Information")
-            Refresh-Status
+            UpdateStatus
         } catch {
             [System.Windows.Forms.MessageBox]::Show("Uninstall failed: $_", "Error", "OK", "Error")
         }
@@ -117,9 +117,9 @@ $uninstallBtn.Add_Click({
 
 $startBtn.Add_Click({
     try {
-        Start-Service -Name $ServiceName
-        Start-Sleep -Seconds 1
-        Refresh-Status
+        sc.exe start $ServiceName | Out-Null
+        Start-Sleep -Seconds 2
+        UpdateStatus
     } catch {
         [System.Windows.Forms.MessageBox]::Show("Start failed: $_", "Error", "OK", "Error")
     }
@@ -127,13 +127,13 @@ $startBtn.Add_Click({
 
 $stopBtn.Add_Click({
     try {
-        Stop-Service -Name $ServiceName -Force
-        Start-Sleep -Seconds 1
-        Refresh-Status
+        sc.exe stop $ServiceName | Out-Null
+        Start-Sleep -Seconds 2
+        UpdateStatus
     } catch {
         [System.Windows.Forms.MessageBox]::Show("Stop failed: $_", "Error", "OK", "Error")
     }
 })
 
-Refresh-Status
+UpdateStatus
 [void]$form.ShowDialog()
