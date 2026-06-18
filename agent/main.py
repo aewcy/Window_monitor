@@ -203,7 +203,8 @@ def _resolve_agent_name(base_name: str) -> str:
     return base_name
 
 
-def main():
+def main(stop_event=None):
+    """主函数 — stop_event 可选，用于 Windows 服务接收停止信号"""
     global _server_interval
     platform = "Windows" if IS_WINDOWS else ("Linux" if IS_LINUX else "?")
 
@@ -240,8 +241,11 @@ def main():
             print(f"  [WARN] 服务端异常: {r.status_code}")
     except Exception as e:
         print(f"  [FAIL] 无法连接服务端: {e}")
-        if input("  继续? (y/n): ").lower() != 'y':
-            return
+        if stop_event is None:
+            # 命令行模式：询问是否继续
+            if input("  继续? (y/n): ").lower() != 'y':
+                return
+        # 服务模式：自动继续，后台重试
 
     # 上报上线
     reporter._post("status", {
@@ -373,10 +377,8 @@ def main():
 
     print("\n  Agent 运行中, Ctrl+C 停止\n")
 
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
+    def shutdown():
+        """统一关闭逻辑"""
         print("\n  正在停止...")
         reporter._post("status", {
             "agent_name": agent_name,
@@ -388,6 +390,20 @@ def main():
         browser.stop()
         keyboard_monitor.stop()
         print("  Agent 已停止")
+
+    try:
+        if stop_event:
+            # 服务模式：等待停止信号
+            import win32event
+            win32event.WaitForSingleObject(stop_event, win32event.INFINITE)
+        else:
+            # 命令行模式：等待 Ctrl+C
+            while True:
+                time.sleep(1)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        shutdown()
 
 
 if __name__ == "__main__":
