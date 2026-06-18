@@ -147,4 +147,4 @@ App events and browser history records are matched to screenshots by timestamp p
 - **Data sensitivity**: System captures screenshots, keyboard Enter events, and browser history. All data-handling changes need security review.
 - **Cross-platform**: Agent uses `pywin32` (Windows-only). Server runs in Docker (Linux). Code must respect `IS_WINDOWS`/`IS_LINUX` flags in `agent/config.py`.
 - **PyInstaller**: `agent/agent.spec` defines the .exe build. New Python dependencies must be added to `_HIDDEN_IMPORTS` in the spec file.
-- **Dashboard is one file**: `server/static/dashboard.html` contains all frontend code. No build step, no npm, no framework.
+- **Dashboard is Vue 3 + Vite**: Source in `server/dashboard/`, built to `server/static/dist/`. Fallback: `server/static/dashboard-v0-raycast.html` (旧版单文件).

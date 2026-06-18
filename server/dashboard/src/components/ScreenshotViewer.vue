@@ -8,12 +8,23 @@ const ss = useScreenshotStore()
 const agent = useAgentStore()
 const imgSrc = ref(null)
 
-// 浏览模式下的当前项 (timeline/browser overlay)
+// FPS 标签 (根据截图间隔显示)
+const fpsLabel = computed(() => {
+  const data = agent.selectedAgentData
+  if (!data || !data.screenshot_interval) return null
+  const iv = data.screenshot_interval
+  if (iv <= 0.5) return '4fps'
+  if (iv <= 2) return '1fps'
+  if (iv <= 10) return '1/5s'
+  return '1/min'
+})
+
+// 浏览模式下的当前项 (活动记录/浏览器历史叠加层)
 const currentItem = computed(() => ss.currentDisplayItem)
 const isBrowse = computed(() => ss.displaySource !== 'live')
-// 历史模式 (日历筛选)
+// 历史模式 (日历筛选后)
 const isHistory = computed(() => !ss.liveMode && ss.screenshotList.length > 0)
-// 需要显示 title 和导航的状态
+// 需要显示标题和导航的状态 (浏览模式或历史模式)
 const showBrowseUI = computed(() => isBrowse.value || isHistory.value)
 
 const sourceLabel = computed(() => {
@@ -139,6 +150,7 @@ function next() {
       <div class="live-body">
         <img v-if="imgSrc" :src="imgSrc" class="live-img" :key="imgSrc" />
         <div v-else class="placeholder"><span class="big">[ ]</span>暂无截图</div>
+        <div class="fps-badge" v-if="fpsLabel && !showBrowseUI">{{ fpsLabel }}</div>
         <div class="mon-chips" v-if="agent.monitorTotal > 1 && !showBrowseUI">
           <button v-for="i in agent.monitorTotal" :key="i"
             class="mon-chip" :class="{ active: agent.selectedMonitor === i-1 }"
@@ -227,6 +239,14 @@ function next() {
   border-radius: 20px; color: var(--text-secondary); cursor: pointer; backdrop-filter: blur(8px); transition: all .15s;
 }
 .nav-pill:hover { background: rgba(255,255,255,0.14); color: var(--text); border-color: rgba(255,255,255,0.2); }
+.fps-badge {
+  position: absolute; top: 12px; right: 16px;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+  padding: 3px 10px; border-radius: 12px;
+  background: rgba(0,0,0,0.6); color: var(--green);
+  border: 1px solid rgba(74,222,128,.2); backdrop-filter: blur(8px);
+  pointer-events: none;
+}
 
 @keyframes pulse {
   0%, 100% { opacity: 1; }
