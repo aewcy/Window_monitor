@@ -252,6 +252,14 @@ Agent 轮询动态配置。
 ### 安全
 - **CORS**: 可配置允许源
 - **响应头**: CSP / X-Frame-Options / X-Content-Type-Options
+- **CSP 策略**:
+  - `default-src 'self'`
+  - `script-src 'self' 'unsafe-inline'`
+  - `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`
+  - `font-src 'self' https://fonts.gstatic.com`
+  - `img-src 'self' data: blob:`
+  - `connect-src 'self'`
+  - `frame-ancestors 'none'`
 - **Agent 删除**: 拒绝含路径遍历字符的名称
 
 ## 环境变量
@@ -270,6 +278,8 @@ Agent 轮询动态配置。
 - **uvicorn** — ASGI 服务器
 - **SQLite** — 数据库 (WAL 模式)
 - **无 ORM** — 原生 sqlite3 + `?` 占位符
+- **Node.js 20** — Vue Dashboard 构建 (Docker 多阶段)
+- **Docker 多阶段构建**: Stage 1 (node:20-slim) 构建 Vue → Stage 2 (python:3.11-slim) 运行服务
 
 ## 待优化
 
@@ -278,3 +288,5 @@ Agent 轮询动态配置。
 - [ ] `except ValueError` 捕获不到 `timestamp=None` 的 `TypeError`
 - [ ] 文件写入和 DB INSERT 不是原子操作，失败时可能产生孤立文件
 - [ ] SQLite 连接永不关闭，长期运行可能泄漏文件描述符
+- [ ] `query_diagnostics` 正则筛选在 Python 侧过滤，数据量大时性能堪忧
+- [ ] `loadLogs` 每次 refreshAll 都请求，即使日志面板折叠
