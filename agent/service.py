@@ -20,6 +20,7 @@ class MonitorAgentService(win32serviceutil.ServiceFramework):
     _svc_name_ = "MonitorAgent"
     _svc_display_name_ = "Monitor Agent"
     _svc_description_ = "员工监控 Agent — 截图采集、活动记录、浏览器历史"
+    _svc_start_type_ = win32service.SERVICE_AUTO_START  # 开机自启
 
     def __init__(self, args):
         win32serviceutil.ServiceFramework.__init__(self, args)
