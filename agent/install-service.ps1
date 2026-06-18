@@ -1,10 +1,11 @@
-# Monitor Agent - Service Installer GUI (Non-blocking)
+# Monitor Agent - Installer GUI (Scheduled Task, runs at logon)
+# NOTE: Windows Service cannot access desktop (Session 0).
+#       Using Scheduled Task so agent runs in user session for screenshots.
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-$script:ServiceName = "MonitorAgent"
-$script:DisplayName = "Monitor Agent"
+$script:TaskName = "MonitorAgent"
 $script:ExePath = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) "monitor-agent.exe"
 
 # Check exe
@@ -46,7 +47,7 @@ $lbl.Location = New-Object System.Drawing.Point(20, 55)
 $form.Controls.Add($lbl)
 
 $lbl2 = New-Object System.Windows.Forms.Label
-$lbl2.Text = "Host: $env:COMPUTERNAME"
+$lbl2.Text = "Host: $env:COMPUTERNAME  |  Auto-start at logon"
 $lbl2.Font = New-Object System.Drawing.Font("Segoe UI", 8)
 $lbl2.ForeColor = [System.Drawing.Color]::FromArgb(100, 100, 100)
 $lbl2.AutoSize = $true
@@ -68,55 +69,72 @@ $b3 = New-Btn "Start" 200 80 ([System.Drawing.Color]::FromArgb(30, 100, 180))
 $b4 = New-Btn "Stop" 290 70 ([System.Drawing.Color]::FromArgb(120, 80, 30))
 $form.Controls.AddRange(@($b1, $b2, $b3, $b4))
 
-# Status refresh timer (non-blocking)
+# Status refresh timer
 $timer = New-Object System.Windows.Forms.Timer
 $timer.Interval = 2000
 $timer.Add_Tick({
-    $svc = Get-Service -Name $script:ServiceName -ErrorAction SilentlyContinue
-    if ($svc) {
-        $lbl.Text = "Status: $($svc.Status)  |  StartType: $($svc.StartType)"
+    $task = Get-ScheduledTask -TaskName $script:TaskName -ErrorAction SilentlyContinue
+    if ($task) {
+        $state = $task.State.ToString()
+        $lbl.Text = "Status: $state  |  Trigger: At Logon"
         $b1.Enabled = $false; $b2.Enabled = $true
-        $b3.Enabled = ($svc.Status -ne "Running"); $b4.Enabled = ($svc.Status -eq "Running")
+        $b3.Enabled = ($state -ne "Running"); $b4.Enabled = ($state -eq "Running")
     } else {
         $lbl.Text = "Not Installed"; $b1.Enabled = $true; $b2.Enabled = $false; $b3.Enabled = $false; $b4.Enabled = $false
     }
 })
 $timer.Start()
 
-# All actions run in background (non-blocking)
+# Install - create scheduled task (runs at logon, hidden window)
 $b1.Add_Click({
-    $lbl.Text = "Installing..."
-    Start-Job -ScriptBlock {
-        param($name, $display, $exe)
-        New-Service -Name $name -BinaryPathName $exe -DisplayName $display -StartupType Automatic
-    } -ArgumentList $script:ServiceName, $script:DisplayName, $script:ExePath | Out-Null
-})
-
-$b2.Add_Click({
-    $r = [System.Windows.Forms.MessageBox]::Show("Uninstall service?", "Confirm", "YesNo", "Question")
-    if ($r -eq "Yes") {
-        $lbl.Text = "Uninstalling..."
-        Start-Job -ScriptBlock {
-            param($name)
-            Stop-Service -Name $name -Force -ErrorAction SilentlyContinue
-            sc.exe delete $name | Out-Null
-        } -ArgumentList $script:ServiceName | Out-Null
+    try {
+        $action = New-ScheduledTaskAction -Execute $script:ExePath
+        $trigger = New-ScheduledTaskTrigger -AtLogOn
+        $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Days 365)
+        Register-ScheduledTask -TaskName $script:TaskName -Action $action -Trigger $trigger -Settings $settings -Description "Monitor Agent - auto start at logon" -Force | Out-Null
+        $lbl.Text = "Installed! Starts at logon."
+    } catch {
+        [System.Windows.Forms.MessageBox]::Show("Install failed: $_", "Error", "OK", "Error")
     }
 })
 
-$b3.Add_Click({
-    $lbl.Text = "Starting..."
-    Start-Job -ScriptBlock { param($name) sc.exe start $name | Out-Null } -ArgumentList $script:ServiceName | Out-Null
+# Uninstall
+$b2.Add_Click({
+    $r = [System.Windows.Forms.MessageBox]::Show("Uninstall Monitor Agent?", "Confirm", "YesNo", "Question")
+    if ($r -eq "Yes") {
+        try {
+            Stop-ScheduledTask -TaskName $script:TaskName -ErrorAction SilentlyContinue
+            Unregister-ScheduledTask -TaskName $script:TaskName -Confirm:$false
+            $lbl.Text = "Uninstalled"
+        } catch {
+            [System.Windows.Forms.MessageBox]::Show("Uninstall failed: $_", "Error", "OK", "Error")
+        }
+    }
 })
 
+# Start
+$b3.Add_Click({
+    try {
+        Start-ScheduledTask -TaskName $script:TaskName
+        $lbl.Text = "Starting..."
+    } catch {
+        [System.Windows.Forms.MessageBox]::Show("Start failed: $_", "Error", "OK", "Error")
+    }
+})
+
+# Stop
 $b4.Add_Click({
-    $lbl.Text = "Stopping..."
-    Start-Job -ScriptBlock { param($name) sc.exe stop $name | Out-Null } -ArgumentList $script:ServiceName | Out-Null
+    try {
+        Stop-ScheduledTask -TaskName $script:TaskName
+        $lbl.Text = "Stopping..."
+    } catch {
+        [System.Windows.Forms.MessageBox]::Show("Stop failed: $_", "Error", "OK", "Error")
+    }
 })
 
 # Initial status
-$svc = Get-Service -Name $script:ServiceName -ErrorAction SilentlyContinue
-if ($svc) { $lbl.Text = "Status: $($svc.Status)  |  StartType: $($svc.StartType)" }
+$task = Get-ScheduledTask -TaskName $script:TaskName -ErrorAction SilentlyContinue
+if ($task) { $lbl.Text = "Status: $($task.State)  |  Trigger: At Logon" }
 else { $lbl.Text = "Not Installed" }
 
 [void]$form.ShowDialog()
