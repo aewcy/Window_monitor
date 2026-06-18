@@ -39,6 +39,11 @@ onMounted(async () => {
   await agent.loadAgents()
   startHeartbeat()
   startSlow(refreshSlow, 5000)
+  document.addEventListener('keydown', onKey)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', onKey)
 })
 
 onUnmounted(stopAll)
@@ -64,7 +69,7 @@ function onKey(e) {
 </script>
 
 <template>
-  <div class="backdrop" @keydown="onKey" tabindex="0"></div>
+  <div class="backdrop"></div>
   <AppHeader />
   <AgentStrip />
   <div class="main">
