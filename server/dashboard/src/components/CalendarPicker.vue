@@ -73,10 +73,18 @@ async function applyFilter() {
       dateFrom = `${selectedDate.value}T${String(selectedHour.value).padStart(2,'0')}:00:00`
       dateTo = `${selectedDate.value}T${String(selectedHour.value).padStart(2,'0')}:59:59`
     }
-    // 加载筛选结果到网格视图
-    const data = await api.getScreenshots(agent.selectedAgent, 2000, 0, null, dateFrom, dateTo)
-    ss.gridItems = data
-    ss.gridOffset = data.length
+    // 分页加载全部筛选结果到网格视图
+    let allData = []
+    let offset = 0
+    const batchSize = 5000
+    while (true) {
+      const batch = await api.getScreenshots(agent.selectedAgent, batchSize, offset, null, dateFrom, dateTo)
+      allData = allData.concat(batch)
+      if (batch.length < batchSize) break
+      offset += batchSize
+    }
+    ss.gridItems = allData
+    ss.gridOffset = allData.length
     ss.gridExhausted = true
     ss.gridSelected = new Set()
     ss.gridMode = true   // 打开网格视图

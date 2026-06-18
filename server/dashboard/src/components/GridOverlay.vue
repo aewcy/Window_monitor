@@ -118,7 +118,7 @@ function scrollTo(date) {
                 :checked="ss.gridSelected.has(s.id)" @change="ss.toggleGridItem(s.id)">
               <button class="grid-delete" @click.stop="deleteOne(s.id)">×</button>
               <img :src="getScreenshotImage(s.id)" loading="lazy">
-              <div class="grid-time">{{ (s.timestamp||'').replace('T',' ').substring(11,16) }}</div>
+              <div class="grid-time">{{ (s.timestamp||'').replace('T',' ').substring(11,19) }}</div>
               <div class="grid-monitor" v-if="s.monitor_total > 1">屏{{ (s.monitor_index||0)+1 }}</div>
             </div>
           </div>
