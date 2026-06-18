@@ -110,7 +110,21 @@ watch(() => ss.screenshotList, (list) => {
 
 // 嵌入式卡片初始化: 加载最新截图
 onMounted(() => {
-  if (!isBrowse.value && !isHistory.value) {
+  if (!isBrowse.value && !isHistory.value && agent.selectedAgent) {
+    loadLive()
+  }
+})
+
+// 监听 Agent 切换: 自动加载最新截图 (仅嵌入式卡片)
+watch(() => agent.selectedAgent, (name) => {
+  if (name && !isBrowse.value && !isHistory.value && !ss.liveOpen) {
+    loadLive()
+  }
+})
+
+// 监听实时模式恢复: 重新加载最新截图
+watch(() => ss.liveMode, (live) => {
+  if (live && !ss.liveOpen && agent.selectedAgent) {
     loadLive()
   }
 })
