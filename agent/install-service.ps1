@@ -4,6 +4,7 @@ Add-Type -AssemblyName System.Drawing
 
 $script:TaskName = "MonitorAgent"
 $script:ExePath = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) "monitor-agent.exe"
+$script:VbsPath = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) "run-hidden.vbs"
 
 if (-not (Test-Path $script:ExePath)) {
     [System.Windows.Forms.MessageBox]::Show("monitor-agent.exe not found", "Error", "OK", "Error"); exit 1
@@ -80,7 +81,7 @@ function Update-Status {
 }
 
 $b1.Add_Click({
-    $r = schtasks /create /tn $script:TaskName /tr "`"$script:ExePath`"" /sc onlogon /f 2>&1
+    schtasks /create /tn $script:TaskName /tr "wscript.exe `"$script:VbsPath`"" /sc onlogon /f 2>&1 | Out-Null
     if ($LASTEXITCODE -eq 0) { $lbl.Text = "Installed!" } else { $lbl.Text = "Install failed" }
     Update-Status
 })
