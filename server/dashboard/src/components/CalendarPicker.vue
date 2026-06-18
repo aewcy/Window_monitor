@@ -66,11 +66,12 @@ async function applyFilter() {
   if (!selectedDate.value) return
   loading.value = true
   try {
-    let dateFrom = selectedDate.value
-    let dateTo = selectedDate.value
+    // 用 T 分隔符匹配数据库 ISO 格式
+    let dateFrom = `${selectedDate.value}T00:00:00`
+    let dateTo = `${selectedDate.value}T23:59:59`
     if (selectedHour.value !== null) {
-      dateFrom = `${selectedDate.value} ${String(selectedHour.value).padStart(2,'0')}:00:00`
-      dateTo = `${selectedDate.value} ${String(selectedHour.value).padStart(2,'0')}:59:59`
+      dateFrom = `${selectedDate.value}T${String(selectedHour.value).padStart(2,'0')}:00:00`
+      dateTo = `${selectedDate.value}T${String(selectedHour.value).padStart(2,'0')}:59:59`
     }
     // 用后端日期筛选参数
     const data = await api.getScreenshots(agent.selectedAgent, 2000, 0, null, dateFrom, dateTo)
