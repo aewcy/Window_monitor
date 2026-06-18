@@ -16,6 +16,7 @@ async function load() {
 function onClick(r, idx) {
   if (r.screenshot_id) {
     ss.browseBrowser(records.value, idx)
+    ss.liveOpen = true
   }
 }
 

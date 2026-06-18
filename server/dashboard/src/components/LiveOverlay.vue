@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { useScreenshotStore } from '../stores/screenshot'
 import { useAgentStore } from '../stores/agent'
 import { getScreenshotImage } from '../api'
@@ -8,16 +8,78 @@ const ss = useScreenshotStore()
 const agent = useAgentStore()
 const imgSrc = ref(null)
 
-async function load() {
+// 浏览模式下的当前项
+const currentItem = computed(() => ss.currentDisplayItem)
+const isBrowse = computed(() => ss.displaySource !== 'live')
+
+const sourceLabel = computed(() => {
+  if (ss.displaySource === 'timeline') return '活动'
+  if (ss.displaySource === 'browser') return '浏览'
+  return 'Live'
+})
+
+const itemIndex = computed(() => {
+  if (!isBrowse.value) return ''
+  return `${ss.displayIndex + 1}/${ss.displayItems.length}`
+})
+
+const itemTitle = computed(() => {
+  if (ss.displaySource === 'timeline' && currentItem.value) {
+    return `${currentItem.value.process_name} — ${currentItem.value.window_title}`
+  }
+  if (ss.displaySource === 'browser' && currentItem.value) {
+    return currentItem.value.title || currentItem.value.url
+  }
+  return ''
+})
+
+// 加载截图
+async function loadLive() {
   const data = await ss.loadLatest()
   if (data && data.id) {
     imgSrc.value = getScreenshotImage(data.id)
   }
 }
 
-watch(() => ss.liveOpen, (v) => { if (v) load() })
+function loadBrowseItem() {
+  const item = currentItem.value
+  if (item && item.screenshot_id) {
+    imgSrc.value = getScreenshotImage(item.screenshot_id)
+  }
+}
 
-function close() { ss.liveOpen = false }
+// 监听 overlay 打开
+watch(() => ss.liveOpen, (v) => {
+  if (v) {
+    if (isBrowse.value) loadBrowseItem()
+    else loadLive()
+  }
+})
+
+// 监听浏览模式下的当前项变化
+watch(() => ss.currentDisplayItem, (item) => {
+  if (item && item.screenshot_id && ss.liveOpen) {
+    imgSrc.value = getScreenshotImage(item.screenshot_id)
+  }
+}, { immediate: true })
+
+function close() {
+  ss.liveOpen = false
+  ss.goLive()  // 关闭时回到实时模式
+}
+
+function goLive() {
+  ss.goLive()
+  loadLive()
+}
+
+function prev() {
+  ss.prev()
+}
+
+function next() {
+  ss.next()
+}
 </script>
 
 <template>
@@ -25,22 +87,35 @@ function close() { ss.liveOpen = false }
     <div class="live-box">
       <div class="live-header">
         <span class="live-title">
-          <span class="live-dot"></span>
-          <span class="live-text">Live</span>
+          <span v-if="!isBrowse" class="live-dot"></span>
+          <span v-if="!isBrowse" class="live-text">Live</span>
+          <span v-else class="browse-tag">{{ sourceLabel }} {{ itemIndex }}</span>
           <span class="agent-name">{{ agent.selectedAgent }}</span>
         </span>
-        <button class="close-btn" @click="close">
-          <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><line x1="2" y1="2" x2="14" y2="14"/><line x1="14" y1="2" x2="2" y2="14"/></svg>
-          关闭
-        </button>
+        <div class="header-actions">
+          <button v-if="isBrowse" class="live-btn" @click="goLive">
+            <span class="live-dot-sm"></span> 实时
+          </button>
+          <button class="close-btn" @click="close">
+            <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><line x1="2" y1="2" x2="14" y2="14"/><line x1="14" y1="2" x2="2" y2="14"/></svg>
+            关闭
+          </button>
+        </div>
       </div>
       <div class="live-body">
         <img v-if="imgSrc" :src="imgSrc" class="live-img" :key="imgSrc" />
-        <div v-else class="placeholder"><span class="big">[ ]</span>实时截图画面</div>
-        <div class="mon-chips" v-if="agent.monitorTotal > 1">
+        <div v-else class="placeholder"><span class="big">[ ]</span>暂无截图</div>
+        <div class="mon-chips" v-if="agent.monitorTotal > 1 && !isBrowse">
           <button v-for="i in agent.monitorTotal" :key="i"
             class="mon-chip" :class="{ active: agent.selectedMonitor === i-1 }"
             @click="agent.selectMonitor(i-1)">屏{{ i }}</button>
+        </div>
+        <div class="item-title" v-if="itemTitle">
+          <span class="title-text">{{ itemTitle }}</span>
+        </div>
+        <div class="nav" v-if="isBrowse && ss.displayItems.length > 1">
+          <button class="nav-pill" @click="prev">◀ 上一个</button>
+          <button class="nav-pill" @click="next">下一个 ▶</button>
         </div>
       </div>
     </div>
@@ -69,8 +144,18 @@ function close() { ss.liveOpen = false }
 }
 .live-title { font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: pulse 1.5s infinite; }
+.live-dot-sm { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse 1.5s infinite; }
 .live-text { color: var(--green); text-transform: uppercase; letter-spacing: .06em; font-size: 10px; font-weight: 700; }
+.browse-tag { font-family: var(--font-mono); color: var(--purple); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
 .agent-name { color: var(--text-secondary); font-family: var(--font-mono); font-size: 11px; }
+.header-actions { display: flex; gap: 8px; align-items: center; }
+.live-btn {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 500;
+  padding: 4px 12px; border: 1px solid rgba(74,222,128,.3); border-radius: 6px;
+  background: rgba(74,222,128,.08); color: var(--green); cursor: pointer; transition: all .15s;
+  display: flex; align-items: center; gap: 6px;
+}
+.live-btn:hover { background: rgba(74,222,128,.15); border-color: var(--green); }
 .close-btn {
   font-family: var(--font-mono); font-size: 10px; font-weight: 500;
   padding: 4px 12px; border: 1px solid var(--hairline); border-radius: 6px;
@@ -90,4 +175,27 @@ function close() { ss.liveOpen = false }
 }
 .mon-chip:hover { border-color: var(--blue); color: var(--blue); }
 .mon-chip.active { border-color: var(--blue); color: var(--blue); background: rgba(96,165,250,.15); }
+.item-title {
+  position: absolute; bottom: 56px; left: 50%; transform: translateX(-50%);
+  max-width: 80%; text-align: center;
+}
+.title-text {
+  font-family: var(--font-mono); font-size: 12px; font-weight: 500;
+  padding: 5px 16px; background: rgba(0,0,0,0.65); border: 1px solid var(--hairline);
+  border-radius: 20px; color: var(--text-secondary);
+  backdrop-filter: blur(8px); display: inline-block;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.nav { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; }
+.nav-pill {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+  padding: 6px 18px; background: rgba(255,255,255,0.08); border: 1px solid var(--hairline);
+  border-radius: 20px; color: var(--text-secondary); cursor: pointer; backdrop-filter: blur(8px); transition: all .15s;
+}
+.nav-pill:hover { background: rgba(255,255,255,0.14); color: var(--text); border-color: rgba(255,255,255,0.2); }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
 </style>

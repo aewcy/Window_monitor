@@ -16,6 +16,7 @@ async function load() {
 function onClick(e, idx) {
   if (e.screenshot_id) {
     ss.browseTimeline(events.value, idx)
+    ss.liveOpen = true
   }
 }
 
