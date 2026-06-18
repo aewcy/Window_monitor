@@ -83,16 +83,16 @@ watch(() => ss.currentDisplayItem, (item) => {
   }
 }, { immediate: true })
 
-// 监听历史模式下的当前截图变化 (日历筛选)
-watch([currentHistoryItem, () => ss.liveOpen], ([item, open]) => {
-  if (open && isHistory.value && !isBrowse.value && item && item.id) {
+// 监听历史模式下的当前截图变化 (日历筛选，同时支持嵌入式卡片和 overlay)
+watch([currentHistoryItem, isHistory], ([item, hist]) => {
+  if (hist && !isBrowse.value && item && item.id) {
     imgSrc.value = getScreenshotImage(item.id)
   }
 })
 
 // 监听日历筛选结果 (screenshotList 变化时，自动显示第一张)
 watch(() => ss.screenshotList, (list) => {
-  if (list.length && !isBrowse.value && ss.liveOpen) {
+  if (list.length && !isBrowse.value) {
     loadHistoryItem()
   }
 })
