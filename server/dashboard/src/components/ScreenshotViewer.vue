@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, onMounted } from 'vue'
 import { useScreenshotStore } from '../stores/screenshot'
 import { useAgentStore } from '../stores/agent'
 import { getScreenshotImage } from '../api'
@@ -105,6 +105,13 @@ watch([currentHistoryItem, isHistory], ([item, hist]) => {
 watch(() => ss.screenshotList, (list) => {
   if (list.length && !isBrowse.value) {
     loadHistoryItem()
+  }
+})
+
+// 嵌入式卡片初始化: 加载最新截图
+onMounted(() => {
+  if (!isBrowse.value && !isHistory.value) {
+    loadLive()
   }
 })
 
