@@ -97,14 +97,17 @@ function toggle() {
   if (open.value) loadDates()
 }
 
-// 点击外部关闭
+// 点击外部关闭 (用 nextTick 延迟注册，避免当前点击事件触发)
 function onDocClick(e) {
   if (!e.target.closest('.cal-wrap')) open.value = false
 }
 
 watch(open, v => {
-  if (v) document.addEventListener('click', onDocClick, { capture: true })
-  else document.removeEventListener('click', onDocClick, { capture: true })
+  if (v) {
+    setTimeout(() => document.addEventListener('click', onDocClick), 0)
+  } else {
+    document.removeEventListener('click', onDocClick)
+  }
 })
 </script>
 
