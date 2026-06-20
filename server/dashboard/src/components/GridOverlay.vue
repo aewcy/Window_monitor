@@ -35,7 +35,8 @@ watch(() => ss.gridMode, (v) => {
 function onScroll(e) {
   const el = e.target
   if (ss.gridLoading || ss.gridExhausted) return
-  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 100) {
+  // 距底部 200px 时预加载，确保滚轮滚动流畅
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 200) {
     ss.loadGrid(true)
   }
 }

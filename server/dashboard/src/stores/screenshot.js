@@ -104,7 +104,8 @@ export const useScreenshotStore = defineStore('screenshot', () => {
         gridExhausted.value = false
         gridSelected.value = new Set()
       }
-      if (data.length < BATCH) gridExhausted.value = true
+      // 只有真正没有数据时才标记耗尽（不再因 partial batch 停止）
+      if (data.length === 0) gridExhausted.value = true
       gridOffset.value += data.length
       gridItems.value = [...gridItems.value, ...data]
     } finally {
