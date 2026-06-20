@@ -135,22 +135,58 @@ def init_db():
     except sqlite3.OperationalError:
         pass  # 列已存在
 
+    # 向前兼容迁移: 清理 agents 表重复记录 + 确保 UNIQUE 约束
+    # 旧数据库可能在添加 UNIQUE 约束前创建，导致 ON CONFLICT 失效
+    try:
+        dupes = db.execute(
+            "SELECT name, COUNT(*) as cnt FROM agents GROUP BY name HAVING cnt > 1"
+        ).fetchall()
+        if dupes:
+            print(f"[DB] 发现 {len(dupes)} 个重复 Agent 名称，正在清理...")
+            for row in dupes:
+                agent_name = row["name"]
+                # 保留 id 最小的（最早的记录），删除其余
+                keep = db.execute(
+                    "SELECT MIN(id) FROM agents WHERE name = ?", (agent_name,)
+                ).fetchone()[0]
+                deleted = db.execute(
+                    "DELETE FROM agents WHERE name = ? AND id != ?",
+                    (agent_name, keep)
+                ).rowcount
+                print(f"  [DB] Agent '{agent_name}': 保留 id={keep}, 删除 {deleted} 条重复")
+            db.commit()
+        # 尝试创建唯一索引（如果不存在）
+        db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_agents_name ON agents(name)")
+        db.commit()
+    except sqlite3.OperationalError as e:
+        print(f"[DB] Agent 去重迁移异常: {e}")
+
 
 # ============================================
 # Agent 管理
 # ============================================
 
 def upsert_agent(name: str, status: str = "online", message: str = ""):
+    name = name.strip()
+    if not name:
+        return
     db = get_db()
-    db.execute(
-        """INSERT INTO agents (name, status, last_seen, message)
-           VALUES (?, ?, datetime('now', 'localtime'), ?)
-           ON CONFLICT(name) DO UPDATE SET
-             status=excluded.status,
-             last_seen=excluded.last_seen,
-             message=excluded.message""",
-        (name, status, message)
-    )
+    try:
+        db.execute(
+            """INSERT INTO agents (name, status, last_seen, message)
+               VALUES (?, ?, datetime('now', 'localtime'), ?)
+               ON CONFLICT(name) DO UPDATE SET
+                 status=excluded.status,
+                 last_seen=excluded.last_seen,
+                 message=excluded.message""",
+            (name, status, message)
+        )
+    except sqlite3.IntegrityError:
+        # 并发 INSERT 竞态兜底：另一个线程先 INSERT 成功，改为 UPDATE
+        db.execute(
+            "UPDATE agents SET status=?, last_seen=datetime('now','localtime'), message=? WHERE name=?",
+            (status, message, name)
+        )
     db.commit()
 
 
