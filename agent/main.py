@@ -346,19 +346,20 @@ def main(stop_event=None):
             with _state_lock:
                 srv_interval = _server_interval
 
-            if idle_sec < ACTIVE_THRESHOLD:
+            # LIVE 模式 (观察者存在): 所有闲置级别都降到 srv_interval，除非 ACTIVE 更快
+            if srv_interval <= 1.5 and idle_sec >= ACTIVE_THRESHOLD:
+                target = srv_interval
+            elif idle_sec < ACTIVE_THRESHOLD:
                 target = ACTIVE_INTERVAL
             elif idle_sec < LIGHT_IDLE_THRESHOLD:
                 target = LIGHT_IDLE_INTERVAL
             elif idle_sec < DEEP_IDLE_THRESHOLD:
-                # 深度闲置 — 但观察者存在时升到 1s
-                target = srv_interval if srv_interval <= 1.5 else DEEP_IDLE_INTERVAL
+                target = DEEP_IDLE_INTERVAL
             else:
-                # 极深闲置 — 观察者存在时也升到 1s
-                target = srv_interval if srv_interval <= 1.5 else VERY_DEEP_IDLE_INTERVAL
+                target = VERY_DEEP_IDLE_INTERVAL
 
             if target != last_interval:
-                screenshot.interval = target
+                screenshot.set_interval(target)
                 if idle_sec < ACTIVE_THRESHOLD:
                     mode = f"ACTIVE ({idle_sec:.0f}s 空闲)"
                 elif target <= 1.5:

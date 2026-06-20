@@ -9,6 +9,7 @@ import io
 import base64
 import ctypes
 import threading
+import queue
 from ctypes import wintypes
 from datetime import datetime
 from PIL import Image, ImageGrab
@@ -65,7 +66,7 @@ def _get_monitors_win32() -> list[dict]:
 
 
 class ScreenCapture:
-    """定时屏幕截图采集器 — 全桌面捕获 + 逐屏裁切"""
+    """定时屏幕截图采集器 — 全桌面捕获 + 逐屏裁切 + 异步上传"""
 
     def __init__(self, interval: int = 30):
         self.interval = interval
@@ -75,9 +76,33 @@ class ScreenCapture:
         self._capture_lock = threading.Lock()
         self.monitor_count = 1
         self._virtual_bounds = None  # (left, top, width, height) 缓存
+        # 可中断 sleep: 频率切换时立即唤醒
+        self._wake = threading.Event()
+        # 异步上传队列: 采集不阻塞于上传
+        self._upload_queue = queue.Queue(maxsize=200)
+        self._upload_thread = None
 
     def add_listener(self, callback):
         self._listeners.append(callback)
+
+    def set_interval(self, value: float):
+        """设置截图间隔并唤醒采集循环，使频率切换立即生效"""
+        self.interval = value
+        self._wake.set()
+
+    def _upload_worker(self):
+        """异步上传线程: 从队列取截图数据，串行调用 listeners"""
+        while self._running:
+            try:
+                data = self._upload_queue.get(timeout=1)
+            except queue.Empty:
+                continue
+            for cb in self._listeners:
+                try:
+                    cb(data)
+                except Exception as e:
+                    print(f"[ScreenUpload] 上传异常: {e}")
+            self._upload_queue.task_done()
 
     def _capture_all(self) -> list:
         """全虚拟桌面一次捕获 → 按显示器矩形裁切 → 返回每屏数据"""
@@ -201,14 +226,26 @@ class ScreenCapture:
         ]
 
     def _loop(self):
+        """采集循环 — 时间补偿 + 可中断 sleep，不阻塞于上传"""
+        next_time = time.monotonic()
         while self._running:
+            # 采集 → 放入上传队列（非阻塞）
             for data in self.capture_once():
-                for cb in self._listeners:
-                    try:
-                        cb(data)
-                    except Exception as e:
-                        print(f"[ScreenCapture] 回调异常: {e}")
-            time.sleep(self.interval)
+                try:
+                    self._upload_queue.put_nowait(data)
+                except queue.Full:
+                    print("[ScreenCapture] 上传队列已满，丢弃本帧")
+
+            # 时间补偿: 确保平均频率准确
+            next_time += self.interval
+            remaining = next_time - time.monotonic()
+            if remaining < 0:
+                # 已经超时，重置基准避免追赶
+                next_time = time.monotonic()
+                remaining = self.interval
+            # 可中断 sleep: set_interval() 调用 _wake.set() 会立即唤醒
+            self._wake.wait(timeout=remaining)
+            self._wake.clear()
 
     def start(self):
         if self._running:
@@ -216,10 +253,14 @@ class ScreenCapture:
         self._running = True
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
-        print(f"[ScreenCapture] 已启动，间隔 {self.interval}s")
+        self._upload_thread = threading.Thread(target=self._upload_worker, daemon=True)
+        self._upload_thread.start()
+        print(f"[ScreenCapture] 已启动，间隔 {self.interval}s (异步上传)")
 
     def stop(self):
         self._running = False
         if self._thread:
             self._thread.join(timeout=5)
+        if self._upload_thread:
+            self._upload_thread.join(timeout=5)
         print("[ScreenCapture] 已停止")
