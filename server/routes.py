@@ -70,6 +70,24 @@ async def agent_config(agent: str = Query("unknown")):
 # 数据接收 (Agent -> Server)
 # ============================================
 
+@router.post("/register")
+async def register_agent(data: dict):
+    """原子注册 — 解决多 Agent 同时注册同名冲突"""
+    desired = (data.get("agent_name") or "unknown").strip()
+    agents = get_agents()
+    online_names = {a['name'] for a in agents if a['status'] == 'online'}
+    # 检查名称是否被其他 Agent 占用
+    if desired in online_names:
+        suffix = 2
+        while f"{desired}-{suffix}" in online_names:
+            suffix += 1
+        resolved = f"{desired}-{suffix}"
+    else:
+        resolved = desired
+    upsert_agent(resolved, "online")
+    return {"status": "ok", "agent_name": resolved}
+
+
 @router.post("/heartbeat")
 async def heartbeat(data: dict):
     """接收 Agent 心跳"""

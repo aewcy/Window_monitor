@@ -6,6 +6,7 @@ import os
 import time
 import sqlite3
 import shutil
+import tempfile
 import threading
 from datetime import datetime, timedelta
 
@@ -32,7 +33,9 @@ class BrowserHistoryCollector:
         try:
             if not os.path.exists(db_path):
                 return None
-            tmp_path = db_path + f".tmp_{os.getpid()}"
+            # 使用 tempfile 生成唯一临时文件名，避免 PID 碰撞；崩溃时自动清理
+            fd, tmp_path = tempfile.mkstemp(suffix=".db", prefix="browser_hist_")
+            os.close(fd)
             shutil.copy2(db_path, tmp_path)
             return tmp_path
         except Exception as e:

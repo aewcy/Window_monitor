@@ -186,21 +186,15 @@ def _get_idle_seconds():
 
 
 def _resolve_agent_name(base_name: str) -> str:
-    """检查名称是否已被在线 Agent 使用，冲突时自动加后缀"""
+    """原子注册 — 服务端检查名称冲突并返回已解析的名称，避免竞态"""
     try:
-        r = requests.get(f"{SERVER_URL}/api/agents", timeout=5)
+        r = requests.post(f"{SERVER_URL}/api/register",
+                          json={"agent_name": base_name}, timeout=5)
         if r.status_code == 200:
-            agents = r.json()
-            online_names = {a['name'] for a in agents if a['status'] == 'online'}
-            if base_name not in online_names:
-                return base_name
-            # 名称冲突，自动加后缀
-            suffix = 2
-            while f"{base_name}-{suffix}" in online_names:
-                suffix += 1
-            new_name = f"{base_name}-{suffix}"
-            print(f"  [!] 名称 '{base_name}' 已被占用，自动切换为: {new_name}")
-            return new_name
+            resolved = r.json().get("agent_name", base_name)
+            if resolved != base_name:
+                print(f"  [!] 名称 '{base_name}' 已被占用，自动切换为: {resolved}")
+            return resolved
     except Exception:
         pass  # 服务端不可达时用原名
     return base_name
