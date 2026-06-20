@@ -204,7 +204,10 @@ def delete_agent(name: str) -> dict | None:
     cursor = db.execute("DELETE FROM browser_history WHERE agent_name = ?", (name,))
     result["deleted"]["browser_history"] = cursor.rowcount
 
-    # 5. 删除 Agent 自身
+    # 5. 删除诊断日志（外键约束，必须在删除 Agent 之前）
+    db.execute("DELETE FROM diagnostic_logs WHERE agent_name = ?", (name,))
+
+    # 6. 删除 Agent 自身
     db.execute("DELETE FROM agents WHERE name = ?", (name,))
     db.commit()
 
