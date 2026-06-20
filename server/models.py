@@ -171,7 +171,8 @@ def delete_agent(name: str) -> dict | None:
     import shutil
 
     # 安全检查：拒绝含路径遍历字符的恶意 agent 名
-    if not name or not re.match(r'^[a-zA-Z0-9_.\-]+$', name):
+    # 允许中文、英文、数字、下划线、点、连字符、空格
+    if not name or not re.match(r'^[a-zA-Z0-9_.\-一-鿿\s]+$', name):
         print(f"[DB] 拒绝非法 agent 名称: {repr(name)}")
         return None
 
