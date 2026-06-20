@@ -136,14 +136,16 @@ class Reporter:
 # ============================================
 # 自适应截图频率 — 全局状态
 # ============================================
-_last_activity_time = time.time()          # 最后一次用户活动时间
+_state_lock = threading.Lock()               # 保护以下两个跨线程共享变量
+_last_activity_time = time.time()            # 最后一次用户活动时间
 _server_interval = SCREENSHOT_INTERVAL       # 服务端下发的截图间隔
 
 
 def record_activity():
     """记录用户活动时间戳，供自适应频率控制器使用"""
     global _last_activity_time
-    _last_activity_time = time.time()
+    with _state_lock:
+        _last_activity_time = time.time()
 
 
 def _start_activity_monitor():
@@ -179,7 +181,8 @@ def _start_activity_monitor():
 
 def _get_idle_seconds():
     """默认: 使用 _last_activity_time 推算（兜底）"""
-    return time.time() - _last_activity_time
+    with _state_lock:
+        return time.time() - _last_activity_time
 
 
 def _resolve_agent_name(base_name: str) -> str:
@@ -320,10 +323,11 @@ def main(stop_event=None):
                 if r.status_code == 200:
                     cfg = r.json()
                     new_interval = cfg.get("screenshot_interval", SCREENSHOT_INTERVAL)
-                    if new_interval != _server_interval:
-                        _server_interval = new_interval
-                        status = "LIVE" if new_interval <= 1.5 else "IDLE"
-                        print(f"  [>>] 观察状态: {status}  服务端间隔: {new_interval}s")
+                    with _state_lock:
+                        if new_interval != _server_interval:
+                            _server_interval = new_interval
+                            status = "LIVE" if new_interval <= 1.5 else "IDLE"
+                            print(f"  [>>] 观察状态: {status}  服务端间隔: {new_interval}s")
             except Exception:
                 pass
             time.sleep(3)
@@ -344,6 +348,9 @@ def main(stop_event=None):
 
         while True:
             idle_sec = _get_idle_seconds()
+            # 快照服务端间隔，减少持锁时间
+            with _state_lock:
+                srv_interval = _server_interval
 
             if idle_sec < ACTIVE_THRESHOLD:
                 target = ACTIVE_INTERVAL
@@ -351,10 +358,10 @@ def main(stop_event=None):
                 target = LIGHT_IDLE_INTERVAL
             elif idle_sec < DEEP_IDLE_THRESHOLD:
                 # 深度闲置 — 但观察者存在时升到 1s
-                target = _server_interval if _server_interval <= 1.5 else DEEP_IDLE_INTERVAL
+                target = srv_interval if srv_interval <= 1.5 else DEEP_IDLE_INTERVAL
             else:
                 # 极深闲置 — 观察者存在时也升到 1s
-                target = _server_interval if _server_interval <= 1.5 else VERY_DEEP_IDLE_INTERVAL
+                target = srv_interval if srv_interval <= 1.5 else VERY_DEEP_IDLE_INTERVAL
 
             if target != last_interval:
                 screenshot.interval = target
