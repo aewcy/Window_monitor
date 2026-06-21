@@ -387,12 +387,12 @@ def _setup_background_logging():
 
 
 def ensure_switch_to_background():
-    """如果已注册计划任务，触发后台运行并退出当前命令行实例
+    """将当前前台进程切换为后台运行
 
     设计:
-    - .exe 运行 → schtasks /Run 触发计划任务（通过 run-hidden.vbs 无窗口启动）
-    - 源码运行 → 直接启动 pythonw.exe 后台进程（无控制台窗口）
-    - 后台进程带 --background 标志，避免无限 spawn
+    - .exe 运行 → 直接用 CREATE_NO_WINDOW 启动新 .exe 进程（带 --background 标志）
+    - 源码运行 → 用 pythonw.exe 启动新进程（带 --background 标志）
+    - 不依赖计划任务和 VBS 文件，避免路径失效问题
     """
     if not IS_WINDOWS:
         return
@@ -401,9 +401,8 @@ def ensure_switch_to_background():
     if _is_running_in_background():
         return
 
+    # 计划任务已存在 → 说明不是首次运行，切换到后台
     task_name = "MonitorAgent"
-
-    # 检查计划任务是否存在
     try:
         result = subprocess.run(
             ["schtasks.exe", "/Query", "/TN", task_name],
@@ -411,21 +410,20 @@ def ensure_switch_to_background():
             creationflags=0x08000000
         )
         if result.returncode != 0:
-            return  # 任务不存在，首次运行，继续前台执行
+            return  # 任务不存在 = 首次运行，继续前台执行
     except FileNotFoundError:
         return
 
-    # 计划任务已存在 → 触发后台运行并退出当前实例
+    # 触发后台运行并退出当前实例（直接启动新进程，不依赖 VBS）
     try:
         if getattr(sys, 'frozen', False):
-            # .exe 运行 → 通过计划任务启动
-            subprocess.run(
-                ["schtasks.exe", "/Run", "/TN", task_name],
-                capture_output=True, text=True,
-                creationflags=0x08000000
+            # .exe 运行 → 直接启动新 .exe 进程（无窗口）
+            subprocess.Popen(
+                [sys.executable, "--background"],
+                creationflags=0x08000000  # CREATE_NO_WINDOW
             )
         else:
-            # 源码运行 → 直接启动 pythonw.exe 后台进程（带 --background 标志）
+            # 源码运行 → 用 pythonw.exe 启动新进程
             script_path = os.path.abspath(__file__)
             python_dir = os.path.dirname(sys.executable)
             pythonw = os.path.join(python_dir, "pythonw.exe")
