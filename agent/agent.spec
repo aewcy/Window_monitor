@@ -38,7 +38,7 @@ _EXCLUDES = [
     'tkinter', 'matplotlib', 'numpy', 'scipy', 'pandas',
     'jedi', 'IPython', 'PyQt5', 'PySide2', 'wx',
     'notebook', 'tornado', 'sqlalchemy', 'alembic',
-    'pytest', 'setuptools', 'pip', 'wheel', 'distutils',
+    'pytest', 'setuptools', 'pip', 'wheel',
     'lib2to3', 'multiprocessing',
 ]
 
