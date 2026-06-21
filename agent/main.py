@@ -3,8 +3,10 @@ Agent 主程序 - 精简版
 协调采集模块，数据上报服务端
 """
 import sys
+import os
 import time
 import json
+import subprocess
 import threading
 
 import requests
@@ -122,11 +124,14 @@ class Reporter:
         if ok:
             print(f"  [OK] Enter事件 {data.get('display_name', '?')}")
 
-    def heartbeat(self, screenshot_interval: float = 0):
-        self._post("heartbeat", {
+    def heartbeat(self, screenshot_interval: float = 0, ip: str = ""):
+        data = {
             "agent_name": self.agent,
             "screenshot_interval": screenshot_interval,
-        })
+        }
+        if ip:
+            data["ip"] = ip
+        self._post("heartbeat", data)
 
 
 # ============================================
@@ -185,6 +190,66 @@ def _get_idle_seconds():
         return time.time() - _last_activity_time
 
 
+def ensure_scheduled_task():
+    """检查并注册 Windows 计划任务（开机自启）"""
+    if not IS_WINDOWS:
+        return
+
+    task_name = "MonitorAgent"
+
+    # 检查是否已存在
+    try:
+        result = subprocess.run(
+            ["schtasks.exe", "/Query", "/TN", task_name],
+            capture_output=True, text=True,
+            creationflags=0x08000000  # CREATE_NO_WINDOW
+        )
+        if result.returncode == 0:
+            return  # 已注册，跳过
+    except FileNotFoundError:
+        return  # schtasks.exe 不存在
+
+    # 获取当前 exe 路径
+    if getattr(sys, 'frozen', False):
+        exe_path = sys.executable
+    else:
+        exe_path = os.path.abspath(__file__)
+
+    exe_dir = os.path.dirname(exe_path)
+    vbs_path = os.path.join(exe_dir, "run-hidden.vbs")
+
+    # 创建 run-hidden.vbs（如果不存在）
+    if not os.path.exists(vbs_path):
+        try:
+            with open(vbs_path, 'w', encoding='utf-8') as f:
+                f.write('Set WshShell = CreateObject("WScript.Shell")\n')
+                f.write(f'WshShell.Run """{exe_path}""", 0, False\n')
+        except OSError:
+            pass
+
+    # 注册计划任务（需要管理员权限）
+    try:
+        result = subprocess.run(
+            [
+                "schtasks.exe", "/Create",
+                "/TN", task_name,
+                "/TR", f'wscript.exe "{vbs_path}"',
+                "/SC", "ONLOGON",
+                "/RL", "HIGHEST",
+                "/F",
+            ],
+            capture_output=True, text=True,
+            creationflags=0x08000000  # CREATE_NO_WINDOW
+        )
+        if result.returncode == 0:
+            print(f"  [✓] 已注册计划任务: {task_name}")
+        else:
+            print(f"  [!] 注册计划任务失败（可能需要管理员权限）: {result.stderr.strip()}")
+            print(f"  [!] 提示: 右键以管理员身份运行可完成注册")
+    except Exception as e:
+        print(f"  [!] 注册计划任务异常: {e}")
+
+
 def _resolve_agent_name(base_name: str) -> str:
     """原子注册 — 服务端检查名称冲突并返回已解析的名称，避免竞态"""
     try:
@@ -216,8 +281,22 @@ def main(stop_event=None):
             except Exception:
                 print("  [WARN] DPI 感知设置失败，多屏截图可能内容相同")
 
+    # 自动注册计划任务（首次运行）
+    try:
+        ensure_scheduled_task()
+    except Exception as e:
+        print(f"  [!] 计划任务注册跳过: {e}")
+
     # 解析 Agent 名称（检测冲突并自动加后缀）
     agent_name = _resolve_agent_name(AGENT_NAME)
+
+    # 获取本机 IP（启动时获取一次，心跳时复用）
+    from config import get_local_ip
+    local_ip = get_local_ip()
+    if local_ip:
+        print(f"  [✓] 本机 IP: {local_ip}")
+    else:
+        print("  [!] 无法获取本机 IP")
 
     reporter = Reporter(SERVER_URL, agent_name)
 
@@ -300,7 +379,7 @@ def main(stop_event=None):
     # 心跳线程
     def heartbeat_loop():
         while True:
-            reporter.heartbeat(screenshot.interval)
+            reporter.heartbeat(screenshot.interval, local_ip)
             time.sleep(HEARTBEAT_INTERVAL)
 
     threading.Thread(target=heartbeat_loop, daemon=True).start()
