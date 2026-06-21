@@ -161,31 +161,39 @@ def init_db():
     except sqlite3.OperationalError as e:
         print(f"[DB] Agent 去重迁移异常: {e}")
 
+    # 向前兼容迁移: 为 agents 表添加 ip 列
+    try:
+        db.execute("ALTER TABLE agents ADD COLUMN ip TEXT DEFAULT ''")
+        db.commit()
+    except sqlite3.OperationalError:
+        pass  # 列已存在
+
 
 # ============================================
 # Agent 管理
 # ============================================
 
-def upsert_agent(name: str, status: str = "online", message: str = ""):
+def upsert_agent(name: str, status: str = "online", message: str = "", ip: str = ""):
     name = name.strip()
     if not name:
         return
     db = get_db()
     try:
         db.execute(
-            """INSERT INTO agents (name, status, last_seen, message)
-               VALUES (?, ?, datetime('now', 'localtime'), ?)
+            """INSERT INTO agents (name, status, last_seen, message, ip)
+               VALUES (?, ?, datetime('now', 'localtime'), ?, ?)
                ON CONFLICT(name) DO UPDATE SET
                  status=excluded.status,
                  last_seen=excluded.last_seen,
-                 message=excluded.message""",
-            (name, status, message)
+                 message=excluded.message,
+                 ip=excluded.ip""",
+            (name, status, message, ip)
         )
     except sqlite3.IntegrityError:
         # 并发 INSERT 竞态兜底：另一个线程先 INSERT 成功，改为 UPDATE
         db.execute(
-            "UPDATE agents SET status=?, last_seen=datetime('now','localtime'), message=? WHERE name=?",
-            (status, message, name)
+            "UPDATE agents SET status=?, last_seen=datetime('now','localtime'), message=?, ip=? WHERE name=?",
+            (status, message, ip, name)
         )
     db.commit()
 
@@ -196,6 +204,18 @@ def get_agents() -> list[dict]:
         "SELECT * FROM agents ORDER BY last_seen DESC"
     ).fetchall()
     return [dict(r) for r in rows]
+
+
+def get_agent_by_ip(ip: str) -> dict | None:
+    """按客户端 IP 查询在线 Agent（匹配 agent 上报的 ip 字段，逗号分隔多 IP）"""
+    if not ip:
+        return None
+    db = get_db()
+    row = db.execute(
+        "SELECT * FROM agents WHERE ip LIKE ? ORDER BY last_seen DESC LIMIT 1",
+        (f"%{ip}%",)
+    ).fetchone()
+    return dict(row) if row else None
 
 
 def delete_agent(name: str) -> dict | None:
