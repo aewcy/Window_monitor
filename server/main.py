@@ -103,6 +103,16 @@ async def dashboard():
     return HTMLResponse("<h1>Dashboard not found</h1>")
 
 
+@app.get("/download", response_class=HTMLResponse)
+async def download_page():
+    """Agent 下载页 — 独立 HTML，不走 Vue SPA"""
+    html_path = os.path.join(STATIC_DIR, "download.html")
+    if os.path.exists(html_path):
+        with open(html_path, "r", encoding="utf-8") as f:
+            return HTMLResponse(f.read())
+    return HTMLResponse("<h1>Download page not found</h1>", status_code=404)
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
