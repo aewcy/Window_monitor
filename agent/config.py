@@ -29,6 +29,28 @@ def _get_default_agent_name():
 
 AGENT_NAME = os.environ.get("AGENT_NAME", _get_default_agent_name())
 
+
+# ============================================
+# 硬件唯一标识 — 同一台机器始终相同，重启/升级 .exe 不变
+# ============================================
+def get_machine_id() -> str:
+    """获取本机硬件唯一标识码（Windows MachineGuid）"""
+    if IS_WINDOWS:
+        try:
+            import winreg
+            key = winreg.OpenKey(
+                winreg.HKEY_LOCAL_MACHINE,
+                r"SOFTWARE\Microsoft\Cryptography"
+            )
+            guid, _ = winreg.QueryValueEx(key, "MachineGuid")
+            winreg.CloseKey(key)
+            if guid:
+                return guid
+        except Exception:
+            pass
+    # 回退: 用主机名（跨平台兜底）
+    return socket.gethostname()
+
 # ============================================
 # 采集间隔配置（秒）
 # ============================================

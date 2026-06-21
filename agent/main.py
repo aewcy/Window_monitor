@@ -15,6 +15,7 @@ from config import (
     SERVER_URL, AGENT_NAME, IS_WINDOWS, IS_LINUX,
     SCREENSHOT_INTERVAL, APP_TRACK_INTERVAL, BROWSER_HISTORY_INTERVAL,
     HEARTBEAT_INTERVAL, RETRY_TIMES, RETRY_DELAY,
+    get_machine_id,
 )
 from screen_capture import ScreenCapture
 from app_tracker import AppTracker
@@ -124,13 +125,15 @@ class Reporter:
         if ok:
             print(f"  [OK] Enter事件 {data.get('display_name', '?')}")
 
-    def heartbeat(self, screenshot_interval: float = 0, ip: str = ""):
+    def heartbeat(self, screenshot_interval: float = 0, ip: str = "", machine_id: str = ""):
         data = {
             "agent_name": self.agent,
             "screenshot_interval": screenshot_interval,
         }
         if ip:
             data["ip"] = ip
+        if machine_id:
+            data["machine_id"] = machine_id
         self._post("heartbeat", data)
 
 
@@ -250,11 +253,51 @@ def ensure_scheduled_task():
         print(f"  [!] 注册计划任务异常: {e}")
 
 
-def _resolve_agent_name(base_name: str) -> str:
-    """原子注册 — 服务端检查名称冲突并返回已解析的名称，避免竞态"""
+def ensure_switch_to_background():
+    """如果已注册计划任务，触发后台运行并退出当前命令行实例
+
+    设计: 计划任务通过 wscript.exe run-hidden.vbs 启动（无控制台窗口）。
+    当用户从命令行运行 .exe 时，检测到任务已存在 → 启动后台实例 → 退出当前进程。
+    """
+    if not IS_WINDOWS:
+        return
+
+    task_name = "MonitorAgent"
+
+    # 检查计划任务是否存在
     try:
+        result = subprocess.run(
+            ["schtasks.exe", "/Query", "/TN", task_name],
+            capture_output=True, text=True,
+            creationflags=0x08000000
+        )
+        if result.returncode != 0:
+            return  # 任务不存在，首次运行，继续前台执行
+    except FileNotFoundError:
+        return
+
+    # 计划任务已存在 → 触发后台运行并退出当前实例
+    try:
+        subprocess.run(
+            ["schtasks.exe", "/Run", "/TN", task_name],
+            capture_output=True, text=True,
+            creationflags=0x08000000
+        )
+        print("  [✓] 已切换到后台运行（计划任务）")
+        print("  [✓] 当前窗口可以关闭")
+        sys.exit(0)
+    except Exception as e:
+        print(f"  [!] 切换后台失败: {e}，继续前台运行")
+
+
+def _resolve_agent_name(base_name: str, machine_id: str = "") -> str:
+    """原子注册 — 按 machine_id 去重，同一台机器始终返回同一个名称"""
+    try:
+        payload = {"agent_name": base_name}
+        if machine_id:
+            payload["machine_id"] = machine_id
         r = requests.post(f"{SERVER_URL}/api/register",
-                          json={"agent_name": base_name}, timeout=5)
+                          json=payload, timeout=5)
         if r.status_code == 200:
             resolved = r.json().get("agent_name", base_name)
             if resolved != base_name:
@@ -287,8 +330,18 @@ def main(stop_event=None):
     except Exception as e:
         print(f"  [!] 计划任务注册跳过: {e}")
 
-    # 解析 Agent 名称（检测冲突并自动加后缀）
-    agent_name = _resolve_agent_name(AGENT_NAME)
+    # 获取硬件设备码（启动时获取一次，全生命周期复用）
+    machine_id = get_machine_id()
+    print(f"  [✓] 设备码: {machine_id}")
+
+    # 如果计划任务已注册，切换到后台运行（避免命令行窗口常驻）
+    try:
+        ensure_switch_to_background()
+    except Exception as e:
+        print(f"  [!] 后台切换跳过: {e}")
+
+    # 解析 Agent 名称（按 machine_id 去重，同一台机器始终同名）
+    agent_name = _resolve_agent_name(AGENT_NAME, machine_id)
 
     # 获取本机 IP（启动时获取一次，心跳时复用）
     from config import get_local_ip
@@ -328,6 +381,7 @@ def main(stop_event=None):
         "agent_name": agent_name,
         "status": "online",
         "message": f"Agent started ({platform})",
+        "machine_id": machine_id,
     })
     reporter.diagnostic("system", "INFO", f"Agent 启动 ({platform})")
 
@@ -379,7 +433,7 @@ def main(stop_event=None):
     # 心跳线程
     def heartbeat_loop():
         while True:
-            reporter.heartbeat(screenshot.interval, local_ip)
+            reporter.heartbeat(screenshot.interval, local_ip, machine_id)
             time.sleep(HEARTBEAT_INTERVAL)
 
     threading.Thread(target=heartbeat_loop, daemon=True).start()
@@ -465,6 +519,7 @@ def main(stop_event=None):
             "agent_name": agent_name,
             "status": "offline",
             "message": "Agent stopped",
+            "machine_id": machine_id,
         })
         screenshot.stop()
         window.stop()

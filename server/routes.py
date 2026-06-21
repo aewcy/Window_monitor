@@ -20,7 +20,7 @@ from models import (
     get_dashboard_stats,
     get_storage_stats, cleanup_old_screenshots,
     save_diagnostic, query_diagnostics, get_diagnostic_categories,
-    get_agent_by_ip,
+    get_agent_by_ip, get_agent_by_machine_id,
 )
 from logger import log, format_log_entry
 
@@ -73,11 +73,20 @@ async def agent_config(agent: str = Query("unknown")):
 
 @router.post("/register")
 async def register_agent(data: dict):
-    """原子注册 — 解决多 Agent 同时注册同名冲突"""
+    """原子注册 — 按 machine_id 去重，同一台机器始终返回同一个名称"""
     desired = (data.get("agent_name") or "unknown").strip()
+    machine_id = (data.get("machine_id") or "").strip()
+
+    # 优先按 machine_id 查找：同一台机器重复注册 → 返回已有名称
+    if machine_id:
+        existing = get_agent_by_machine_id(machine_id)
+        if existing:
+            upsert_agent(existing["name"], "online", machine_id=machine_id)
+            return {"status": "ok", "agent_name": existing["name"]}
+
+    # 名称冲突检测：被其他在线 Agent 占用时自动加后缀
     agents = get_agents()
     online_names = {a['name'] for a in agents if a['status'] == 'online'}
-    # 检查名称是否被其他 Agent 占用
     if desired in online_names:
         suffix = 2
         while f"{desired}-{suffix}" in online_names:
@@ -85,7 +94,8 @@ async def register_agent(data: dict):
         resolved = f"{desired}-{suffix}"
     else:
         resolved = desired
-    upsert_agent(resolved, "online")
+
+    upsert_agent(resolved, "online", machine_id=machine_id)
     return {"status": "ok", "agent_name": resolved}
 
 
@@ -94,7 +104,8 @@ async def heartbeat(data: dict):
     """接收 Agent 心跳"""
     agent_name = data.get("agent_name", "unknown")
     ip = data.get("ip", "")
-    upsert_agent(agent_name, "online", ip=ip)
+    machine_id = data.get("machine_id", "")
+    upsert_agent(agent_name, "online", ip=ip, machine_id=machine_id)
     # 记录 Agent 当前截图间隔
     interval = data.get("screenshot_interval", 0)
     if interval:
@@ -108,7 +119,8 @@ async def agent_status(data: dict):
     agent_name = data.get("agent_name", "unknown")
     status = data.get("status", "online")
     message = data.get("message", "")
-    upsert_agent(agent_name, status, message)
+    machine_id = data.get("machine_id", "")
+    upsert_agent(agent_name, status, message, machine_id=machine_id)
     return {"status": "ok"}
 
 

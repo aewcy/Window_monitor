@@ -168,32 +168,40 @@ def init_db():
     except sqlite3.OperationalError:
         pass  # 列已存在
 
+    # 向前兼容迁移: 为 agents 表添加 machine_id 列（硬件唯一标识，防重复注册）
+    try:
+        db.execute("ALTER TABLE agents ADD COLUMN machine_id TEXT DEFAULT ''")
+        db.commit()
+    except sqlite3.OperationalError:
+        pass  # 列已存在
+
 
 # ============================================
 # Agent 管理
 # ============================================
 
-def upsert_agent(name: str, status: str = "online", message: str = "", ip: str = ""):
+def upsert_agent(name: str, status: str = "online", message: str = "", ip: str = "", machine_id: str = ""):
     name = name.strip()
     if not name:
         return
     db = get_db()
     try:
         db.execute(
-            """INSERT INTO agents (name, status, last_seen, message, ip)
-               VALUES (?, ?, datetime('now', 'localtime'), ?, ?)
+            """INSERT INTO agents (name, status, last_seen, message, ip, machine_id)
+               VALUES (?, ?, datetime('now', 'localtime'), ?, ?, ?)
                ON CONFLICT(name) DO UPDATE SET
                  status=excluded.status,
                  last_seen=excluded.last_seen,
                  message=excluded.message,
-                 ip=excluded.ip""",
-            (name, status, message, ip)
+                 ip=excluded.ip,
+                 machine_id=CASE WHEN excluded.machine_id != '' THEN excluded.machine_id ELSE agents.machine_id END""",
+            (name, status, message, ip, machine_id)
         )
     except sqlite3.IntegrityError:
         # 并发 INSERT 竞态兜底：另一个线程先 INSERT 成功，改为 UPDATE
         db.execute(
-            "UPDATE agents SET status=?, last_seen=datetime('now','localtime'), message=?, ip=? WHERE name=?",
-            (status, message, ip, name)
+            "UPDATE agents SET status=?, last_seen=datetime('now','localtime'), message=?, ip=?, machine_id=CASE WHEN ? != '' THEN ? ELSE machine_id END WHERE name=?",
+            (status, message, ip, machine_id, machine_id, name)
         )
     db.commit()
 
@@ -214,6 +222,18 @@ def get_agent_by_ip(ip: str) -> dict | None:
     row = db.execute(
         "SELECT * FROM agents WHERE ip LIKE ? ORDER BY last_seen DESC LIMIT 1",
         (f"%{ip}%",)
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def get_agent_by_machine_id(machine_id: str) -> dict | None:
+    """按硬件设备码查询 Agent（同一台机器始终返回同一条记录）"""
+    if not machine_id:
+        return None
+    db = get_db()
+    row = db.execute(
+        "SELECT * FROM agents WHERE machine_id = ? ORDER BY last_seen DESC LIMIT 1",
+        (machine_id,)
     ).fetchone()
     return dict(row) if row else None
 
