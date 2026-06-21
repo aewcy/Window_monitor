@@ -121,3 +121,37 @@ elif IS_LINUX:
     }
 else:
     FOREGROUND_WHITELIST = {}
+
+
+def get_local_ip() -> str:
+    """获取本机所有非回环网卡 IP，逗号分隔"""
+    import socket
+    import subprocess
+
+    ips = []
+    try:
+        # 方法1: 通过 socket 连接外部地址获取主 IP
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0.5)
+        s.connect(("8.8.8.8", 80))
+        ips.append(s.getsockname()[0])
+        s.close()
+    except Exception:
+        pass
+
+    # 方法2: 通过 ipconfig 获取所有网卡 IP（Windows）
+    if IS_WINDOWS:
+        try:
+            result = subprocess.run(
+                ["ipconfig"], capture_output=True, text=True, timeout=3,
+                creationflags=0x08000000  # CREATE_NO_WINDOW
+            )
+            import re
+            for line in result.stdout.splitlines():
+                m = re.search(r"IPv4[^:]*:\s*([\d.]+)", line)
+                if m and m.group(1) not in ips:
+                    ips.append(m.group(1))
+        except Exception:
+            pass
+
+    return ",".join(ips) if ips else ""
