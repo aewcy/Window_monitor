@@ -200,7 +200,15 @@ def ensure_scheduled_task():
 
     task_name = "MonitorAgent"
 
-    # 检查是否已存在
+    # VBS 固定位置
+    appdata = os.environ.get("LOCALAPPDATA", "")
+    if appdata:
+        vbs_dir = os.path.join(appdata, "MonitorAgent")
+    else:
+        vbs_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+    vbs_path = os.path.join(vbs_dir, "run-hidden.vbs")
+
+    # 检查计划任务是否已存在且 VBS 有效
     try:
         result = subprocess.run(
             ["schtasks.exe", "/Query", "/TN", task_name],
@@ -208,7 +216,16 @@ def ensure_scheduled_task():
             creationflags=0x08000000  # CREATE_NO_WINDOW
         )
         if result.returncode == 0:
-            return  # 已注册，跳过
+            # 任务存在，检查 VBS 是否还有效
+            if os.path.exists(vbs_path):
+                return  # 一切正常，跳过
+            else:
+                # VBS 被删，删除旧任务重新创建
+                subprocess.run(
+                    ["schtasks.exe", "/Delete", "/TN", task_name, "/F"],
+                    capture_output=True, text=True,
+                    creationflags=0x08000000
+                )
     except FileNotFoundError:
         return  # schtasks.exe 不存在
 
@@ -227,19 +244,26 @@ def ensure_scheduled_task():
         else:
             run_command = f'"{sys.executable}" "{exe_path}" --background'
 
-    exe_dir = os.path.dirname(exe_path)
-    vbs_path = os.path.join(exe_dir, "run-hidden.vbs")
+    os.makedirs(vbs_dir, exist_ok=True)
 
-    # 创建 run-hidden.vbs（如果不存在）
+    # 清理旧位置的 VBS 文件（Downloads 等目录）
+    for old_dir in [os.path.dirname(exe_path)]:
+        old_vbs = os.path.join(old_dir, "run-hidden.vbs")
+        if old_vbs != vbs_path and os.path.exists(old_vbs):
+            try:
+                os.remove(old_vbs)
+            except OSError:
+                pass
+
+    # 创建/更新 run-hidden.vbs（每次运行都更新，确保路径始终指向当前 .exe）
     # VBS 引号规则: 字符串内双引号用 "" 转义
-    if not os.path.exists(vbs_path):
-        try:
-            escaped = run_command.replace('"', '""')
-            with open(vbs_path, 'w', encoding='ascii') as f:
-                f.write('Set WshShell = CreateObject("WScript.Shell")\n')
-                f.write(f'WshShell.Run "{escaped}", 0, False\n')
-        except OSError:
-            pass
+    try:
+        escaped = run_command.replace('"', '""')
+        with open(vbs_path, 'w', encoding='ascii') as f:
+            f.write('Set WshShell = CreateObject("WScript.Shell")\n')
+            f.write(f'WshShell.Run "{escaped}", 0, False\n')
+    except OSError:
+        pass
 
     # 注册计划任务（需要管理员权限）
     try:
