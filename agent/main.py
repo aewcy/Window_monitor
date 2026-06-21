@@ -218,14 +218,14 @@ def ensure_scheduled_task():
         exe_path = sys.executable
         run_command = f'"{exe_path}"'
     else:
-        # 从源码运行 → 用 pythonw.exe 无窗口启动
+        # 从源码运行 → 用 pythonw.exe 无窗口启动（带 --background 标志）
         exe_path = os.path.abspath(__file__)
         python_dir = os.path.dirname(sys.executable)
         pythonw = os.path.join(python_dir, "pythonw.exe")
         if os.path.exists(pythonw):
-            run_command = f'"{pythonw}" "{exe_path}"'
+            run_command = f'"{pythonw}" "{exe_path}" --background'
         else:
-            run_command = f'"{sys.executable}" "{exe_path}"'
+            run_command = f'"{sys.executable}" "{exe_path}" --background'
 
     exe_dir = os.path.dirname(exe_path)
     vbs_path = os.path.join(exe_dir, "run-hidden.vbs")
@@ -264,14 +264,117 @@ def ensure_scheduled_task():
         print(f"  [!] 注册计划任务异常: {e}")
 
 
+def _is_running_in_background() -> bool:
+    """检测当前进程是否已在后台运行（无控制台窗口）"""
+    # 检查 --background 命令行标志
+    if "--background" in sys.argv:
+        return True
+    # 检查是否通过 pythonw 启动（无控制台窗口 = 后台进程）
+    if IS_WINDOWS:
+        try:
+            import ctypes
+            # GetConsoleWindow 返回 0 表示无控制台窗口
+            if ctypes.windll.kernel32.GetConsoleWindow() == 0:
+                return True
+        except Exception:
+            pass
+    return False
+
+
+def _acquire_instance_lock() -> bool:
+    """获取单实例互斥锁，防止重复运行。返回 True 表示成功获取锁"""
+    import tempfile
+    lock_dir = os.path.join(tempfile.gettempdir(), "monitor-agent")
+    os.makedirs(lock_dir, exist_ok=True)
+
+    if getattr(sys, 'frozen', False):
+        lock_name = "agent.lock"
+    else:
+        # 源码运行：用脚本路径哈希区分不同实例
+        import hashlib
+        script_hash = hashlib.md5(os.path.abspath(__file__).encode()).hexdigest()[:8]
+        lock_name = f"agent-{script_hash}.lock"
+
+    lock_path = os.path.join(lock_dir, lock_name)
+
+    # 检查锁文件中的 PID 是否仍在运行
+    if os.path.exists(lock_path):
+        try:
+            with open(lock_path, 'r') as f:
+                old_pid = int(f.read().strip())
+            # 检查进程是否存在
+            import ctypes
+            kernel32 = ctypes.windll.kernel32
+            PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+            handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, old_pid)
+            if handle:
+                kernel32.CloseHandle(handle)
+                return False  # 旧进程仍在运行
+        except (ValueError, OSError):
+            pass  # 锁文件损坏或进程已退出
+        except Exception:
+            pass
+
+    # 写入当前 PID
+    try:
+        with open(lock_path, 'w') as f:
+            f.write(str(os.getpid()))
+        return True
+    except OSError:
+        return True  # 写锁失败也继续运行
+
+
+def _release_instance_lock():
+    """释放单实例锁"""
+    import tempfile
+    lock_dir = os.path.join(tempfile.gettempdir(), "monitor-agent")
+    if getattr(sys, 'frozen', False):
+        lock_name = "agent.lock"
+    else:
+        import hashlib
+        script_hash = hashlib.md5(os.path.abspath(__file__).encode()).hexdigest()[:8]
+        lock_name = f"agent-{script_hash}.lock"
+    lock_path = os.path.join(lock_dir, lock_name)
+    try:
+        if os.path.exists(lock_path):
+            with open(lock_path, 'r') as f:
+                pid = int(f.read().strip())
+            if pid == os.getpid():
+                os.remove(lock_path)
+    except Exception:
+        pass
+
+
+def _setup_background_logging():
+    """后台模式下将 stdout/stderr 重定向到日志文件"""
+    import tempfile
+    log_dir = os.path.join(tempfile.gettempdir(), "monitor-agent")
+    os.makedirs(log_dir, exist_ok=True)
+    log_path = os.path.join(log_dir, "agent.log")
+    try:
+        log_file = open(log_path, 'a', encoding='utf-8')
+        sys.stdout = log_file
+        sys.stderr = log_file
+        print(f"\n{'='*50}")
+        print(f"  [{time.strftime('%Y-%m-%d %H:%M:%S')}] Agent 启动 (后台模式, PID={os.getpid()})")
+        print(f"{'='*50}")
+    except Exception:
+        pass
+
+
 def ensure_switch_to_background():
     """如果已注册计划任务，触发后台运行并退出当前命令行实例
 
     设计:
     - .exe 运行 → schtasks /Run 触发计划任务（通过 run-hidden.vbs 无窗口启动）
     - 源码运行 → 直接启动 pythonw.exe 后台进程（无控制台窗口）
+    - 后台进程带 --background 标志，避免无限 spawn
     """
     if not IS_WINDOWS:
+        return
+
+    # 已在后台运行，不再切换
+    if _is_running_in_background():
         return
 
     task_name = "MonitorAgent"
@@ -298,14 +401,14 @@ def ensure_switch_to_background():
                 creationflags=0x08000000
             )
         else:
-            # 源码运行 → 直接启动 pythonw.exe 后台进程
+            # 源码运行 → 直接启动 pythonw.exe 后台进程（带 --background 标志）
             script_path = os.path.abspath(__file__)
             python_dir = os.path.dirname(sys.executable)
             pythonw = os.path.join(python_dir, "pythonw.exe")
             if not os.path.exists(pythonw):
                 return  # 没有 pythonw.exe，无法无窗口启动
             subprocess.Popen(
-                [pythonw, script_path],
+                [pythonw, script_path, "--background"],
                 creationflags=0x08000000  # CREATE_NO_WINDOW
             )
         print("  [OK] 已切换到后台运行")
@@ -338,6 +441,19 @@ def main(stop_event=None):
     global _server_interval
     platform = "Windows" if IS_WINDOWS else ("Linux" if IS_LINUX else "?")
 
+    # 后台模式：设置日志文件
+    if _is_running_in_background():
+        _setup_background_logging()
+
+    # 单实例锁 — 防止重复运行
+    if not _acquire_instance_lock():
+        print("  [!] 检测到已有 Agent 实例在运行，退出")
+        return
+
+    # 注册退出时释放锁
+    import atexit
+    atexit.register(_release_instance_lock)
+
     # DPI 感知 — 必须在任何 GUI/截图操作前设置，解决高 DPI 多屏截图内容相同的问题
     if IS_WINDOWS:
         try:
@@ -359,7 +475,7 @@ def main(stop_event=None):
     machine_id = get_machine_id()
     print(f"  [OK] 设备码: {machine_id}")
 
-    # 如果计划任务已注册，切换到后台运行（避免命令行窗口常驻）
+    # 如果计划任务已注册且当前在前台运行，切换到后台
     try:
         ensure_switch_to_background()
     except Exception as e:
