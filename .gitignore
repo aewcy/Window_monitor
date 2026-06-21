@@ -40,3 +40,6 @@ CONTEXT_MIGRATION.md
 .playwright-mcp/
 response-98.json
 monitor-final.png
+
+# Agent runtime files
+agent/run-hidden.vbs

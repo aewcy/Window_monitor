@@ -212,21 +212,32 @@ def ensure_scheduled_task():
     except FileNotFoundError:
         return  # schtasks.exe 不存在
 
-    # 获取当前 exe 路径
+    # 获取当前 exe 路径 + 确定启动命令
     if getattr(sys, 'frozen', False):
+        # 打包为 .exe
         exe_path = sys.executable
+        run_command = f'"{exe_path}"'
     else:
+        # 从源码运行 → 用 pythonw.exe 无窗口启动
         exe_path = os.path.abspath(__file__)
+        python_dir = os.path.dirname(sys.executable)
+        pythonw = os.path.join(python_dir, "pythonw.exe")
+        if os.path.exists(pythonw):
+            run_command = f'"{pythonw}" "{exe_path}"'
+        else:
+            run_command = f'"{sys.executable}" "{exe_path}"'
 
     exe_dir = os.path.dirname(exe_path)
     vbs_path = os.path.join(exe_dir, "run-hidden.vbs")
 
     # 创建 run-hidden.vbs（如果不存在）
+    # VBS 引号规则: 字符串内双引号用 "" 转义
     if not os.path.exists(vbs_path):
         try:
-            with open(vbs_path, 'w', encoding='utf-8') as f:
+            escaped = run_command.replace('"', '""')
+            with open(vbs_path, 'w', encoding='ascii') as f:
                 f.write('Set WshShell = CreateObject("WScript.Shell")\n')
-                f.write(f'WshShell.Run """{exe_path}""", 0, False\n')
+                f.write(f'WshShell.Run "{escaped}", 0, False\n')
         except OSError:
             pass
 
@@ -245,7 +256,7 @@ def ensure_scheduled_task():
             creationflags=0x08000000  # CREATE_NO_WINDOW
         )
         if result.returncode == 0:
-            print(f"  [✓] 已注册计划任务: {task_name}")
+            print(f"  [OK] 已注册计划任务: {task_name}")
         else:
             print(f"  [!] 注册计划任务失败（可能需要管理员权限）: {result.stderr.strip()}")
             print(f"  [!] 提示: 右键以管理员身份运行可完成注册")
@@ -256,8 +267,9 @@ def ensure_scheduled_task():
 def ensure_switch_to_background():
     """如果已注册计划任务，触发后台运行并退出当前命令行实例
 
-    设计: 计划任务通过 wscript.exe run-hidden.vbs 启动（无控制台窗口）。
-    当用户从命令行运行 .exe 时，检测到任务已存在 → 启动后台实例 → 退出当前进程。
+    设计:
+    - .exe 运行 → schtasks /Run 触发计划任务（通过 run-hidden.vbs 无窗口启动）
+    - 源码运行 → 直接启动 pythonw.exe 后台进程（无控制台窗口）
     """
     if not IS_WINDOWS:
         return
@@ -278,13 +290,26 @@ def ensure_switch_to_background():
 
     # 计划任务已存在 → 触发后台运行并退出当前实例
     try:
-        subprocess.run(
-            ["schtasks.exe", "/Run", "/TN", task_name],
-            capture_output=True, text=True,
-            creationflags=0x08000000
-        )
-        print("  [✓] 已切换到后台运行（计划任务）")
-        print("  [✓] 当前窗口可以关闭")
+        if getattr(sys, 'frozen', False):
+            # .exe 运行 → 通过计划任务启动
+            subprocess.run(
+                ["schtasks.exe", "/Run", "/TN", task_name],
+                capture_output=True, text=True,
+                creationflags=0x08000000
+            )
+        else:
+            # 源码运行 → 直接启动 pythonw.exe 后台进程
+            script_path = os.path.abspath(__file__)
+            python_dir = os.path.dirname(sys.executable)
+            pythonw = os.path.join(python_dir, "pythonw.exe")
+            if not os.path.exists(pythonw):
+                return  # 没有 pythonw.exe，无法无窗口启动
+            subprocess.Popen(
+                [pythonw, script_path],
+                creationflags=0x08000000  # CREATE_NO_WINDOW
+            )
+        print("  [OK] 已切换到后台运行")
+        print("  [OK] 当前窗口可以关闭")
         sys.exit(0)
     except Exception as e:
         print(f"  [!] 切换后台失败: {e}，继续前台运行")
@@ -332,7 +357,7 @@ def main(stop_event=None):
 
     # 获取硬件设备码（启动时获取一次，全生命周期复用）
     machine_id = get_machine_id()
-    print(f"  [✓] 设备码: {machine_id}")
+    print(f"  [OK] 设备码: {machine_id}")
 
     # 如果计划任务已注册，切换到后台运行（避免命令行窗口常驻）
     try:
@@ -347,7 +372,7 @@ def main(stop_event=None):
     from config import get_local_ip
     local_ip = get_local_ip()
     if local_ip:
-        print(f"  [✓] 本机 IP: {local_ip}")
+        print(f"  [OK] 本机 IP: {local_ip}")
     else:
         print("  [!] 无法获取本机 IP")
 
