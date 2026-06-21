@@ -5,7 +5,7 @@ import os
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 
 from models import (
@@ -20,6 +20,7 @@ from models import (
     get_dashboard_stats,
     get_storage_stats, cleanup_old_screenshots,
     save_diagnostic, query_diagnostics, get_diagnostic_categories,
+    get_agent_by_ip,
 )
 from logger import log, format_log_entry
 
@@ -92,7 +93,8 @@ async def register_agent(data: dict):
 async def heartbeat(data: dict):
     """接收 Agent 心跳"""
     agent_name = data.get("agent_name", "unknown")
-    upsert_agent(agent_name, "online")
+    ip = data.get("ip", "")
+    upsert_agent(agent_name, "online", ip=ip)
     # 记录 Agent 当前截图间隔
     interval = data.get("screenshot_interval", 0)
     if interval:
@@ -358,3 +360,40 @@ async def browser_history_list(
     if with_screenshots:
         return get_browser_history_with_screenshots(agent, limit, offset)
     return get_browser_history(agent, limit, offset)
+
+
+# ============================================
+# Agent 下载
+# ============================================
+
+@router.post("/agent/detect")
+async def detect_agent(request: Request):
+    """检测当前客户端是否已安装 Agent（通过客户端 IP 匹配）"""
+    client_ip = request.client.host if request.client else ""
+    # 去掉 IPv6 前缀 ::ffff:
+    if client_ip.startswith("::ffff:"):
+        client_ip = client_ip[7:]
+
+    agent = get_agent_by_ip(client_ip)
+    if agent:
+        return {
+            "found": True,
+            "agent_name": agent["name"],
+            "status": agent["status"],
+        }
+    return {"found": False}
+
+
+AGENT_EXE_PATH = os.path.join(os.path.dirname(__file__), "static", "agent", "monitor-agent.exe")
+
+
+@router.get("/agent/download")
+async def download_agent():
+    """下载 Agent 安装包 (.exe)"""
+    if not os.path.exists(AGENT_EXE_PATH):
+        raise HTTPException(status_code=404, detail="安装包未上传，请联系管理员")
+    return FileResponse(
+        path=AGENT_EXE_PATH,
+        filename="MonitorAgent.exe",
+        media_type="application/octet-stream",
+    )
