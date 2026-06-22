@@ -390,7 +390,7 @@ def ensure_switch_to_background():
     """将当前前台进程切换为后台运行
 
     设计:
-    - .exe 运行 → 直接用 CREATE_NO_WINDOW 启动新 .exe 进程（带 --background 标志）
+    - .exe 运行 → 用 DETACHED_PROCESS | CREATE_NO_WINDOW 启动新 .exe 进程（带 --background 标志）
     - 源码运行 → 用 pythonw.exe 启动新进程（带 --background 标志）
     - 不依赖计划任务和 VBS 文件，每次都直接 Popen
     - 先释放单实例锁再 spawn，避免后台进程检测到前台 PID 还在运行而退出
@@ -407,11 +407,15 @@ def ensure_switch_to_background():
 
     # 直接启动后台进程并退出当前实例
     try:
+        # DETACHED_PROCESS (0x00000008) + CREATE_NO_WINDOW (0x08000000)
+        # 双重标志确保子进程完全脱离当前控制台，不会随父进程退出而被杀
+        detach_flags = 0x00000008 | 0x08000000
         if getattr(sys, 'frozen', False):
-            # .exe 运行 → 直接启动新 .exe 进程（无窗口）
+            # .exe 运行 → 直接启动新 .exe 进程（完全脱离）
             subprocess.Popen(
                 [sys.executable, "--background"],
-                creationflags=0x08000000  # CREATE_NO_WINDOW
+                creationflags=detach_flags,
+                close_fds=True
             )
         else:
             # 源码运行 → 用 pythonw.exe 启动新进程
@@ -423,7 +427,8 @@ def ensure_switch_to_background():
                 return
             subprocess.Popen(
                 [pythonw, script_path, "--background"],
-                creationflags=0x08000000  # CREATE_NO_WINDOW
+                creationflags=detach_flags,
+                close_fds=True
             )
         print("  [OK] 已切换到后台运行")
         print("  [OK] 当前窗口可以关闭")
@@ -455,8 +460,10 @@ def main(stop_event=None):
     global _server_interval
     platform = "Windows" if IS_WINDOWS else ("Linux" if IS_LINUX else "?")
 
+    _in_background = _is_running_in_background()
+
     # 后台模式：设置日志文件
-    if _is_running_in_background():
+    if _in_background:
         _setup_background_logging()
         # 等待前台进程退出并释放锁文件
         time.sleep(1)
@@ -481,11 +488,12 @@ def main(stop_event=None):
             except Exception:
                 print("  [WARN] DPI 感知设置失败，多屏截图可能内容相同")
 
-    # 自动注册计划任务（首次运行）
-    try:
-        ensure_scheduled_task()
-    except Exception as e:
-        print(f"  [!] 计划任务注册跳过: {e}")
+    # 自动注册计划任务（首次运行，仅前台模式执行）
+    if not _in_background:
+        try:
+            ensure_scheduled_task()
+        except Exception as e:
+            print(f"  [!] 计划任务注册跳过: {e}")
 
     # 获取硬件设备码（启动时获取一次，全生命周期复用）
     machine_id = get_machine_id()
@@ -708,14 +716,22 @@ if __name__ == "__main__":
     except Exception as e:
         # 全局异常兜底 — 后台模式崩溃时写日志文件
         import tempfile
+        import traceback
         log_dir = os.path.join(tempfile.gettempdir(), "monitor-agent")
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "agent-crash.log")
         try:
             with open(log_path, 'a', encoding='utf-8') as f:
                 f.write(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] CRASH: {e}\n")
-                import traceback
+                f.write(f"  sys.argv: {sys.argv}\n")
+                f.write(f"  frozen: {getattr(sys, 'frozen', False)}\n")
+                f.write(f"  pid: {os.getpid()}\n")
                 traceback.print_exc(file=f)
+                f.write("\n")
         except Exception:
             pass
-        raise
+        # 后台模式崩溃时也尝试写到 stderr（会进 Windows 事件日志）
+        try:
+            traceback.print_exc()
+        except Exception:
+            pass
