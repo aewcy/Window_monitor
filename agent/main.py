@@ -392,29 +392,16 @@ def ensure_switch_to_background():
     设计:
     - .exe 运行 → 直接用 CREATE_NO_WINDOW 启动新 .exe 进程（带 --background 标志）
     - 源码运行 → 用 pythonw.exe 启动新进程（带 --background 标志）
-    - 不依赖计划任务和 VBS 文件，避免路径失效问题
+    - 不依赖计划任务和 VBS 文件，每次都直接 Popen
     """
     if not IS_WINDOWS:
         return
 
-    # 已在后台运行，不再切换
-    if _is_running_in_background():
+    # 已在后台运行或强制前台模式，不再切换
+    if _is_running_in_background() or "--foreground" in sys.argv:
         return
 
-    # 计划任务已存在 → 说明不是首次运行，切换到后台
-    task_name = "MonitorAgent"
-    try:
-        result = subprocess.run(
-            ["schtasks.exe", "/Query", "/TN", task_name],
-            capture_output=True, text=True,
-            creationflags=0x08000000
-        )
-        if result.returncode != 0:
-            return  # 任务不存在 = 首次运行，继续前台执行
-    except FileNotFoundError:
-        return
-
-    # 触发后台运行并退出当前实例（直接启动新进程，不依赖 VBS）
+    # 直接启动后台进程并退出当前实例
     try:
         if getattr(sys, 'frozen', False):
             # .exe 运行 → 直接启动新 .exe 进程（无窗口）
@@ -428,7 +415,8 @@ def ensure_switch_to_background():
             python_dir = os.path.dirname(sys.executable)
             pythonw = os.path.join(python_dir, "pythonw.exe")
             if not os.path.exists(pythonw):
-                return  # 没有 pythonw.exe，无法无窗口启动
+                print("  [!] 无 pythonw.exe，继续前台运行")
+                return
             subprocess.Popen(
                 [pythonw, script_path, "--background"],
                 creationflags=0x08000000  # CREATE_NO_WINDOW
@@ -533,11 +521,14 @@ def main(stop_event=None):
             print(f"  [WARN] 服务端异常: {r.status_code}")
     except Exception as e:
         print(f"  [FAIL] 无法连接服务端: {e}")
-        if stop_event is None:
-            # 命令行模式：询问是否继续
-            if input("  继续? (y/n): ").lower() != 'y':
-                return
-        # 服务模式：自动继续，后台重试
+        # 后台模式或服务模式：自动继续，后台重试
+        # 前台模式：也继续（避免 input() 在无控制台时崩溃）
+        if stop_event is None and not _is_running_in_background():
+            try:
+                if input("  继续? (y/n): ").lower() != 'y':
+                    return
+            except (EOFError, OSError):
+                pass  # 无控制台时 input 会失败，自动继续
 
     # 上报上线
     reporter._post("status", {
@@ -706,4 +697,19 @@ def main(stop_event=None):
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        # 全局异常兜底 — 后台模式崩溃时写日志文件
+        import tempfile
+        log_dir = os.path.join(tempfile.gettempdir(), "monitor-agent")
+        os.makedirs(log_dir, exist_ok=True)
+        log_path = os.path.join(log_dir, "agent-crash.log")
+        try:
+            with open(log_path, 'a', encoding='utf-8') as f:
+                f.write(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] CRASH: {e}\n")
+                import traceback
+                traceback.print_exc(file=f)
+        except Exception:
+            pass
+        raise
