@@ -403,12 +403,14 @@ AGENT_EXE_PATH = os.path.join(AGENT_STATIC_DIR, "monitor-agent.exe")
 AGENT_ZIP_PATH = os.path.join(AGENT_STATIC_DIR, "MonitorAgent.zip")
 AGENT_INSTALLER_PATH = os.path.join(AGENT_STATIC_DIR, "install-agent.ps1")
 AGENT_INSTALL_BAT_PATH = os.path.join(AGENT_STATIC_DIR, "install-agent.bat")
+AGENT_UNINSTALL_BAT_PATH = os.path.join(AGENT_STATIC_DIR, "uninstall-agent.bat")
 
 
 def _agent_package_sources():
     return [
         (AGENT_EXE_PATH, "monitor-agent.exe"),
         (AGENT_INSTALL_BAT_PATH, "install-agent.bat"),
+        (AGENT_UNINSTALL_BAT_PATH, "uninstall-agent.bat"),
         (AGENT_INSTALLER_PATH, "install-agent.ps1"),
     ]
 

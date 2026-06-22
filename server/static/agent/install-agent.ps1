@@ -6,23 +6,43 @@
     [switch]$Status
 )
 
-# Monitor Agent - 当前用户后台安装器
 $ErrorActionPreference = "Stop"
 
-$script:TaskName = "MonitorAgent"
+$script:ProductName = "Windows Monitor"
+$script:ProcessName = "WindowsMonitor"
+$script:MainTaskName = "Windows Monitor"
+$script:WatchdogTaskName = "Windows Monitor Watchdog"
 $script:ServerHost = "192.168.61.133"
 $script:ServerPort = "8899"
-$script:InstallDir = Join-Path $env:LOCALAPPDATA "MonitorAgent"
-$script:InstallExe = Join-Path $script:InstallDir "monitor-agent.exe"
+$script:InstallDir = Join-Path $env:ProgramData "Windows Monitor"
+$script:UserDataDir = Join-Path $env:LOCALAPPDATA "Windows Monitor"
+$script:InstallExe = Join-Path $script:InstallDir "$script:ProcessName.exe"
 $script:SourceExe = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) "monitor-agent.exe"
-$script:VbsPath = Join-Path $script:InstallDir "run-hidden.vbs"
-$script:LogPath = Join-Path $script:InstallDir "install.log"
+$script:LauncherPath = Join-Path $script:InstallDir "run-hidden.vbs"
+$script:WatchdogPath = Join-Path $script:InstallDir "watchdog.ps1"
+$script:ConfigPath = Join-Path $script:InstallDir "config.json"
+$script:LogDir = Join-Path $script:UserDataDir "logs"
+$script:LogPath = Join-Path $script:LogDir "install.log"
 
 function Write-InstallLog {
     param([string]$Message)
-    New-Item -ItemType Directory -Force -Path $script:InstallDir | Out-Null
+    New-Item -ItemType Directory -Force -Path $script:LogDir | Out-Null
     $line = "[{0}] {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Message
     Add-Content -Path $script:LogPath -Value $line -Encoding UTF8
+}
+
+function Assert-Admin {
+    $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    if ($isAdmin) { return }
+
+    $argList = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`"")
+    if ($Install) { $argList += "-Install" }
+    if ($Remove) { $argList += "-Remove" }
+    if ($Start) { $argList += "-Start" }
+    if ($Stop) { $argList += "-Stop" }
+    if ($Status) { $argList += "-Status" }
+    Start-Process powershell.exe -ArgumentList ($argList -join " ") -Verb RunAs
+    exit
 }
 
 function Test-AgentSource {
@@ -32,17 +52,24 @@ function Test-AgentSource {
 }
 
 function Stop-AgentProcesses {
-    Get-Process -Name "monitor-agent" -ErrorAction SilentlyContinue | ForEach-Object {
-        try {
-            Write-InstallLog "停止旧进程 PID=$($_.Id)"
-            Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
-        } catch {
-            Write-InstallLog "停止旧进程失败 PID=$($_.Id): $($_.Exception.Message)"
+    foreach ($name in @($script:ProcessName, "monitor-agent")) {
+        Get-Process -Name $name -ErrorAction SilentlyContinue | ForEach-Object {
+            try {
+                Write-InstallLog "停止旧进程 $name PID=$($_.Id)"
+                Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+            } catch {
+                Write-InstallLog "停止旧进程失败 $name PID=$($_.Id): $($_.Exception.Message)"
+            }
         }
     }
 }
 
-function Remove-OldService {
+function Remove-OldTasksAndService {
+    foreach ($task in @($script:MainTaskName, $script:WatchdogTaskName, "MonitorAgent")) {
+        & schtasks.exe /End /TN $task 2>&1 | Out-Null
+        & schtasks.exe /Delete /TN $task /F 2>&1 | Out-Null
+    }
+
     $svc = Get-Service -Name "MonitorAgent" -ErrorAction SilentlyContinue
     if ($svc) {
         try {
@@ -58,8 +85,34 @@ function Remove-OldService {
     }
 }
 
+function Set-InstallDirectoryAcl {
+    $acl = Get-Acl $script:InstallDir
+    $acl.SetAccessRuleProtection($true, $false)
+
+    $rules = @(
+        New-Object System.Security.AccessControl.FileSystemAccessRule("SYSTEM", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow"),
+        New-Object System.Security.AccessControl.FileSystemAccessRule("Administrators", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow"),
+        New-Object System.Security.AccessControl.FileSystemAccessRule("Users", "ReadAndExecute", "ContainerInherit,ObjectInherit", "None", "Allow")
+    )
+    foreach ($rule in $rules) {
+        $acl.AddAccessRule($rule)
+    }
+    Set-Acl -Path $script:InstallDir -AclObject $acl
+}
+
+function Write-AgentConfig {
+    $config = [ordered]@{
+        server_host = $script:ServerHost
+        server_port = $script:ServerPort
+        install_dir = $script:InstallDir
+        user_data_dir = $script:UserDataDir
+        installed_at = (Get-Date).ToString("s")
+    }
+    $config | ConvertTo-Json | Set-Content -Path $script:ConfigPath -Encoding UTF8
+}
+
 function Write-HiddenLauncher {
-    $exe = $script:InstallExe.Replace("\", "\\")
+    $exe = $script:InstallExe
     $serverHost = $script:ServerHost
     $serverPort = $script:ServerPort
     $content = @"
@@ -69,98 +122,122 @@ Env("MONITOR_SERVER_HOST") = "$serverHost"
 Env("MONITOR_SERVER_PORT") = "$serverPort"
 WshShell.Run """" & "$exe" & """ --background", 0, False
 "@
-    Set-Content -Path $script:VbsPath -Value $content -Encoding ASCII
+    Set-Content -Path $script:LauncherPath -Value $content -Encoding ASCII
 }
 
-function Install-AgentTask {
-    Test-AgentSource
-    Write-InstallLog "开始安装，服务器 $script:ServerHost`:$script:ServerPort"
-    New-Item -ItemType Directory -Force -Path $script:InstallDir | Out-Null
+function Write-WatchdogScript {
+    $launcher = $script:LauncherPath.Replace("'", "''")
+    $processName = $script:ProcessName
+    $content = @"
+`$proc = Get-Process -Name '$processName' -ErrorAction SilentlyContinue
+if (-not `$proc) {
+    Start-Process -FilePath 'wscript.exe' -ArgumentList '"$launcher"' -WindowStyle Hidden
+}
+"@
+    Set-Content -Path $script:WatchdogPath -Value $content -Encoding UTF8
+}
 
-    & schtasks.exe /End /TN $script:TaskName 2>&1 | Out-Null
-    & schtasks.exe /Delete /TN $script:TaskName /F 2>&1 | Out-Null
-    Remove-OldService
+function New-MonitorTasks {
+    $mainAction = "wscript.exe `"$script:LauncherPath`""
+    $watchdogAction = "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$script:WatchdogPath`""
+
+    $mainOut = & schtasks.exe /Create /TN $script:MainTaskName /TR $mainAction /SC ONLOGON /RL HIGHEST /F 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "创建登录启动任务失败：$($mainOut | Out-String)"
+    }
+
+    $watchOut = & schtasks.exe /Create /TN $script:WatchdogTaskName /TR $watchdogAction /SC MINUTE /MO 1 /RL HIGHEST /F 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "创建自恢复任务失败：$($watchOut | Out-String)"
+    }
+}
+
+function Start-Monitor {
+    & schtasks.exe /Run /TN $script:MainTaskName 2>&1 | Out-Null
+    Start-Sleep -Seconds 2
+    $proc = Get-Process -Name $script:ProcessName -ErrorAction SilentlyContinue
+    if (-not $proc) {
+        throw "$script:ProcessName.exe 没有运行。请查看日志：$script:LogPath"
+    }
+    Write-InstallLog "后台进程已启动 PID=$($proc[0].Id)"
+}
+
+function Install-Agent {
+    Assert-Admin
+    Test-AgentSource
+    Write-InstallLog "开始安装 $script:ProductName，服务器 $script:ServerHost`:$script:ServerPort"
+
+    New-Item -ItemType Directory -Force -Path $script:InstallDir | Out-Null
+    New-Item -ItemType Directory -Force -Path $script:LogDir | Out-Null
+    Remove-OldTasksAndService
     Stop-AgentProcesses
 
     Copy-Item -Force -Path $script:SourceExe -Destination $script:InstallExe
+    Write-AgentConfig
     Write-HiddenLauncher
+    Write-WatchdogScript
+    Set-InstallDirectoryAcl
+    New-MonitorTasks
+    Start-Monitor
 
-    $taskCommand = "wscript.exe `"$script:VbsPath`""
-    $createOutput = & schtasks.exe /Create /TN $script:TaskName /TR $taskCommand /SC ONLOGON /F 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        throw "创建计划任务失败：$($createOutput | Out-String)"
-    }
-
-    $runOutput = & schtasks.exe /Run /TN $script:TaskName 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        throw "启动计划任务失败：$($runOutput | Out-String)"
-    }
-
-    Start-Sleep -Seconds 2
-    $proc = Get-Process -Name "monitor-agent" -ErrorAction SilentlyContinue
-    if (-not $proc) {
-        throw "计划任务已创建，但 monitor-agent.exe 没有运行。请查看日志：$script:LogPath"
-    }
-
-    Write-InstallLog "安装成功，进程 PID=$($proc[0].Id)"
+    Write-InstallLog "安装完成"
 }
 
-function Remove-AgentTask {
-    & schtasks.exe /End /TN $script:TaskName 2>&1 | Out-Null
-    & schtasks.exe /Delete /TN $script:TaskName /F 2>&1 | Out-Null
+function Remove-Agent {
+    Assert-Admin
+    Remove-OldTasksAndService
     Stop-AgentProcesses
-    Write-InstallLog "已卸载后台任务"
-}
-
-function Start-AgentTask {
-    $output = & schtasks.exe /Run /TN $script:TaskName 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        throw "启动失败：$($output | Out-String)"
+    if (Test-Path $script:InstallDir) {
+        $acl = Get-Acl $script:InstallDir
+        $acl.SetAccessRuleProtection($false, $true)
+        Set-Acl -Path $script:InstallDir -AclObject $acl
+        Remove-Item -LiteralPath $script:InstallDir -Recurse -Force -ErrorAction SilentlyContinue
     }
+    Write-InstallLog "卸载完成"
 }
 
-function Stop-AgentTask {
-    & schtasks.exe /End /TN $script:TaskName 2>&1 | Out-Null
-    Stop-AgentProcesses
-}
-
-function Show-AgentStatus {
-    $task = & schtasks.exe /Query /TN $script:TaskName 2>&1
-    $proc = Get-Process -Name "monitor-agent" -ErrorAction SilentlyContinue
-    Write-Host $task
+function Show-Status {
+    $tasks = @($script:MainTaskName, $script:WatchdogTaskName)
+    foreach ($task in $tasks) {
+        & schtasks.exe /Query /TN $task 2>&1
+    }
+    $proc = Get-Process -Name $script:ProcessName -ErrorAction SilentlyContinue
     if ($proc) {
-        Write-Host "monitor-agent.exe 正在运行，PID=$($proc[0].Id)"
+        Write-Host "$script:ProcessName.exe 正在运行，PID=$($proc[0].Id)"
     } else {
-        Write-Host "monitor-agent.exe 未运行"
+        Write-Host "$script:ProcessName.exe 未运行"
     }
 }
 
 try {
     if ($Remove) {
-        Remove-AgentTask
-        Write-Host "Monitor Agent 已卸载。"
-        exit 0
-    }
-    if ($Start) {
-        Start-AgentTask
-        Write-Host "Monitor Agent 已启动。"
+        Remove-Agent
+        Write-Host "$script:ProductName 已卸载。"
         exit 0
     }
     if ($Stop) {
-        Stop-AgentTask
-        Write-Host "Monitor Agent 已停止。"
+        Assert-Admin
+        & schtasks.exe /End /TN $script:MainTaskName 2>&1 | Out-Null
+        Stop-AgentProcesses
+        Write-Host "$script:ProductName 已停止。"
+        exit 0
+    }
+    if ($Start) {
+        Assert-Admin
+        Start-Monitor
+        Write-Host "$script:ProductName 已启动。"
         exit 0
     }
     if ($Status) {
-        Show-AgentStatus
+        Show-Status
         exit 0
     }
 
-    Install-AgentTask
-    Write-Host "Monitor Agent 已安装并在后台运行。"
+    Install-Agent
+    Write-Host "$script:ProductName 已安装并在后台运行。"
     Write-Host "服务器地址: $script:ServerHost`:$script:ServerPort"
     Write-Host "安装目录: $script:InstallDir"
-    Write-Host "安装日志: $script:LogPath"
+    Write-Host "日志目录: $script:LogDir"
     exit 0
 } catch {
     Write-InstallLog "失败：$($_.Exception.Message)"

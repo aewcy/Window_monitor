@@ -11,12 +11,12 @@ if not exist "monitor-agent.exe" (
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0install-agent.ps1" -Install
 if errorlevel 1 (
     echo.
-    echo 安装失败，请查看日志：%LOCALAPPDATA%\MonitorAgent\install.log
+    echo 安装失败，请查看日志：%LOCALAPPDATA%\Windows Monitor\logs\install.log
     pause
     exit /b 1
 )
 
 echo.
-echo Monitor Agent 已安装为当前用户后台任务并启动。
-echo 可在任务管理器中搜索 monitor-agent。
+echo Windows Monitor 已安装为后台任务并启动。
+echo 可在任务管理器中搜索 WindowsMonitor。
 pause
