@@ -398,24 +398,30 @@ async def detect_agent(request: Request):
 
 
 SERVER_DIR = os.path.dirname(__file__)
-PROJECT_DIR = os.path.dirname(SERVER_DIR)
-AGENT_EXE_PATH = os.path.join(SERVER_DIR, "static", "agent", "monitor-agent.exe")
-AGENT_ZIP_PATH = os.path.join(SERVER_DIR, "static", "agent", "MonitorAgent.zip")
-AGENT_INSTALLER_PATH = os.path.join(PROJECT_DIR, "agent", "install-service.ps1")
-AGENT_INSTALL_BAT_PATH = os.path.join(PROJECT_DIR, "agent", "install-agent.bat")
+AGENT_STATIC_DIR = os.path.join(SERVER_DIR, "static", "agent")
+AGENT_EXE_PATH = os.path.join(AGENT_STATIC_DIR, "monitor-agent.exe")
+AGENT_ZIP_PATH = os.path.join(AGENT_STATIC_DIR, "MonitorAgent.zip")
+AGENT_INSTALLER_PATH = os.path.join(AGENT_STATIC_DIR, "install-service.ps1")
+AGENT_INSTALL_BAT_PATH = os.path.join(AGENT_STATIC_DIR, "install-agent.bat")
 
 
 def _agent_package_sources():
-    sources = [(AGENT_EXE_PATH, "monitor-agent.exe")]
-    if os.path.exists(AGENT_INSTALLER_PATH):
-        sources.append((AGENT_INSTALLER_PATH, "install-service.ps1"))
-    if os.path.exists(AGENT_INSTALL_BAT_PATH):
-        sources.append((AGENT_INSTALL_BAT_PATH, "安装服务.bat"))
-    return sources
+    return [
+        (AGENT_EXE_PATH, "monitor-agent.exe"),
+        (AGENT_INSTALL_BAT_PATH, "install-agent.bat"),
+        (AGENT_INSTALLER_PATH, "install-service.ps1"),
+    ]
 
 
 def _agent_package_is_fresh() -> bool:
     if not os.path.exists(AGENT_ZIP_PATH):
+        return False
+    expected_names = {archive_name for _, archive_name in _agent_package_sources()}
+    try:
+        with zipfile.ZipFile(AGENT_ZIP_PATH, "r") as zf:
+            if expected_names - set(zf.namelist()):
+                return False
+    except zipfile.BadZipFile:
         return False
     package_mtime = os.path.getmtime(AGENT_ZIP_PATH)
     return all(os.path.getmtime(path) <= package_mtime for path, _ in _agent_package_sources())
@@ -431,8 +437,9 @@ def _build_agent_package():
 @router.get("/agent/download")
 async def download_agent():
     """下载 Agent 安装包（zip）"""
-    if not os.path.exists(AGENT_EXE_PATH):
-        raise HTTPException(status_code=404, detail="安装包未上传，请联系管理员")
+    missing = [archive_name for path, archive_name in _agent_package_sources() if not os.path.exists(path)]
+    if missing:
+        raise HTTPException(status_code=404, detail=f"安装包文件缺失: {', '.join(missing)}")
 
     if not _agent_package_is_fresh():
         _build_agent_package()

@@ -49,6 +49,8 @@ if %errorlevel% neq 0 (
     pause
     exit /b 1
 )
+copy /y "install-agent.bat" "..\server\static\agent\install-agent.bat" >nul
+copy /y "install-service.ps1" "..\server\static\agent\install-service.ps1" >nul
 
 echo.
 echo ============================================
