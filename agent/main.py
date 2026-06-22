@@ -393,6 +393,7 @@ def ensure_switch_to_background():
     - .exe 运行 → 直接用 CREATE_NO_WINDOW 启动新 .exe 进程（带 --background 标志）
     - 源码运行 → 用 pythonw.exe 启动新进程（带 --background 标志）
     - 不依赖计划任务和 VBS 文件，每次都直接 Popen
+    - 先释放单实例锁再 spawn，避免后台进程检测到前台 PID 还在运行而退出
     """
     if not IS_WINDOWS:
         return
@@ -400,6 +401,9 @@ def ensure_switch_to_background():
     # 已在后台运行或强制前台模式，不再切换
     if _is_running_in_background() or "--foreground" in sys.argv:
         return
+
+    # 先释放单实例锁，避免后台进程因检测到前台 PID 还在运行而退出
+    _release_instance_lock()
 
     # 直接启动后台进程并退出当前实例
     try:
@@ -454,6 +458,8 @@ def main(stop_event=None):
     # 后台模式：设置日志文件
     if _is_running_in_background():
         _setup_background_logging()
+        # 等待前台进程退出并释放锁文件
+        time.sleep(1)
 
     # 单实例锁 — 防止重复运行
     if not _acquire_instance_lock():
