@@ -22,7 +22,10 @@ _HIDDEN_IMPORTS = [
     'pynput', 'pynput.keyboard', 'pynput.keyboard._win32',
     # pywin32 Windows API
     'win32gui', 'win32process', 'win32api', 'win32con', 'win32ui',
+    'win32event', 'win32service', 'win32serviceutil', 'servicemanager',
     'pythoncom', 'pywintypes',
+    # Windows 服务入口
+    'service',
     # mss 屏幕截图
     'mss', 'mss.windows',
     # Pillow JPEG codec + 屏幕截图

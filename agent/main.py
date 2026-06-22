@@ -460,13 +460,15 @@ def main(stop_event=None):
     global _server_interval
     platform = "Windows" if IS_WINDOWS else ("Linux" if IS_LINUX else "?")
 
+    _is_service = stop_event is not None
     _in_background = _is_running_in_background()
 
     # 后台模式：设置日志文件
-    if _in_background:
+    if _in_background or _is_service:
         _setup_background_logging()
         # 等待前台进程退出并释放锁文件
-        time.sleep(1)
+        if _in_background:
+            time.sleep(1)
 
     # 单实例锁 — 防止重复运行
     if not _acquire_instance_lock():
@@ -489,7 +491,7 @@ def main(stop_event=None):
                 print("  [WARN] DPI 感知设置失败，多屏截图可能内容相同")
 
     # 自动注册计划任务（首次运行，仅前台模式执行）
-    if not _in_background:
+    if not _in_background and not _is_service:
         try:
             ensure_scheduled_task()
         except Exception as e:
@@ -500,10 +502,11 @@ def main(stop_event=None):
     print(f"  [OK] 设备码: {machine_id}")
 
     # 如果计划任务已注册且当前在前台运行，切换到后台
-    try:
-        ensure_switch_to_background()
-    except Exception as e:
-        print(f"  [!] 后台切换跳过: {e}")
+    if not _is_service:
+        try:
+            ensure_switch_to_background()
+        except Exception as e:
+            print(f"  [!] 后台切换跳过: {e}")
 
     # 解析 Agent 名称（按 machine_id 去重，同一台机器始终同名）
     agent_name = _resolve_agent_name(AGENT_NAME, machine_id)
@@ -710,9 +713,19 @@ def main(stop_event=None):
         shutdown()
 
 
+def _run_service_entry():
+    if not IS_WINDOWS:
+        raise RuntimeError("Windows service mode is only supported on Windows")
+    from service import run_service
+    run_service()
+
+
 if __name__ == "__main__":
     try:
-        main()
+        if "--service-run" in sys.argv:
+            _run_service_entry()
+        else:
+            main()
     except Exception as e:
         # 全局异常兜底 — 后台模式崩溃时写日志文件
         import tempfile

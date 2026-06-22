@@ -2,6 +2,7 @@
 FastAPI 路由定义
 """
 import os
+import zipfile
 from datetime import datetime
 from typing import Optional
 
@@ -396,16 +397,48 @@ async def detect_agent(request: Request):
     return {"found": False}
 
 
-AGENT_EXE_PATH = os.path.join(os.path.dirname(__file__), "static", "agent", "monitor-agent.exe")
+SERVER_DIR = os.path.dirname(__file__)
+PROJECT_DIR = os.path.dirname(SERVER_DIR)
+AGENT_EXE_PATH = os.path.join(SERVER_DIR, "static", "agent", "monitor-agent.exe")
+AGENT_ZIP_PATH = os.path.join(SERVER_DIR, "static", "agent", "MonitorAgent.zip")
+AGENT_INSTALLER_PATH = os.path.join(PROJECT_DIR, "agent", "install-service.ps1")
+AGENT_INSTALL_BAT_PATH = os.path.join(PROJECT_DIR, "agent", "install-agent.bat")
+
+
+def _agent_package_sources():
+    sources = [(AGENT_EXE_PATH, "monitor-agent.exe")]
+    if os.path.exists(AGENT_INSTALLER_PATH):
+        sources.append((AGENT_INSTALLER_PATH, "install-service.ps1"))
+    if os.path.exists(AGENT_INSTALL_BAT_PATH):
+        sources.append((AGENT_INSTALL_BAT_PATH, "安装服务.bat"))
+    return sources
+
+
+def _agent_package_is_fresh() -> bool:
+    if not os.path.exists(AGENT_ZIP_PATH):
+        return False
+    package_mtime = os.path.getmtime(AGENT_ZIP_PATH)
+    return all(os.path.getmtime(path) <= package_mtime for path, _ in _agent_package_sources())
+
+
+def _build_agent_package():
+    os.makedirs(os.path.dirname(AGENT_ZIP_PATH), exist_ok=True)
+    with zipfile.ZipFile(AGENT_ZIP_PATH, "w", zipfile.ZIP_STORED) as zf:
+        for path, archive_name in _agent_package_sources():
+            zf.write(path, archive_name)
 
 
 @router.get("/agent/download")
 async def download_agent():
-    """下载 Agent 安装包 (.exe)"""
+    """下载 Agent 安装包（zip）"""
     if not os.path.exists(AGENT_EXE_PATH):
         raise HTTPException(status_code=404, detail="安装包未上传，请联系管理员")
+
+    if not _agent_package_is_fresh():
+        _build_agent_package()
+
     return FileResponse(
-        path=AGENT_EXE_PATH,
-        filename="MonitorAgent.exe",
-        media_type="application/octet-stream",
+        path=AGENT_ZIP_PATH,
+        filename="MonitorAgent.zip",
+        media_type="application/zip",
     )

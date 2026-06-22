@@ -51,12 +51,17 @@ class MonitorAgentService(win32serviceutil.ServiceFramework):
             servicemanager.LogErrorMsg(f"Monitor Agent 异常: {e}")
 
 
+def run_service():
+    """从 PyInstaller 打包后的主程序进入 Windows 服务控制器。"""
+    servicemanager.Initialize()
+    servicemanager.PrepareToHostSingle(MonitorAgentService)
+    servicemanager.StartServiceCtrlDispatcher()
+
+
 if __name__ == "__main__":
     if len(sys.argv) == 1:
         # 从服务控制管理器启动
-        servicemanager.Initialize()
-        servicemanager.PrepareToHostSingle(MonitorAgentService)
-        servicemanager.StartServiceCtrlDispatcher()
+        run_service()
     else:
         # 命令行操作: install / start / stop / remove
         win32serviceutil.HandleCommandLine(MonitorAgentService)
