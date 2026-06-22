@@ -401,7 +401,7 @@ SERVER_DIR = os.path.dirname(__file__)
 AGENT_STATIC_DIR = os.path.join(SERVER_DIR, "static", "agent")
 AGENT_EXE_PATH = os.path.join(AGENT_STATIC_DIR, "monitor-agent.exe")
 AGENT_ZIP_PATH = os.path.join(AGENT_STATIC_DIR, "MonitorAgent.zip")
-AGENT_INSTALLER_PATH = os.path.join(AGENT_STATIC_DIR, "install-service.ps1")
+AGENT_INSTALLER_PATH = os.path.join(AGENT_STATIC_DIR, "install-agent.ps1")
 AGENT_INSTALL_BAT_PATH = os.path.join(AGENT_STATIC_DIR, "install-agent.bat")
 
 
@@ -409,7 +409,7 @@ def _agent_package_sources():
     return [
         (AGENT_EXE_PATH, "monitor-agent.exe"),
         (AGENT_INSTALL_BAT_PATH, "install-agent.bat"),
-        (AGENT_INSTALLER_PATH, "install-service.ps1"),
+        (AGENT_INSTALLER_PATH, "install-agent.ps1"),
     ]
 
 
