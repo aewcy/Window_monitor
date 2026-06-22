@@ -8,4 +8,15 @@ if not exist "monitor-agent.exe" (
     exit /b 1
 )
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0install-service.ps1"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0install-service.ps1" -Install
+if errorlevel 1 (
+    echo.
+    echo 安装失败，请查看日志：%ProgramData%\MonitorAgent\install.log
+    pause
+    exit /b 1
+)
+
+echo.
+echo MonitorAgent 服务已安装并启动。
+echo 可在 Windows 服务列表中搜索 MonitorAgent。
+pause
