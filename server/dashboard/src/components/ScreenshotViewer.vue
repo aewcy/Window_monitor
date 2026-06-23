@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { useScreenshotStore } from '../stores/screenshot'
 import { useAgentStore } from '../stores/agent'
 import { getScreenshotImage } from '../api'
@@ -8,6 +8,8 @@ const ss = useScreenshotStore()
 const agent = useAgentStore()
 const imgSrc = ref(null)
 const timestamp = ref('')
+const currentId = ref(null)
+let liveTimer = null
 
 const fpsLabel = () => {
   const d = agent.selectedAgentData
@@ -21,23 +23,51 @@ const fpsLabel = () => {
 }
 
 async function load() {
+  if (!agent.selectedAgent) return
   const data = await ss.loadLatest()
   if (data && data.id) {
-    imgSrc.value = getScreenshotImage(data.id)
+    if (data.id !== currentId.value) {
+      currentId.value = data.id
+      imgSrc.value = getScreenshotImage(data.id)
+    }
     timestamp.value = '实时 ' + new Date(data.timestamp).toTimeString().slice(0, 8)
+  }
+}
+
+function shouldPollLive() {
+  return Boolean(agent.selectedAgent && ss.liveMode && ss.displaySource === 'live')
+}
+
+function startLivePolling() {
+  stopLivePolling()
+  if (!shouldPollLive()) return
+  load()
+  liveTimer = setInterval(load, 1000)
+}
+
+function stopLivePolling() {
+  if (liveTimer) {
+    clearInterval(liveTimer)
+    liveTimer = null
   }
 }
 
 watch(() => agent.selectedAgent, () => {
   if (agent.selectedAgent) {
     ss.goLive()
-    load()
+    currentId.value = null
+    startLivePolling()
   }
 })
-watch(() => agent.selectedMonitor, () => { if (agent.selectedAgent) load() })
+watch(() => agent.selectedMonitor, () => {
+  currentId.value = null
+  if (shouldPollLive()) load()
+})
+watch(() => [ss.liveMode, ss.displaySource], startLivePolling)
 
 defineExpose({ load })
-onMounted(() => { if (agent.selectedAgent) load() })
+onMounted(startLivePolling)
+onUnmounted(stopLivePolling)
 </script>
 
 <template>

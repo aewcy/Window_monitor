@@ -133,10 +133,13 @@ function Set-InstallDirectoryAcl {
     $acl = Get-Acl $script:InstallDir
     $acl.SetAccessRuleProtection($true, $false)
 
+    $inheritance = [System.Security.AccessControl.InheritanceFlags]"ContainerInherit,ObjectInherit"
+    $propagation = [System.Security.AccessControl.PropagationFlags]"None"
+    $allow = [System.Security.AccessControl.AccessControlType]"Allow"
     $rules = @(
-        New-Object System.Security.AccessControl.FileSystemAccessRule("SYSTEM", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow"),
-        New-Object System.Security.AccessControl.FileSystemAccessRule("Administrators", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow"),
-        New-Object System.Security.AccessControl.FileSystemAccessRule("Users", "ReadAndExecute", "ContainerInherit,ObjectInherit", "None", "Allow")
+        [System.Security.AccessControl.FileSystemAccessRule]::new("SYSTEM", [System.Security.AccessControl.FileSystemRights]"FullControl", $inheritance, $propagation, $allow),
+        [System.Security.AccessControl.FileSystemAccessRule]::new("Administrators", [System.Security.AccessControl.FileSystemRights]"FullControl", $inheritance, $propagation, $allow),
+        [System.Security.AccessControl.FileSystemAccessRule]::new("Users", [System.Security.AccessControl.FileSystemRights]"ReadAndExecute", $inheritance, $propagation, $allow)
     )
     foreach ($rule in $rules) {
         $acl.AddAccessRule($rule)

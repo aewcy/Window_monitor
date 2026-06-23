@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, onUnmounted } from 'vue'
 import { useScreenshotStore } from '../stores/screenshot'
 import { useAgentStore } from '../stores/agent'
 import { getScreenshotImage } from '../api'
@@ -7,6 +7,8 @@ import { getScreenshotImage } from '../api'
 const ss = useScreenshotStore()
 const agent = useAgentStore()
 const imgSrc = ref(null)
+const currentLiveId = ref(null)
+let liveTimer = null
 const zoom = ref(1)  // 缩放比例
 
 // 浏览模式 (活动记录/浏览器历史点击)
@@ -48,8 +50,29 @@ const itemTitle = computed(() => {
 async function loadLive() {
   const data = await ss.loadLatest()
   if (data && data.id) {
-    imgSrc.value = getScreenshotImage(data.id)
+    if (data.id !== currentLiveId.value) {
+      currentLiveId.value = data.id
+      imgSrc.value = getScreenshotImage(data.id)
+    }
     zoom.value = 1
+  }
+}
+
+function shouldPollLive() {
+  return Boolean(ss.liveOpen && !showUI.value && agent.selectedAgent)
+}
+
+function startLivePolling() {
+  stopLivePolling()
+  if (!shouldPollLive()) return
+  loadLive()
+  liveTimer = setInterval(loadLive, 1000)
+}
+
+function stopLivePolling() {
+  if (liveTimer) {
+    clearInterval(liveTimer)
+    liveTimer = null
   }
 }
 
@@ -75,7 +98,9 @@ watch(() => ss.liveOpen, (v) => {
     zoom.value = 1
     if (isBrowse.value) loadBrowseItem()
     else if (isHistory.value) loadHistoryItem()
-    else loadLive()
+    else startLivePolling()
+  } else {
+    stopLivePolling()
   }
 })
 
@@ -101,8 +126,17 @@ function close() {
 
 function goLive() {
   ss.goLive()
-  loadLive()
+  currentLiveId.value = null
+  startLivePolling()
 }
+
+watch(() => [agent.selectedAgent, agent.selectedMonitor, ss.liveMode, ss.displaySource], () => {
+  currentLiveId.value = null
+  if (shouldPollLive()) startLivePolling()
+  else stopLivePolling()
+})
+
+onUnmounted(stopLivePolling)
 
 function prev() {
   if (isHistory.value) {

@@ -194,6 +194,10 @@ def _get_idle_seconds():
 
 
 def ensure_scheduled_task():
+    """旧版自启动入口已停用。自启动统一由 install-agent.ps1 管理。"""
+    return
+
+def _legacy_ensure_scheduled_task():
     """检查并注册 Windows 计划任务（开机自启）"""
     if not IS_WINDOWS:
         return
@@ -748,3 +752,4 @@ if __name__ == "__main__":
             traceback.print_exc()
         except Exception:
             pass
+        sys.exit(1)
