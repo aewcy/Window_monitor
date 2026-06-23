@@ -15,7 +15,7 @@ IS_LINUX = sys.platform.startswith("linux")
 # ============================================
 # 服务端地址 - 监控机的地址
 # ============================================
-SERVER_HOST = os.environ.get("MONITOR_SERVER_HOST", "108.187.15.71")
+SERVER_HOST = os.environ.get("MONITOR_SERVER_HOST", "192.168.61.133")
 SERVER_PORT = int(os.environ.get("MONITOR_SERVER_PORT", "8899"))
 SERVER_URL = f"http://{SERVER_HOST}:{SERVER_PORT}"
 

