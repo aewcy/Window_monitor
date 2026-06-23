@@ -83,8 +83,6 @@ onUnmounted(stopLivePolling)
         @click="agent.selectMonitor(i-1)">
         屏{{ i }}
       </button>
-      <button class="mon-chip" :class="{ active: agent.selectedMonitor === null }"
-        @click="agent.selectMonitor(null)">全部</button>
     </div>
     <div class="top-right">
       <span class="fps-badge" v-if="fpsLabel()">{{ fpsLabel() }}</span>

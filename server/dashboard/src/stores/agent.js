@@ -5,7 +5,7 @@ import * as api from '../api'
 export const useAgentStore = defineStore('agent', () => {
   const agents = ref([])
   const selectedAgent = ref(null)
-  const selectedMonitor = ref(null)
+  const selectedMonitor = ref(0)
   const monitorTotal = ref(1)
 
   const selectedAgentData = computed(() =>
@@ -21,12 +21,23 @@ export const useAgentStore = defineStore('agent', () => {
 
   function selectAgent(name) {
     selectedAgent.value = name
-    selectedMonitor.value = null
+    const saved = Number(localStorage.getItem(`monitor:${name}`))
+    selectedMonitor.value = Number.isInteger(saved) && saved >= 0 ? saved : 0
     monitorTotal.value = 1
   }
 
   function selectMonitor(idx) {
     selectedMonitor.value = idx
+    if (selectedAgent.value) {
+      localStorage.setItem(`monitor:${selectedAgent.value}`, String(idx))
+    }
+  }
+
+  function setMonitorTotal(total) {
+    monitorTotal.value = Math.max(1, total || 1)
+    if (selectedMonitor.value >= monitorTotal.value) {
+      selectMonitor(0)
+    }
   }
 
   async function rename(name, displayName) {
@@ -36,6 +47,6 @@ export const useAgentStore = defineStore('agent', () => {
 
   return {
     agents, selectedAgent, selectedMonitor, monitorTotal,
-    selectedAgentData, loadAgents, selectAgent, selectMonitor, rename,
+    selectedAgentData, loadAgents, selectAgent, selectMonitor, setMonitorTotal, rename,
   }
 })

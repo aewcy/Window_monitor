@@ -18,7 +18,7 @@ async function load() {
   hasMore.value = true
   try {
     loading.value = true
-    records.value = await api.getBrowserHistory(agent.selectedAgent, BATCH, 0)
+    records.value = await api.getBrowserHistory(agent.selectedAgent, BATCH, 0, agent.selectedMonitor)
     hasMore.value = records.value.length >= BATCH
   } catch {} finally { loading.value = false }
 }
@@ -28,7 +28,7 @@ async function loadMore() {
   offset.value += BATCH
   try {
     loading.value = true
-    const more = await api.getBrowserHistory(agent.selectedAgent, BATCH, offset.value)
+    const more = await api.getBrowserHistory(agent.selectedAgent, BATCH, offset.value, agent.selectedMonitor)
     records.value.push(...more)
     hasMore.value = more.length >= BATCH
   } catch {} finally { loading.value = false }

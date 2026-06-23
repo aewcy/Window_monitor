@@ -37,12 +37,18 @@ export const deleteScreenshots = (ids) =>
   })
 
 // App Events
-export const getAppEvents = (agent, limit = 20, offset = 0) =>
-  request(`/app_events?agent=${encodeURIComponent(agent)}&limit=${limit}&offset=${offset}&with_screenshots=true`)
+export const getAppEvents = (agent, limit = 20, offset = 0, monitor = null) => {
+  let url = `/app_events?agent=${encodeURIComponent(agent)}&limit=${limit}&offset=${offset}&with_screenshots=true`
+  if (monitor !== null && monitor !== undefined) url += `&monitor=${monitor}`
+  return request(url)
+}
 
 // Browser History
-export const getBrowserHistory = (agent, limit = 20, offset = 0) =>
-  request(`/browser_history?agent=${encodeURIComponent(agent)}&limit=${limit}&offset=${offset}&with_screenshots=true`)
+export const getBrowserHistory = (agent, limit = 20, offset = 0, monitor = null) => {
+  let url = `/browser_history?agent=${encodeURIComponent(agent)}&limit=${limit}&offset=${offset}&with_screenshots=true`
+  if (monitor !== null && monitor !== undefined) url += `&monitor=${monitor}`
+  return request(url)
+}
 
 // Screenshot dates/hours for calendar
 export const getScreenshotDates = (agent) =>

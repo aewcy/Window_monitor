@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useAgentStore } from './stores/agent'
 import { useScreenshotStore } from './stores/screenshot'
 import { useThemeStore } from './stores/theme'
@@ -47,6 +47,10 @@ onUnmounted(() => {
 })
 
 onUnmounted(stopAll)
+
+watch(() => [agent.selectedAgent, agent.selectedMonitor], () => {
+  refreshSlow()
+})
 
 function onKey(e) {
   // ESC 逐层退出: overlay → 网格 → 主题面板

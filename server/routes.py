@@ -355,10 +355,11 @@ async def app_events_list(
     limit: int = Query(50, le=200),
     offset: int = Query(0),
     with_screenshots: bool = Query(False),
+    monitor: Optional[int] = Query(None),
 ):
     """最近应用事件时间线 - 可选关联截图"""
     if with_screenshots:
-        return get_app_events_with_screenshots(agent, limit, offset)
+        return get_app_events_with_screenshots(agent, limit, offset, monitor)
     return get_app_events(agent, limit)
 
 
@@ -368,10 +369,11 @@ async def browser_history_list(
     limit: int = Query(100, le=500),
     offset: int = Query(0),
     with_screenshots: bool = Query(False),
+    monitor: Optional[int] = Query(None),
 ):
     """浏览器历史列表 - 可选关联截图"""
     if with_screenshots:
-        return get_browser_history_with_screenshots(agent, limit, offset)
+        return get_browser_history_with_screenshots(agent, limit, offset, monitor)
     return get_browser_history(agent, limit, offset)
 
 

@@ -27,9 +27,19 @@ export const useScreenshotStore = defineStore('screenshot', () => {
   async function loadLatest() {
     const agent = useAgentStore()
     if (!agent.selectedAgent) return null
-    const data = await api.getLatestScreenshot(agent.selectedAgent, agent.selectedMonitor)
+    let data
+    try {
+      data = await api.getLatestScreenshot(agent.selectedAgent, agent.selectedMonitor)
+    } catch (err) {
+      if (agent.selectedMonitor !== 0) {
+        agent.selectMonitor(0)
+        data = await api.getLatestScreenshot(agent.selectedAgent, 0)
+      } else {
+        throw err
+      }
+    }
     if (data && data.id) {
-      agent.monitorTotal = data.monitor_total || 1
+      agent.setMonitorTotal(data.monitor_total || 1)
     }
     return data
   }
