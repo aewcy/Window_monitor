@@ -21,6 +21,13 @@ export const getLatestScreenshot = (agent, monitor) => {
   if (monitor !== null && monitor !== undefined) url += `&monitor=${monitor}`
   return request(url)
 }
+export const getLatestLiveScreenshot = (agent, monitor) => {
+  let url = `/screenshots/live/latest?agent=${encodeURIComponent(agent)}`
+  if (monitor !== null && monitor !== undefined) url += `&monitor=${monitor}`
+  return request(url)
+}
+export const getLiveScreenshotImage = (s) =>
+  s?.image_base64 ? `data:image/${s.format || 'jpeg'};base64,${s.image_base64}` : null
 export const getScreenshots = (agent, limit = 50, offset = 0, monitor = null, dateFrom = null, dateTo = null) => {
   let url = `/screenshots?agent=${encodeURIComponent(agent)}&limit=${limit}&offset=${offset}`
   if (monitor !== null) url += `&monitor=${monitor}`

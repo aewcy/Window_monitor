@@ -1,28 +1,27 @@
-<script setup>
+﻿<script setup>
 import { ref, watch, computed, onUnmounted } from 'vue'
 import { useScreenshotStore } from '../stores/screenshot'
 import { useAgentStore } from '../stores/agent'
-import { getScreenshotImage } from '../api'
+import { getLiveScreenshotImage, getScreenshotImage } from '../api'
 
 const ss = useScreenshotStore()
 const agent = useAgentStore()
 const imgSrc = ref(null)
 const currentLiveId = ref(null)
 let liveTimer = null
-const zoom = ref(1)  // 缩放比例
+const zoom = ref(1)  // 缂╂斁姣斾緥
 
-// 浏览模式 (活动记录/浏览器历史点击)
+// 娴忚妯″紡 (娲诲姩璁板綍/娴忚鍣ㄥ巻鍙茬偣鍑?
 const currentItem = computed(() => ss.currentDisplayItem)
 const isBrowse = computed(() => ss.displaySource !== 'live')
-// 历史模式 (日历筛选)
+// 鍘嗗彶妯″紡 (鏃ュ巻绛涢€?
 const isHistory = computed(() => !ss.liveMode && ss.screenshotList.length > 0)
-// 需要显示标题和导航的状态
-const showUI = computed(() => isBrowse.value || isHistory.value)
+// 闇€瑕佹樉绀烘爣棰樺拰瀵艰埅鐨勭姸鎬?const showUI = computed(() => isBrowse.value || isHistory.value)
 
 const sourceLabel = computed(() => {
-  if (ss.displaySource === 'timeline') return '活动'
-  if (ss.displaySource === 'browser') return '浏览'
-  if (isHistory.value) return '历史'
+  if (ss.displaySource === 'timeline') return '娲诲姩'
+  if (ss.displaySource === 'browser') return '娴忚'
+  if (isHistory.value) return '鍘嗗彶'
   return 'Live'
 })
 
@@ -34,7 +33,7 @@ const itemIndex = computed(() => {
 
 const itemTitle = computed(() => {
   if (ss.displaySource === 'timeline' && currentItem.value) {
-    return `${currentItem.value.process_name} — ${currentItem.value.window_title}`
+    return `${currentItem.value.process_name} 鈥?${currentItem.value.window_title}`
   }
   if (ss.displaySource === 'browser' && currentItem.value) {
     return currentItem.value.title || currentItem.value.url
@@ -46,13 +45,13 @@ const itemTitle = computed(() => {
   return ''
 })
 
-// 加载截图
+// 鍔犺浇鎴浘
 async function loadLive() {
   const data = await ss.loadLatest()
-  if (data && data.id) {
+  if (data && (data.id || data.image_base64)) {
     if (data.id !== currentLiveId.value) {
       currentLiveId.value = data.id
-      imgSrc.value = getScreenshotImage(data.id)
+      imgSrc.value = getLiveScreenshotImage(data) || getScreenshotImage(data.id)
     }
     zoom.value = 1
   }
@@ -66,7 +65,7 @@ function startLivePolling() {
   stopLivePolling()
   if (!shouldPollLive()) return
   loadLive()
-  liveTimer = setInterval(loadLive, 1000)
+  liveTimer = setInterval(loadLive, ss.livePollMs)
 }
 
 function stopLivePolling() {
@@ -92,7 +91,7 @@ function loadHistoryItem() {
   }
 }
 
-// 监听 overlay 打开
+// 鐩戝惉 overlay 鎵撳紑
 watch(() => ss.liveOpen, (v) => {
   if (v) {
     zoom.value = 1
@@ -104,7 +103,7 @@ watch(() => ss.liveOpen, (v) => {
   }
 })
 
-// 监听浏览模式下的当前项变化 (活动记录/浏览器历史)
+// 鐩戝惉娴忚妯″紡涓嬬殑褰撳墠椤瑰彉鍖?(娲诲姩璁板綍/娴忚鍣ㄥ巻鍙?
 watch(() => ss.currentDisplayItem, (item) => {
   if (item && item.screenshot_id && ss.liveOpen) {
     imgSrc.value = getScreenshotImage(item.screenshot_id)
@@ -112,7 +111,7 @@ watch(() => ss.currentDisplayItem, (item) => {
   }
 }, { immediate: true })
 
-// 监听历史模式下的当前截图变化 (日历筛选)
+// 鐩戝惉鍘嗗彶妯″紡涓嬬殑褰撳墠鎴浘鍙樺寲 (鏃ュ巻绛涢€?
 watch(() => ss.currentIndex, () => {
   if (isHistory.value && ss.liveOpen) {
     loadHistoryItem()
@@ -121,7 +120,7 @@ watch(() => ss.currentIndex, () => {
 
 function close() {
   ss.liveOpen = false
-  if (!ss.gridMode) ss.goLive()  // 关闭时回到实时模式 (如果网格没打开)
+  if (!ss.gridMode) ss.goLive()  // 鍏抽棴鏃跺洖鍒板疄鏃舵ā寮?(濡傛灉缃戞牸娌℃墦寮€)
 }
 
 function goLive() {
@@ -134,6 +133,9 @@ watch(() => [agent.selectedAgent, agent.selectedMonitor, ss.liveMode, ss.display
   currentLiveId.value = null
   if (shouldPollLive()) startLivePolling()
   else stopLivePolling()
+})
+watch(() => ss.livePollMs, () => {
+  if (shouldPollLive()) startLivePolling()
 })
 
 onUnmounted(stopLivePolling)
@@ -156,15 +158,15 @@ function next() {
   }
 }
 
-// 滚轮切换图片
+// 婊氳疆鍒囨崲鍥剧墖
 function onWheel(e) {
   if (e.ctrlKey || e.metaKey) {
-    // Ctrl+滚轮: 缩放
+    // Ctrl+婊氳疆: 缂╂斁
     e.preventDefault()
     const delta = e.deltaY > 0 ? -0.1 : 0.1
     zoom.value = Math.min(3, Math.max(0.3, zoom.value + delta))
   } else if (showUI.value) {
-    // 普通滚轮: 切换图片
+    // 鏅€氭粴杞? 鍒囨崲鍥剧墖
     if (e.deltaY > 0) next()
     else if (e.deltaY < 0) prev()
   }
@@ -184,11 +186,11 @@ function onWheel(e) {
         <div class="header-actions">
           <span class="zoom-label" v-if="zoom !== 1">{{ Math.round(zoom * 100) }}%</span>
           <button v-if="showUI" class="live-btn" @click="goLive">
-            <span class="live-dot-sm"></span> 实时
+            <span class="live-dot-sm"></span> 瀹炴椂
           </button>
           <button class="close-btn" @click="close">
             <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><line x1="2" y1="2" x2="14" y2="14"/><line x1="14" y1="2" x2="2" y2="14"/></svg>
-            关闭
+            鍏抽棴
           </button>
         </div>
       </div>
@@ -205,8 +207,8 @@ function onWheel(e) {
           <span class="title-text">{{ itemTitle }}</span>
         </div>
         <div class="nav" v-if="showUI && (ss.displayItems.length > 1 || ss.screenshotList.length > 1)">
-          <button class="nav-pill" @click="prev">◀ 上一个</button>
-          <button class="nav-pill" @click="next">下一个 ▶</button>
+          <button class="nav-pill" @click="prev">上一张</button>
+          <button class="nav-pill" @click="next">下一张</button>
         </div>
         <div class="wheel-hint" v-if="showUI">
           <span>滚轮切换</span>

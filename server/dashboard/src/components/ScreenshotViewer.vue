@@ -1,8 +1,8 @@
-<script setup>
+﻿<script setup>
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { useScreenshotStore } from '../stores/screenshot'
 import { useAgentStore } from '../stores/agent'
-import { getScreenshotImage } from '../api'
+import { getLiveScreenshotImage, getScreenshotImage } from '../api'
 
 const ss = useScreenshotStore()
 const agent = useAgentStore()
@@ -25,12 +25,12 @@ const fpsLabel = () => {
 async function load() {
   if (!agent.selectedAgent) return
   const data = await ss.loadLatest()
-  if (data && data.id) {
+  if (data && (data.id || data.image_base64)) {
     if (data.id !== currentId.value) {
       currentId.value = data.id
-      imgSrc.value = getScreenshotImage(data.id)
+      imgSrc.value = getLiveScreenshotImage(data) || getScreenshotImage(data.id)
     }
-    timestamp.value = '实时 ' + new Date(data.timestamp).toTimeString().slice(0, 8)
+    timestamp.value = '瀹炴椂 ' + new Date(data.timestamp).toTimeString().slice(0, 8)
   }
 }
 
@@ -42,7 +42,7 @@ function startLivePolling() {
   stopLivePolling()
   if (!shouldPollLive()) return
   load()
-  liveTimer = setInterval(load, 1000)
+  liveTimer = setInterval(load, ss.livePollMs)
 }
 
 function stopLivePolling() {
@@ -64,6 +64,7 @@ watch(() => agent.selectedMonitor, () => {
   if (shouldPollLive()) load()
 })
 watch(() => [ss.liveMode, ss.displaySource], startLivePolling)
+watch(() => ss.livePollMs, startLivePolling)
 
 defineExpose({ load })
 onMounted(startLivePolling)
@@ -75,13 +76,13 @@ onUnmounted(stopLivePolling)
     <img v-if="imgSrc" :src="imgSrc" class="screenshot-img" :key="imgSrc" />
     <div v-else class="placeholder">
       <span class="big">[ ]</span>
-      选择被控端查看截图
+      閫夋嫨琚帶绔煡鐪嬫埅鍥?
     </div>
     <div class="monitor-chips" v-if="agent.monitorTotal > 1">
       <button v-for="i in agent.monitorTotal" :key="i"
         class="mon-chip" :class="{ active: agent.selectedMonitor === i-1 }"
         @click="agent.selectMonitor(i-1)">
-        屏{{ i }}
+        灞弡{ i }}
       </button>
     </div>
     <div class="top-right">

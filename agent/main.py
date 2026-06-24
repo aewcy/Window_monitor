@@ -85,6 +85,7 @@ class Reporter:
             "format": data.get("format", "jpeg"),
             "monitor_index": mon_idx,
             "monitor_total": mon_total,
+            "capture_interval": data.get("capture_interval", 0),
         })
         if ok:
             mon_tag = f" [屏{mon_idx+1}/{mon_total}]" if mon_total > 1 else ""

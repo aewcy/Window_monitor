@@ -14,6 +14,7 @@ export const useScreenshotStore = defineStore('screenshot', () => {
   const gridLoading = ref(false)
   const gridExhausted = ref(false)
   const liveOpen = ref(false)
+  const liveInterval = ref(null)
 
   // 浏览模式: 'live' | 'timeline' | 'browser'
   const displaySource = ref('live')
@@ -23,23 +24,33 @@ export const useScreenshotStore = defineStore('screenshot', () => {
   const BATCH = 30
 
   const currentDisplayItem = computed(() => displayItems.value[displayIndex.value] || null)
+  const livePollMs = computed(() => {
+    const agent = useAgentStore()
+    const interval = liveInterval.value || agent.selectedAgentData?.screenshot_interval || 1
+    return Math.max(250, Math.min(60000, Number(interval) * 1000 || 1000))
+  })
 
   async function loadLatest() {
     const agent = useAgentStore()
     if (!agent.selectedAgent) return null
     let data
     try {
-      data = await api.getLatestScreenshot(agent.selectedAgent, agent.selectedMonitor)
+      data = await api.getLatestLiveScreenshot(agent.selectedAgent, agent.selectedMonitor)
     } catch (err) {
       if (agent.selectedMonitor !== 0) {
         agent.selectMonitor(0)
-        data = await api.getLatestScreenshot(agent.selectedAgent, 0)
+        try {
+          data = await api.getLatestLiveScreenshot(agent.selectedAgent, 0)
+        } catch {
+          data = await api.getLatestScreenshot(agent.selectedAgent, 0)
+        }
       } else {
-        throw err
+        data = await api.getLatestScreenshot(agent.selectedAgent, agent.selectedMonitor)
       }
     }
-    if (data && data.id) {
+    if (data && (data.id || data.image_base64)) {
       agent.setMonitorTotal(data.monitor_total || 1)
+      liveInterval.value = data.capture_interval || agent.selectedAgentData?.screenshot_interval || liveInterval.value
     }
     return data
   }
@@ -157,7 +168,7 @@ export const useScreenshotStore = defineStore('screenshot', () => {
   return {
     liveMode, screenshotList, currentIndex,
     gridMode, gridItems, gridSelected, gridOffset, gridLoading, gridExhausted,
-    liveOpen, displaySource, displayItems, displayIndex, currentDisplayItem, BATCH,
+    liveOpen, liveInterval, livePollMs, displaySource, displayItems, displayIndex, currentDisplayItem, BATCH,
     loadLatest, loadHistory, prev, next,
     browseTimeline, browseBrowser, goLive, goHistory,
     loadGrid, toggleGridItem, selectAllGrid, deleteSelected, resetGrid,

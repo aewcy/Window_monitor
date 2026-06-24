@@ -221,6 +221,7 @@ class ScreenCapture:
                 "format": "jpeg",
                 "monitor_index": idx,
                 "monitor_total": total,
+                "capture_interval": self.interval,
             }
             for b64, ts, idx, total in raw
         ]

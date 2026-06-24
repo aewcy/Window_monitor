@@ -33,6 +33,9 @@ _viewer_last_seen: dict[str, datetime] = {}
 # Agent 上报的当前截图间隔
 _agent_intervals: dict[str, float] = {}
 
+# Live 最新帧缓存。它不入库，只服务实时画面；历史/网格仍读取 screenshots 表。
+_latest_live_frames: dict[tuple[str, int], dict] = {}
+
 
 # ============================================
 # 健康检查
@@ -140,7 +143,25 @@ async def screenshot(data: dict):
     # 更新 agent 在线状态
     upsert_agent(agent_name, "online")
 
-    # 保存截图
+    capture_interval = data.get("capture_interval", 0)
+    if capture_interval:
+        try:
+            _agent_intervals[agent_name] = float(capture_interval)
+        except (TypeError, ValueError):
+            pass
+
+    _latest_live_frames[(agent_name, int(monitor_index or 0))] = {
+        "id": f"live:{agent_name}:{monitor_index}:{timestamp}",
+        "agent_name": agent_name,
+        "timestamp": timestamp,
+        "image_base64": image_b64,
+        "format": data.get("format", "jpeg"),
+        "monitor_index": monitor_index,
+        "monitor_total": monitor_total,
+        "capture_interval": capture_interval,
+    }
+
+    # 入库存储仍执行 2 秒节流；Live 画面读取上面的内存最新帧，不受节流影响。
     screenshot_id = save_screenshot(agent_name, timestamp, image_b64,
                                     monitor_index, monitor_total)
     return {"status": "ok", "id": screenshot_id}
@@ -295,6 +316,20 @@ async def latest_screenshot(agent: str = Query(...), monitor: Optional[int] = Qu
     if not result:
         raise HTTPException(status_code=404, detail="暂无截图")
     return result
+
+
+@router.get("/screenshots/live/latest")
+async def latest_live_screenshot(agent: str = Query(...), monitor: Optional[int] = Query(None)):
+    """获取 Agent 最近一次上传的实时帧，不受截图入库节流影响"""
+    if monitor is not None:
+        result = _latest_live_frames.get((agent, monitor))
+        if result:
+            return result
+    else:
+        candidates = [frame for (name, _), frame in _latest_live_frames.items() if name == agent]
+        if candidates:
+            return max(candidates, key=lambda item: item.get("timestamp", ""))
+    raise HTTPException(status_code=404, detail="暂无实时截图")
 
 
 @router.get("/screenshots/dates")
