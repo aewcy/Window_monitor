@@ -19,9 +19,9 @@ const isHistory = computed(() => !ss.liveMode && ss.screenshotList.length > 0)
 // 闇€瑕佹樉绀烘爣棰樺拰瀵艰埅鐨勭姸鎬?const showUI = computed(() => isBrowse.value || isHistory.value)
 
 const sourceLabel = computed(() => {
-  if (ss.displaySource === 'timeline') return '娲诲姩'
-  if (ss.displaySource === 'browser') return '娴忚'
-  if (isHistory.value) return '鍘嗗彶'
+  if (ss.displaySource === 'timeline') return '活动'
+  if (ss.displaySource === 'browser') return '浏览'
+  if (isHistory.value) return '历史'
   return 'Live'
 })
 
@@ -33,7 +33,7 @@ const itemIndex = computed(() => {
 
 const itemTitle = computed(() => {
   if (ss.displaySource === 'timeline' && currentItem.value) {
-    return `${currentItem.value.process_name} 鈥?${currentItem.value.window_title}`
+    return `${currentItem.value.process_name} - ${currentItem.value.window_title}`
   }
   if (ss.displaySource === 'browser' && currentItem.value) {
     return currentItem.value.title || currentItem.value.url
@@ -186,11 +186,11 @@ function onWheel(e) {
         <div class="header-actions">
           <span class="zoom-label" v-if="zoom !== 1">{{ Math.round(zoom * 100) }}%</span>
           <button v-if="showUI" class="live-btn" @click="goLive">
-            <span class="live-dot-sm"></span> 瀹炴椂
+            <span class="live-dot-sm"></span> 实时
           </button>
           <button class="close-btn" @click="close">
             <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><line x1="2" y1="2" x2="14" y2="14"/><line x1="14" y1="2" x2="2" y2="14"/></svg>
-            鍏抽棴
+            关闭
           </button>
         </div>
       </div>

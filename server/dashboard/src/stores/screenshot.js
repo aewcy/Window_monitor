@@ -37,16 +37,7 @@ export const useScreenshotStore = defineStore('screenshot', () => {
     try {
       data = await api.getLatestLiveScreenshot(agent.selectedAgent, agent.selectedMonitor)
     } catch (err) {
-      if (agent.selectedMonitor !== 0) {
-        agent.selectMonitor(0)
-        try {
-          data = await api.getLatestLiveScreenshot(agent.selectedAgent, 0)
-        } catch {
-          data = await api.getLatestScreenshot(agent.selectedAgent, 0)
-        }
-      } else {
-        data = await api.getLatestScreenshot(agent.selectedAgent, agent.selectedMonitor)
-      }
+      data = await api.getLatestScreenshot(agent.selectedAgent, agent.selectedMonitor)
     }
     if (data && (data.id || data.image_base64)) {
       agent.setMonitorTotal(data.monitor_total || 1)

@@ -325,10 +325,16 @@ async def latest_live_screenshot(agent: str = Query(...), monitor: Optional[int]
         result = _latest_live_frames.get((agent, monitor))
         if result:
             return result
+        fallback = get_latest_screenshot(agent, monitor)
+        if fallback:
+            return fallback
     else:
         candidates = [frame for (name, _), frame in _latest_live_frames.items() if name == agent]
         if candidates:
             return max(candidates, key=lambda item: item.get("timestamp", ""))
+        fallback = get_latest_screenshot(agent)
+        if fallback:
+            return fallback
     raise HTTPException(status_code=404, detail="暂无实时截图")
 
 

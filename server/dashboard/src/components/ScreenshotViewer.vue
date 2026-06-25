@@ -30,7 +30,7 @@ async function load() {
       currentId.value = data.id
       imgSrc.value = getLiveScreenshotImage(data) || getScreenshotImage(data.id)
     }
-    timestamp.value = '瀹炴椂 ' + new Date(data.timestamp).toTimeString().slice(0, 8)
+    timestamp.value = '实时 ' + new Date(data.timestamp).toTimeString().slice(0, 8)
   }
 }
 
@@ -76,7 +76,7 @@ onUnmounted(stopLivePolling)
     <img v-if="imgSrc" :src="imgSrc" class="screenshot-img" :key="imgSrc" />
     <div v-else class="placeholder">
       <span class="big">[ ]</span>
-      閫夋嫨琚帶绔煡鐪嬫埅鍥?
+      选择被控端查看截图
     </div>
     <div class="monitor-chips" v-if="agent.monitorTotal > 1">
       <button v-for="i in agent.monitorTotal" :key="i"
