@@ -21,7 +21,7 @@ export const useScreenshotStore = defineStore('screenshot', () => {
   const displayItems = ref([])  // 带 screenshot_id + title 的条目列表
   const displayIndex = ref(0)
 
-  const BATCH = 30
+  const BATCH = 200
 
   const currentDisplayItem = computed(() => displayItems.value[displayIndex.value] || null)
   const livePollMs = computed(() => {

@@ -23,9 +23,21 @@ async function load() {
   } catch {} finally { loading.value = false }
 }
 
+async function refresh() {
+  if (!agent.selectedAgent || loading.value) return
+  const keepCount = Math.min(Math.max(events.value.length, BATCH), 200)
+  try {
+    loading.value = true
+    const fresh = await api.getAppEvents(agent.selectedAgent, keepCount, 0, agent.selectedMonitor)
+    events.value = fresh
+    offset.value = fresh.length
+    hasMore.value = fresh.length >= keepCount
+  } catch {} finally { loading.value = false }
+}
+
 async function loadMore() {
   if (!hasMore.value || loading.value) return
-  offset.value += BATCH
+  offset.value = events.value.length
   try {
     loading.value = true
     const more = await api.getAppEvents(agent.selectedAgent, BATCH, offset.value, agent.selectedMonitor)
@@ -41,7 +53,7 @@ function onClick(e, idx) {
   }
 }
 
-defineExpose({ load })
+defineExpose({ load, refresh })
 </script>
 
 <template>

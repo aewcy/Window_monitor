@@ -28,7 +28,7 @@ const logRef = ref(null)
 const statsRef = ref(null)
 
 function refreshSlow() {
-  timelineRef.value?.load()
+  timelineRef.value?.refresh?.()
   browserRef.value?.load()
   logRef.value?.load()
   statsRef.value?.load()
@@ -49,7 +49,10 @@ onUnmounted(() => {
 onUnmounted(stopAll)
 
 watch(() => [agent.selectedAgent, agent.selectedMonitor], () => {
-  refreshSlow()
+  timelineRef.value?.load()
+  browserRef.value?.load()
+  logRef.value?.load()
+  statsRef.value?.load()
 })
 
 function onKey(e) {

@@ -9,24 +9,56 @@ const ss = useScreenshotStore()
 const agent = useAgentStore()
 const { confirm } = useConfirm()
 const scrollEl = ref(null)
+const previewItem = ref(null)
+const previewZoom = ref(1)
 
-function close() { ss.gridMode = false }
+function close() {
+  previewItem.value = null
+  previewZoom.value = 1
+  ss.gridMode = false
+}
 
 // 双击截图 → 打开 overlay
 function onDblClick(s) {
-  ss.screenshotList = ss.gridItems
-  ss.currentIndex = ss.gridItems.indexOf(s)
-  ss.liveMode = false
-  ss.liveOpen = true
+  previewItem.value = s
+  previewZoom.value = 1
+}
+
+function closePreview() {
+  previewItem.value = null
+  previewZoom.value = 1
+}
+
+function previewPrev() {
+  const idx = ss.gridItems.findIndex(s => s.id === previewItem.value?.id)
+  if (idx > 0) previewItem.value = ss.gridItems[idx - 1]
+}
+
+function previewNext() {
+  const idx = ss.gridItems.findIndex(s => s.id === previewItem.value?.id)
+  if (idx >= 0 && idx < ss.gridItems.length - 1) previewItem.value = ss.gridItems[idx + 1]
+}
+
+function onPreviewWheel(e) {
+  if (e.ctrlKey || e.metaKey) {
+    e.preventDefault()
+    const delta = e.deltaY > 0 ? -0.1 : 0.1
+    previewZoom.value = Math.min(3, Math.max(0.3, previewZoom.value + delta))
+    return
+  }
+  if (e.deltaY > 0) previewNext()
+  else if (e.deltaY < 0) previewPrev()
 }
 
 watch(() => ss.gridMode, (v) => {
   if (v && agent.selectedAgent && !ss.gridItems.length) {
     // 没有预加载数据时才重新加载
+    closePreview()
     ss.resetGrid()
     ss.loadGrid(false)
   }
   if (!v) {
+    closePreview()
     // 关闭网格时清除预加载数据，下次打开重新加载
     ss.resetGrid()
   }
@@ -51,6 +83,7 @@ async function deleteOne(id) {
   const ok = await confirm('删除此截图？')
   if (ok) {
     await deleteScreenshots([id])
+    if (previewItem.value?.id === id) closePreview()
     ss.loadGrid(false)
   }
 }
@@ -105,7 +138,21 @@ function scrollTo(date) {
           </button>
         </div>
       </div>
-      <div class="grid-body" @scroll="onScroll" ref="scrollEl">
+      <div v-if="previewItem" class="grid-preview" @wheel.prevent="onPreviewWheel">
+        <div class="preview-toolbar">
+          <span class="preview-title">{{ (previewItem.timestamp||'').replace('T',' ') }}</span>
+          <div class="preview-actions">
+            <span class="zoom-label" v-if="previewZoom !== 1">{{ Math.round(previewZoom * 100) }}%</span>
+            <button class="preview-btn" @click="previewPrev">上一张</button>
+            <button class="preview-btn" @click="previewNext">下一张</button>
+            <button class="preview-btn" @click="closePreview">返回网格</button>
+          </div>
+        </div>
+        <div class="preview-stage">
+          <img :src="getScreenshotImage(previewItem.id)" :style="{ transform: `scale(${previewZoom})` }">
+        </div>
+      </div>
+      <div v-else class="grid-body" @scroll="onScroll" ref="scrollEl">
         <template v-for="g in grouped" :key="g.date">
           <div class="grid-date-label" :data-date="g.date">
             <span class="date-text">{{ g.date }}</span>
@@ -181,6 +228,25 @@ function scrollTo(date) {
 }
 .close-btn:hover { border-color: var(--red); color: var(--red); }
 .grid-body { flex: 1; overflow-y: auto; min-height: 0; }
+.grid-preview { flex: 1; min-height: 0; display: flex; flex-direction: column; background: rgba(0,0,0,.35); }
+.preview-toolbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 8px 12px; border-bottom: 1px solid var(--hairline); background: var(--surface);
+}
+.preview-title { font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.preview-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.zoom-label {
+  font-family: var(--font-mono); font-size: 10px; color: var(--amber);
+  padding: 2px 8px; background: rgba(251,191,36,.1); border-radius: 4px;
+}
+.preview-btn {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 500;
+  padding: 4px 12px; border: 1px solid var(--hairline); border-radius: 6px;
+  background: var(--surface); color: var(--text-secondary); cursor: pointer; transition: all .15s;
+}
+.preview-btn:hover { background: var(--surface-hover); color: var(--text); }
+.preview-stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.preview-stage img { max-width: 100%; max-height: 100%; object-fit: contain; transform-origin: center center; transition: transform .15s; }
 .grid-date-label {
   display: flex; align-items: center; gap: 8px; padding: 12px 12px 4px;
   position: sticky; top: 0; z-index: 2; background: var(--ground);
