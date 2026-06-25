@@ -2,7 +2,6 @@
 FastAPI 路由定义
 """
 import os
-import zipfile
 from datetime import datetime
 from typing import Optional
 
@@ -442,55 +441,17 @@ async def detect_agent(request: Request):
 
 SERVER_DIR = os.path.dirname(__file__)
 AGENT_STATIC_DIR = os.path.join(SERVER_DIR, "static", "agent")
-AGENT_EXE_PATH = os.path.join(AGENT_STATIC_DIR, "monitor-agent.exe")
-AGENT_ZIP_PATH = os.path.join(AGENT_STATIC_DIR, "MonitorAgent.zip")
-AGENT_INSTALLER_PATH = os.path.join(AGENT_STATIC_DIR, "install-agent.ps1")
-AGENT_INSTALL_BAT_PATH = os.path.join(AGENT_STATIC_DIR, "install-agent.bat")
-AGENT_UNINSTALL_BAT_PATH = os.path.join(AGENT_STATIC_DIR, "uninstall-agent.bat")
-
-
-def _agent_package_sources():
-    return [
-        (AGENT_EXE_PATH, "monitor-agent.exe"),
-        (AGENT_INSTALL_BAT_PATH, "install-agent.bat"),
-        (AGENT_UNINSTALL_BAT_PATH, "uninstall-agent.bat"),
-        (AGENT_INSTALLER_PATH, "install-agent.ps1"),
-    ]
-
-
-def _agent_package_is_fresh() -> bool:
-    if not os.path.exists(AGENT_ZIP_PATH):
-        return False
-    expected_names = {archive_name for _, archive_name in _agent_package_sources()}
-    try:
-        with zipfile.ZipFile(AGENT_ZIP_PATH, "r") as zf:
-            if expected_names - set(zf.namelist()):
-                return False
-    except zipfile.BadZipFile:
-        return False
-    package_mtime = os.path.getmtime(AGENT_ZIP_PATH)
-    return all(os.path.getmtime(path) <= package_mtime for path, _ in _agent_package_sources())
-
-
-def _build_agent_package():
-    os.makedirs(os.path.dirname(AGENT_ZIP_PATH), exist_ok=True)
-    with zipfile.ZipFile(AGENT_ZIP_PATH, "w", zipfile.ZIP_STORED) as zf:
-        for path, archive_name in _agent_package_sources():
-            zf.write(path, archive_name)
+AGENT_SETUP_PATH = os.path.join(AGENT_STATIC_DIR, "WindowsMonitorSetup.exe")
 
 
 @router.get("/agent/download")
 async def download_agent():
-    """下载 Agent 安装包（zip）"""
-    missing = [archive_name for path, archive_name in _agent_package_sources() if not os.path.exists(path)]
-    if missing:
-        raise HTTPException(status_code=404, detail=f"安装包文件缺失: {', '.join(missing)}")
-
-    if not _agent_package_is_fresh():
-        _build_agent_package()
+    """下载 Agent 安装器。"""
+    if not os.path.exists(AGENT_SETUP_PATH):
+        raise HTTPException(status_code=404, detail="安装器文件缺失: WindowsMonitorSetup.exe")
 
     return FileResponse(
-        path=AGENT_ZIP_PATH,
-        filename="MonitorAgent.zip",
-        media_type="application/zip",
+        path=AGENT_SETUP_PATH,
+        filename="WindowsMonitorSetup.exe",
+        media_type="application/vnd.microsoft.portable-executable",
     )

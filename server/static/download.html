@@ -3,160 +3,181 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Monitor Agent 下载</title>
+<title>Windows Monitor 下载</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    color-scheme: dark;
+    --bg: #111113;
+    --panel: #1b1b1f;
+    --panel-2: #202026;
+    --border: #34343c;
+    --text: #f4f4f5;
+    --muted: #a1a1aa;
+    --blue: #2f81d7;
+    --blue-2: #1f6fbd;
+    --green: #31d07f;
+    --yellow: #f4c04f;
+    --red: #ef4444;
+  }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    background: #1a1a2e;
-    color: #e0e0e0;
     min-height: 100vh;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 20px;
-  }
-  .container { max-width: 520px; width: 100%; }
-  .header { text-align: center; margin-bottom: 28px; }
-  .icon { font-size: 44px; margin-bottom: 10px; }
-  h1 { font-size: 24px; font-weight: 700; color: #fff; margin-bottom: 6px; }
-  .version { color: #8899aa; font-size: 13px; }
-  .card {
-    background: #16213e;
-    border: 1px solid #0f3460;
-    border-radius: 12px;
     padding: 24px;
-    margin-bottom: 16px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
   }
-  .detected { border-color: #00b894; }
-  .offline { border-color: #fdcb6e; }
+  .container { width: min(540px, 100%); }
+  .header { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
+  .app-icon {
+    width: 48px;
+    height: 48px;
+    image-rendering: auto;
+  }
+  h1 { font-size: 24px; line-height: 1.2; font-weight: 700; letter-spacing: 0; }
+  .version { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 22px;
+    margin-top: 14px;
+  }
   .status-line {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 9px;
     margin-bottom: 8px;
-    font-size: 16px;
-    font-weight: 600;
-  }
-  .status-detail { color: #8899aa; font-size: 13px; margin-bottom: 16px; }
-  .btn {
-    display: inline-block;
-    width: 100%;
-    padding: 12px 24px;
-    border-radius: 8px;
     font-size: 15px;
-    font-weight: 600;
+    font-weight: 700;
+  }
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--blue);
+    flex: 0 0 auto;
+  }
+  .detected .dot { background: var(--green); }
+  .offline .dot { background: var(--yellow); }
+  .status-detail { color: var(--muted); font-size: 13px; line-height: 1.6; margin-bottom: 16px; }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 44px;
+    padding: 0 18px;
+    border-radius: 7px;
+    border: 1px solid transparent;
+    background: var(--blue);
+    color: #fff;
+    font-size: 15px;
+    font-weight: 700;
     text-decoration: none;
     cursor: pointer;
-    border: none;
-    transition: all 0.2s ease;
-    text-align: center;
   }
-  .btn-primary { background: linear-gradient(135deg, #0984e3, #6c5ce7); color: #fff; }
-  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(9, 132, 227, 0.4); }
-  .btn-secondary { background: transparent; color: #0984e3; border: 1px solid #0984e3; }
-  .btn-secondary:hover { background: rgba(9, 132, 227, 0.1); }
-  .size-info { color: #8899aa; font-size: 13px; margin-top: 8px; text-align: center; }
-  .instructions {
-    background: #16213e;
-    border: 1px solid #0f3460;
-    border-radius: 12px;
-    padding: 20px;
-    margin-top: 20px;
-  }
-  .instructions h3 { font-size: 14px; color: #b8c7d9; margin-bottom: 12px; font-weight: 600; }
-  .instructions ol { padding-left: 20px; color: #d5dce8; font-size: 14px; line-height: 1.9; }
-  .warning {
-    margin-top: 16px;
+  .btn:hover { background: var(--blue-2); }
+  .btn-secondary { background: transparent; color: #7bb7ff; border-color: #3d6f9f; }
+  .btn-secondary:hover { background: rgba(47, 129, 215, .12); }
+  .size-info { color: var(--muted); font-size: 13px; margin-top: 10px; text-align: center; }
+  .instructions h2 { font-size: 15px; margin-bottom: 12px; }
+  .instructions ol { padding-left: 20px; color: #dddde3; font-size: 14px; line-height: 1.9; }
+  .note {
+    margin-top: 14px;
     padding: 12px;
-    background: rgba(253, 203, 110, 0.1);
-    border: 1px solid rgba(253, 203, 110, 0.3);
-    border-radius: 8px;
-    color: #fdcb6e;
+    border-radius: 7px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--muted);
     font-size: 13px;
-    line-height: 1.6;
+    line-height: 1.7;
   }
   .hidden { display: none; }
-  .loading { text-align: center; color: #8899aa; padding: 36px; }
+  .loading { color: var(--muted); text-align: center; padding: 28px; }
   .spinner {
     display: inline-block;
     width: 24px;
     height: 24px;
-    border: 3px solid #334455;
-    border-top-color: #0984e3;
+    border: 3px solid #33343a;
+    border-top-color: var(--blue);
     border-radius: 50%;
-    animation: spin 0.8s linear infinite;
+    animation: spin .8s linear infinite;
     margin-bottom: 12px;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
-  .error-toast {
+  .toast {
     position: fixed;
-    bottom: 20px;
     left: 50%;
+    bottom: 22px;
     transform: translateX(-50%);
-    background: #d63031;
+    background: var(--red);
     color: #fff;
-    padding: 12px 24px;
-    border-radius: 8px;
+    padding: 11px 18px;
+    border-radius: 7px;
     font-size: 14px;
-    z-index: 100;
     opacity: 0;
-    transition: opacity 0.3s;
+    pointer-events: none;
+    transition: opacity .2s ease;
   }
-  .error-toast.show { opacity: 1; }
+  .toast.show { opacity: 1; }
 </style>
 </head>
 <body>
-<div class="container">
-  <div class="header">
-    <div class="icon">⬇</div>
-    <h1>Monitor Agent 下载</h1>
-    <div class="version">Windows 10/11 后台安装包</div>
-  </div>
+<main class="container">
+  <header class="header">
+    <img class="app-icon" src="/static/assets/windows-monitor-icon.png" alt="">
+    <div>
+      <h1>Windows Monitor 下载</h1>
+      <div class="version">Windows 10/11 安装器</div>
+    </div>
+  </header>
 
-  <div id="loading" class="loading">
+  <section id="loading" class="loading card">
     <div class="spinner"></div>
     <div>正在检测本机状态...</div>
-  </div>
+  </section>
 
-  <div id="detected" class="card detected hidden">
-    <div class="status-line"><span>✓</span><span>Agent 已安装并正在运行</span></div>
+  <section id="detected" class="card detected hidden">
+    <div class="status-line"><span class="dot"></span><span>已安装并正在运行</span></div>
     <div class="status-detail" id="detected-info"></div>
-    <button class="btn btn-secondary" onclick="startDownload()">重新下载</button>
-  </div>
+    <button class="btn btn-secondary" type="button" onclick="startDownload()">重新下载安装器</button>
+  </section>
 
-  <div id="offline" class="card offline hidden">
-    <div class="status-line"><span>!</span><span>Agent 已安装但当前离线</span></div>
+  <section id="offline" class="card offline hidden">
+    <div class="status-line"><span class="dot"></span><span>已安装，但当前离线</span></div>
     <div class="status-detail" id="offline-info"></div>
-    <button class="btn btn-primary" onclick="startDownload()">重新下载</button>
-  </div>
+    <button class="btn" type="button" onclick="startDownload()">重新下载安装器</button>
+  </section>
 
-  <div id="download" class="card hidden">
-    <button class="btn btn-primary" onclick="startDownload()">下载 Agent</button>
-    <div class="size-info">ZIP 安装包，约 55 MB</div>
-  </div>
+  <section id="download" class="card hidden">
+    <button class="btn" type="button" onclick="startDownload()">下载安装器</button>
+    <div class="size-info">WindowsMonitorSetup.exe，约 56 MB</div>
+  </section>
 
-  <div class="instructions">
-    <h3>安装说明</h3>
+  <section class="card instructions">
+    <h2>安装说明</h2>
     <ol>
-      <li>下载完成后，先解压整个 MonitorAgent.zip，不要直接在压缩包里运行。</li>
-      <li>进入解压后的文件夹，双击 install-agent.bat。</li>
-      <li>如果弹出 Windows 管理员授权窗口，请点击“是”。</li>
-      <li>安装窗口会等待安装结束，并检查后台进程和计划任务是否真的启动。</li>
+      <li>下载完成后，双击运行 WindowsMonitorSetup.exe。</li>
+      <li>如果弹出 Windows 管理员授权窗口，点击“是”。</li>
+      <li>安装器会自动复制程序、注册后台启动，并启动 Windows Monitor。</li>
+      <li>卸载时可在开始菜单打开 Windows Monitor 分组，点击 Uninstall Windows Monitor；也可以在 Windows 设置的应用列表中卸载。</li>
     </ol>
-    <div class="warning">
-      如果安装后仍显示离线，请查看日志：%LOCALAPPDATA%\Windows Monitor\logs\install.log。<br>
-      如果杀毒软件拦截，请将 WindowsMonitor.exe 加入信任列表。
+    <div class="note">
+      如果安装后仍显示离线，请查看日志：%LOCALAPPDATA%\Windows Monitor\logs\install.log
     </div>
-  </div>
-</div>
+  </section>
+</main>
 
-<div id="error-toast" class="error-toast"></div>
+<div id="toast" class="toast"></div>
 
 <script>
-  function showError(msg) {
-    const toast = document.getElementById("error-toast");
-    toast.textContent = msg;
+  function showError(message) {
+    const toast = document.getElementById("toast");
+    toast.textContent = message;
     toast.classList.add("show");
     setTimeout(() => toast.classList.remove("show"), 3000);
   }
@@ -175,18 +196,18 @@
       if (data.found && data.status === "online") {
         document.getElementById("detected").classList.remove("hidden");
         document.getElementById("detected-info").textContent =
-          "机器名: " + data.agent_name + " · 状态: 在线";
+          "机器名：" + data.agent_name + "，状态：在线";
       } else if (data.found) {
         document.getElementById("offline").classList.remove("hidden");
         document.getElementById("offline-info").textContent =
-          "机器名: " + data.agent_name + " · 状态: 离线";
+          "机器名：" + data.agent_name + "，状态：离线";
       } else {
         document.getElementById("download").classList.remove("hidden");
       }
     } catch (err) {
       document.getElementById("loading").classList.add("hidden");
       document.getElementById("download").classList.remove("hidden");
-      showError("检测失败，可直接下载安装包");
+      showError("检测失败，可直接下载安装器");
     }
   }
 
