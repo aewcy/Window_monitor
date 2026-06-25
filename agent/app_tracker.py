@@ -110,7 +110,7 @@ class AppTracker:
         self._running = False
         self._thread = None
         self._listeners = []
-        self._last_title = None
+        self._last_signature = None
 
     def add_listener(self, callback):
         """callback(window_info: dict)"""
@@ -127,10 +127,14 @@ class AppTracker:
         while self._running:
             info = get_active_window()
             if info:
-                title = info["window_title"]
+                signature = (
+                    info.get("process_name", ""),
+                    info.get("window_title", ""),
+                    info.get("process_path", ""),
+                )
                 # 只在窗口切换时上报，避免重复数据
-                if title != self._last_title:
-                    self._last_title = title
+                if signature != self._last_signature:
+                    self._last_signature = signature
                     self._notify(info)
             time.sleep(self.interval)
 

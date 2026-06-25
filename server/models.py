@@ -5,13 +5,38 @@
 import os
 import sqlite3
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from config import DB_PATH, SCREENSHOT_DIR
 
 
 # 线程本地存储，每个线程使用自己的连接
 _local = threading.local()
+AGENT_ONLINE_TIMEOUT_SECONDS = 60
+
+
+def _parse_db_datetime(value: str) -> datetime | None:
+    if not value:
+        return None
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            return datetime.strptime(value, fmt)
+        except ValueError:
+            continue
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _is_agent_online(row: dict, now: datetime | None = None) -> bool:
+    if row.get("status") != "online":
+        return False
+    last_seen = _parse_db_datetime(row.get("last_seen", ""))
+    if not last_seen:
+        return False
+    now = now or datetime.now()
+    return now - last_seen <= timedelta(seconds=AGENT_ONLINE_TIMEOUT_SECONDS)
 
 
 def get_db() -> sqlite3.Connection:
@@ -193,15 +218,15 @@ def upsert_agent(name: str, status: str = "online", message: str = "", ip: str =
                  status=excluded.status,
                  last_seen=excluded.last_seen,
                  message=excluded.message,
-                 ip=excluded.ip,
+                 ip=CASE WHEN excluded.ip != '' THEN excluded.ip ELSE agents.ip END,
                  machine_id=CASE WHEN excluded.machine_id != '' THEN excluded.machine_id ELSE agents.machine_id END""",
             (name, status, message, ip, machine_id)
         )
     except sqlite3.IntegrityError:
         # 并发 INSERT 竞态兜底：另一个线程先 INSERT 成功，改为 UPDATE
         db.execute(
-            "UPDATE agents SET status=?, last_seen=datetime('now','localtime'), message=?, ip=?, machine_id=CASE WHEN ? != '' THEN ? ELSE machine_id END WHERE name=?",
-            (status, message, ip, machine_id, machine_id, name)
+            "UPDATE agents SET status=?, last_seen=datetime('now','localtime'), message=?, ip=CASE WHEN ? != '' THEN ? ELSE ip END, machine_id=CASE WHEN ? != '' THEN ? ELSE machine_id END WHERE name=?",
+            (status, message, ip, ip, machine_id, machine_id, name)
         )
     db.commit()
 
@@ -211,7 +236,15 @@ def get_agents() -> list[dict]:
     rows = db.execute(
         "SELECT * FROM agents ORDER BY last_seen DESC"
     ).fetchall()
-    return [dict(r) for r in rows]
+    now = datetime.now()
+    agents = []
+    for row in rows:
+        item = dict(row)
+        if item.get("status") == "online" and not _is_agent_online(item, now):
+            item["status"] = "offline"
+            item["message"] = item.get("message") or "heartbeat timeout"
+        agents.append(item)
+    return agents
 
 
 def get_agent_by_ip(ip: str) -> dict | None:
@@ -502,23 +535,46 @@ def save_app_event(agent_name: str, data: dict):
 def get_app_usage_summary(agent_name: str, date: str = None) -> list[dict]:
     """获取应用使用汇总（按进程聚合时长）"""
     db = get_db()
-    conditions = ["agent_name = ?"]
+    today = datetime.now().strftime("%Y-%m-%d")
+    end_time = datetime.now().isoformat(timespec="seconds")
+    conditions = ["agent_name = ?", "event_type = 'app_switch'"]
     params = [agent_name]
     if date:
         conditions.append("date(timestamp) = ?")
         params.append(date)
+        if date != today:
+            end_time = f"{date}T23:59:59"
     where = " AND ".join(conditions)
-    sql = f"""SELECT process_name,
-                     COUNT(*) as switch_count,
-                     SUM(duration_seconds) as total_seconds,
-                     MAX(window_title) as last_window_title
-              FROM app_events
-              WHERE {where}
-              GROUP BY process_name
-              ORDER BY total_seconds DESC
-              LIMIT 20"""
-    rows = db.execute(sql, params).fetchall()
-    return [{**dict(r), "total_minutes": round(dict(r)["total_seconds"] / 60, 1)} for r in rows]
+    sql = f"""
+        WITH ordered AS (
+            SELECT
+                process_name,
+                window_title,
+                timestamp,
+                LEAD(timestamp) OVER (ORDER BY timestamp ASC) AS next_timestamp
+            FROM app_events
+            WHERE {where}
+        ),
+        durations AS (
+            SELECT
+                process_name,
+                window_title,
+                MAX(0, (julianday(COALESCE(next_timestamp, ?)) - julianday(timestamp)) * 86400.0) AS seconds
+            FROM ordered
+        )
+        SELECT process_name,
+               COUNT(*) as switch_count,
+               COALESCE(SUM(seconds), 0) as total_seconds,
+               MAX(window_title) as last_window_title
+        FROM durations
+        GROUP BY process_name
+        ORDER BY total_seconds DESC
+        LIMIT 20"""
+    rows = db.execute(sql, [*params, end_time]).fetchall()
+    return [
+        {**dict(r), "total_minutes": round((dict(r)["total_seconds"] or 0) / 60, 1)}
+        for r in rows
+    ]
 
 
 def get_app_events(agent_name: str, limit: int = 50) -> list[dict]:
@@ -752,11 +808,15 @@ def get_dashboard_stats(agent_name: str = None) -> dict:
     """获取仪表盘统计数据"""
     db = get_db()
     today = datetime.now().strftime("%Y-%m-%d")
+    cutoff = (datetime.now() - timedelta(seconds=AGENT_ONLINE_TIMEOUT_SECONDS)).strftime("%Y-%m-%d %H:%M:%S")
     return {
         "total_screenshots": _count(db, "screenshots", agent_name),
         "today_app_events": _count(db, "app_events", agent_name, "date(timestamp) = ?", [today]),
         "total_browser_records": _count(db, "browser_history", agent_name),
-        "online_agents": db.execute("SELECT COUNT(*) FROM agents WHERE status = 'online'").fetchone()[0],
+        "online_agents": db.execute(
+            "SELECT COUNT(*) FROM agents WHERE status = 'online' AND last_seen >= ?",
+            (cutoff,),
+        ).fetchone()[0],
     }
 
 

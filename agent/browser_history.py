@@ -8,9 +8,26 @@ import sqlite3
 import shutil
 import tempfile
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from config import BROWSER_PATHS
+
+
+_CHROMIUM_EPOCH_UTC = datetime(1601, 1, 1, tzinfo=timezone.utc)
+
+
+def _local_naive_to_chromium_time(value: datetime) -> int:
+    """本地无时区时间 -> Chromium UTC 微秒时间戳。"""
+    if value.tzinfo is None:
+        value = value.astimezone()
+    delta = value.astimezone(timezone.utc) - _CHROMIUM_EPOCH_UTC
+    return int(delta.total_seconds() * 1_000_000)
+
+
+def _chromium_time_to_local_naive(value: int) -> datetime:
+    """Chromium UTC 微秒时间戳 -> 本地无时区时间，和截图时间格式保持一致。"""
+    utc_value = _CHROMIUM_EPOCH_UTC + timedelta(microseconds=value)
+    return utc_value.astimezone().replace(tzinfo=None)
 
 
 class BrowserHistoryCollector:
@@ -59,8 +76,7 @@ class BrowserHistoryCollector:
             last_fetch = self._last_fetch_time.get(browser_name)
             if last_fetch:
                 # 转换为 Chromium 时间戳
-                delta = last_fetch - datetime(1601, 1, 1)
-                chrometime = int(delta.total_seconds() * 1_000_000)
+                chrometime = _local_naive_to_chromium_time(last_fetch)
                 cursor.execute(
                     """SELECT url, title, visit_count, last_visit_time
                        FROM urls
@@ -72,8 +88,7 @@ class BrowserHistoryCollector:
             else:
                 # 首次采集，获取最近24小时
                 one_day_ago = datetime.now() - timedelta(hours=24)
-                delta = one_day_ago - datetime(1601, 1, 1)
-                chrometime = int(delta.total_seconds() * 1_000_000)
+                chrometime = _local_naive_to_chromium_time(one_day_ago)
                 cursor.execute(
                     """SELECT url, title, visit_count, last_visit_time
                        FROM urls
@@ -85,7 +100,7 @@ class BrowserHistoryCollector:
 
             for row in cursor.fetchall():
                 # 将 Chromium 时间戳转换回 datetime
-                ts = datetime(1601, 1, 1) + timedelta(microseconds=row["last_visit_time"])
+                ts = _chromium_time_to_local_naive(row["last_visit_time"])
                 results.append({
                     "url": row["url"],
                     "title": row["title"] or "",
