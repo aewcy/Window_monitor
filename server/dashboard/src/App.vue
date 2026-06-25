@@ -60,7 +60,6 @@ function onKey(e) {
   if (e.key === 'Escape') {
     if (ss.liveOpen) {
       ss.liveOpen = false
-      if (!ss.gridMode) ss.goLive()  // 如果网格没打开，回到实时模式
     } else if (ss.gridMode) {
       ss.gridMode = false
       ss.goLive()
