@@ -82,7 +82,7 @@ onUnmounted(stopLivePolling)
       <button v-for="i in agent.monitorTotal" :key="i"
         class="mon-chip" :class="{ active: agent.selectedMonitor === i-1 }"
         @click="agent.selectMonitor(i-1)">
-        灞弡{ i }}
+        {{ `屏${i}` }}
       </button>
     </div>
     <div class="top-right">

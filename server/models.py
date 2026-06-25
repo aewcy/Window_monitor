@@ -228,7 +228,39 @@ def upsert_agent(name: str, status: str = "online", message: str = "", ip: str =
             "UPDATE agents SET status=?, last_seen=datetime('now','localtime'), message=?, ip=CASE WHEN ? != '' THEN ? ELSE ip END, machine_id=CASE WHEN ? != '' THEN ? ELSE machine_id END WHERE name=?",
             (status, message, ip, ip, machine_id, machine_id, name)
         )
+    if machine_id:
+        _merge_duplicate_agents_by_machine_id(db, machine_id)
     db.commit()
+
+
+def _merge_duplicate_agents_by_machine_id(db: sqlite3.Connection, machine_id: str):
+    rows = db.execute(
+        """SELECT name FROM agents
+           WHERE machine_id = ?
+           ORDER BY last_seen DESC, id DESC""",
+        (machine_id,),
+    ).fetchall()
+    if len(rows) <= 1:
+        return
+    keep = rows[0]["name"]
+    duplicates = [row["name"] for row in rows[1:]]
+    for duplicate in duplicates:
+        db.execute("UPDATE screenshots SET agent_name = ? WHERE agent_name = ?", (keep, duplicate))
+        db.execute("UPDATE app_events SET agent_name = ? WHERE agent_name = ?", (keep, duplicate))
+        db.execute(
+            """DELETE FROM browser_history
+               WHERE agent_name = ?
+                 AND EXISTS (
+                   SELECT 1 FROM browser_history kept
+                   WHERE kept.agent_name = ?
+                     AND kept.url = browser_history.url
+                     AND kept.last_visit = browser_history.last_visit
+                 )""",
+            (duplicate, keep),
+        )
+        db.execute("UPDATE browser_history SET agent_name = ? WHERE agent_name = ?", (keep, duplicate))
+        db.execute("UPDATE diagnostic_logs SET agent_name = ? WHERE agent_name = ?", (keep, duplicate))
+        db.execute("DELETE FROM agents WHERE name = ?", (duplicate,))
 
 
 def get_agents() -> list[dict]:
