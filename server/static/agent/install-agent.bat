@@ -1,22 +1,40 @@
-﻿@echo off
-chcp 65001 >nul
+@echo off
+setlocal
 cd /d "%~dp0"
 
 if not exist "monitor-agent.exe" (
-    echo 未找到 monitor-agent.exe，请确认安装包已完整解压。
-    pause
-    exit /b 1
-)
-
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0install-agent.ps1" -Install
-if errorlevel 1 (
-    echo.
-    echo 安装失败，请查看日志：%LOCALAPPDATA%\Windows Monitor\logs\install.log
+    echo monitor-agent.exe was not found.
+    echo Please extract the full MonitorAgent.zip before running install-agent.bat.
     pause
     exit /b 1
 )
 
 echo.
-echo Windows Monitor 已安装为后台任务并启动。
-echo 可在任务管理器中搜索 WindowsMonitor。
+echo Requesting administrator permission and installing Windows Monitor...
+echo If a Windows permission prompt appears, click Yes.
+echo.
+
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$script = Join-Path '%~dp0' 'install-agent.ps1'; $args = @('-NoProfile','-ExecutionPolicy','Bypass','-File', ('\"' + $script + '\"'), '-Install'); $p = Start-Process -FilePath 'powershell.exe' -ArgumentList $args -Verb RunAs -Wait -PassThru; exit $p.ExitCode"
+if errorlevel 1 (
+    echo.
+    echo Install failed. Check the log:
+    echo %LOCALAPPDATA%\Windows Monitor\logs\install.log
+    pause
+    exit /b 1
+)
+
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$taskOk = (schtasks.exe /Query /TN 'Windows Monitor' 2>$null) -ne $null; $procOk = (Get-Process -Name 'WindowsMonitor' -ErrorAction SilentlyContinue) -ne $null; if (-not $taskOk -or -not $procOk) { exit 2 }"
+if errorlevel 1 (
+    echo.
+    echo Installer returned, but the background process or scheduled task was not detected.
+    echo Check the log:
+    echo %LOCALAPPDATA%\Windows Monitor\logs\install.log
+    echo You can also right-click install-agent.bat and choose Run as administrator.
+    pause
+    exit /b 1
+)
+
+echo.
+echo Windows Monitor has been installed and started in the background.
+echo Search for WindowsMonitor in Task Manager.
 pause

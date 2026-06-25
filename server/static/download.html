@@ -7,7 +7,7 @@
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     background: #1a1a2e;
     color: #e0e0e0;
     min-height: 100vh;
@@ -16,60 +16,32 @@
     justify-content: center;
     padding: 20px;
   }
-  .container {
-    max-width: 480px;
-    width: 100%;
-  }
-  .header {
-    text-align: center;
-    margin-bottom: 32px;
-  }
-  .header h1 {
-    font-size: 24px;
-    font-weight: 700;
-    color: #fff;
-    margin-bottom: 8px;
-  }
-  .header .icon {
-    font-size: 48px;
-    margin-bottom: 12px;
-  }
+  .container { max-width: 520px; width: 100%; }
+  .header { text-align: center; margin-bottom: 28px; }
+  .icon { font-size: 44px; margin-bottom: 10px; }
+  h1 { font-size: 24px; font-weight: 700; color: #fff; margin-bottom: 6px; }
+  .version { color: #8899aa; font-size: 13px; }
   .card {
     background: #16213e;
     border: 1px solid #0f3460;
     border-radius: 12px;
     padding: 24px;
     margin-bottom: 16px;
-    transition: all 0.3s ease;
   }
-  .card.detected {
-    border-color: #00b894;
-    background: #16213e;
-  }
-  .card.detected .status-icon { color: #00b894; }
-  .card.offline {
-    border-color: #fdcb6e;
-    background: #16213e;
-  }
-  .card.offline .status-icon { color: #fdcb6e; }
-  .status-icon {
-    font-size: 20px;
-    margin-right: 8px;
-  }
+  .detected { border-color: #00b894; }
+  .offline { border-color: #fdcb6e; }
   .status-line {
     display: flex;
     align-items: center;
+    gap: 8px;
     margin-bottom: 8px;
     font-size: 16px;
     font-weight: 600;
   }
-  .status-detail {
-    color: #8899aa;
-    font-size: 13px;
-    margin-bottom: 16px;
-  }
+  .status-detail { color: #8899aa; font-size: 13px; margin-bottom: 16px; }
   .btn {
     display: inline-block;
+    width: 100%;
     padding: 12px 24px;
     border-radius: 8px;
     font-size: 15px;
@@ -80,56 +52,20 @@
     transition: all 0.2s ease;
     text-align: center;
   }
-  .btn-primary {
-    background: linear-gradient(135deg, #0984e3, #6c5ce7);
-    color: #fff;
-    width: 100%;
-  }
-  .btn-primary:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(9, 132, 227, 0.4);
-  }
-  .btn-secondary {
-    background: transparent;
-    color: #0984e3;
-    border: 1px solid #0984e3;
-    width: 100%;
-    margin-top: 8px;
-  }
-  .btn-secondary:hover {
-    background: rgba(9, 132, 227, 0.1);
-  }
-  .size-info {
-    color: #8899aa;
-    font-size: 13px;
-    margin-top: 8px;
-    text-align: center;
-  }
-  .divider {
-    text-align: center;
-    color: #556677;
-    font-size: 13px;
-    margin: 16px 0;
-  }
+  .btn-primary { background: linear-gradient(135deg, #0984e3, #6c5ce7); color: #fff; }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(9, 132, 227, 0.4); }
+  .btn-secondary { background: transparent; color: #0984e3; border: 1px solid #0984e3; }
+  .btn-secondary:hover { background: rgba(9, 132, 227, 0.1); }
+  .size-info { color: #8899aa; font-size: 13px; margin-top: 8px; text-align: center; }
   .instructions {
     background: #16213e;
     border: 1px solid #0f3460;
     border-radius: 12px;
     padding: 20px;
-    margin-top: 24px;
+    margin-top: 20px;
   }
-  .instructions h3 {
-    font-size: 14px;
-    color: #8899aa;
-    margin-bottom: 12px;
-    font-weight: 500;
-  }
-  .instructions ol {
-    padding-left: 20px;
-    color: #b0b0b0;
-    font-size: 14px;
-    line-height: 1.8;
-  }
+  .instructions h3 { font-size: 14px; color: #b8c7d9; margin-bottom: 12px; font-weight: 600; }
+  .instructions ol { padding-left: 20px; color: #d5dce8; font-size: 14px; line-height: 1.9; }
   .warning {
     margin-top: 16px;
     padding: 12px;
@@ -138,14 +74,11 @@
     border-radius: 8px;
     color: #fdcb6e;
     font-size: 13px;
+    line-height: 1.6;
   }
   .hidden { display: none; }
-  .loading {
-    text-align: center;
-    color: #556677;
-    padding: 40px;
-  }
-  .loading .spinner {
+  .loading { text-align: center; color: #8899aa; padding: 36px; }
+  .spinner {
     display: inline-block;
     width: 24px;
     height: 24px;
@@ -176,55 +109,44 @@
 <body>
 <div class="container">
   <div class="header">
-    <div class="icon">🖥️</div>
+    <div class="icon">⬇</div>
     <h1>Monitor Agent 下载</h1>
-    <div style="color: #8899aa; font-size: 13px; margin-top: 4px;">v0.27</div>
+    <div class="version">Windows 10/11 后台安装包</div>
   </div>
 
-  <!-- 加载中 -->
   <div id="loading" class="loading">
     <div class="spinner"></div>
     <div>正在检测本机状态...</div>
   </div>
 
-  <!-- 检测结果: 已安装 -->
   <div id="detected" class="card detected hidden">
-    <div class="status-line">
-      <span class="status-icon">✅</span>
-      <span>Agent 已安装并运行中</span>
-    </div>
+    <div class="status-line"><span>✓</span><span>Agent 已安装并正在运行</span></div>
     <div class="status-detail" id="detected-info"></div>
     <button class="btn btn-secondary" onclick="startDownload()">重新下载</button>
   </div>
 
-  <!-- 检测结果: 已安装但离线 -->
   <div id="offline" class="card offline hidden">
-    <div class="status-line">
-      <span class="status-icon">⚠️</span>
-      <span>Agent 已安装但离线</span>
-    </div>
+    <div class="status-line"><span>!</span><span>Agent 已安装但当前离线</span></div>
     <div class="status-detail" id="offline-info"></div>
     <button class="btn btn-primary" onclick="startDownload()">重新下载</button>
   </div>
 
-  <!-- 未安装: 下载 -->
   <div id="download" class="card hidden">
-    <button class="btn btn-primary" onclick="startDownload()">
-      ⬇️ 下载 Agent
-    </button>
-    <div class="size-info">Windows 10/11 · ZIP 后台安装包 · 约 55 MB</div>
+    <button class="btn btn-primary" onclick="startDownload()">下载 Agent</button>
+    <div class="size-info">ZIP 安装包，约 55 MB</div>
   </div>
 
-  <!-- 安装说明 -->
   <div class="instructions">
     <h3>安装说明</h3>
     <ol>
-      <li>下载完成后先解压 ZIP 安装包</li>
-      <li>右键/双击 install-agent.bat，按提示授权管理员权限</li>
-      <li>安装后会后台运行，并每分钟自动检查恢复</li>
+      <li>下载完成后，先解压整个 MonitorAgent.zip，不要直接在压缩包里运行。</li>
+      <li>进入解压后的文件夹，双击 install-agent.bat。</li>
+      <li>如果弹出 Windows 管理员授权窗口，请点击“是”。</li>
+      <li>安装窗口会等待安装结束，并检查后台进程和计划任务是否真的启动。</li>
     </ol>
     <div class="warning">
-      ⚠️ 如被杀毒软件拦截，请将 WindowsMonitor.exe 添加到信任列表
+      如果安装后仍显示离线，请查看日志：%LOCALAPPDATA%\Windows Monitor\logs\install.log。<br>
+      如果杀毒软件拦截，请将 WindowsMonitor.exe 加入信任列表。
     </div>
   </div>
 </div>
@@ -233,41 +155,38 @@
 
 <script>
   function showError(msg) {
-    const t = document.getElementById('error-toast');
-    t.textContent = msg;
-    t.classList.add('show');
-    setTimeout(() => t.classList.remove('show'), 3000);
+    const toast = document.getElementById("error-toast");
+    toast.textContent = msg;
+    toast.classList.add("show");
+    setTimeout(() => toast.classList.remove("show"), 3000);
   }
 
   function startDownload() {
-    window.location.href = '/api/agent/download';
+    window.location.href = "/api/agent/download";
   }
 
   async function detect() {
     try {
-      const resp = await fetch('/api/agent/detect', { method: 'POST' });
-      if (!resp.ok) throw new Error('检测请求失败');
+      const resp = await fetch("/api/agent/detect", { method: "POST" });
+      if (!resp.ok) throw new Error("检测请求失败");
       const data = await resp.json();
 
-      document.getElementById('loading').classList.add('hidden');
-
-      if (data.found) {
-        if (data.status === 'online') {
-          document.getElementById('detected').classList.remove('hidden');
-          document.getElementById('detected-info').textContent =
-            '机器名: ' + data.agent_name + ' · 状态: 在线';
-        } else {
-          document.getElementById('offline').classList.remove('hidden');
-          document.getElementById('offline-info').textContent =
-            '机器名: ' + data.agent_name + ' · 状态: 离线';
-        }
+      document.getElementById("loading").classList.add("hidden");
+      if (data.found && data.status === "online") {
+        document.getElementById("detected").classList.remove("hidden");
+        document.getElementById("detected-info").textContent =
+          "机器名: " + data.agent_name + " · 状态: 在线";
+      } else if (data.found) {
+        document.getElementById("offline").classList.remove("hidden");
+        document.getElementById("offline-info").textContent =
+          "机器名: " + data.agent_name + " · 状态: 离线";
       } else {
-        document.getElementById('download').classList.remove('hidden');
+        document.getElementById("download").classList.remove("hidden");
       }
-    } catch (e) {
-      // 检测失败，降级显示下载按钮
-      document.getElementById('loading').classList.add('hidden');
-      document.getElementById('download').classList.remove('hidden');
+    } catch (err) {
+      document.getElementById("loading").classList.add("hidden");
+      document.getElementById("download").classList.remove("hidden");
+      showError("检测失败，可直接下载安装包");
     }
   }
 
