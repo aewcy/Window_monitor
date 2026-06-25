@@ -21,6 +21,38 @@ const rowStyle = computed(() => ({
 watch(titleWidth, value => localStorage.setItem('browserHistory:titleWidth', String(value)))
 watch(urlWidth, value => localStorage.setItem('browserHistory:urlWidth', String(value)))
 
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value))
+}
+
+function startResize(column, event) {
+  event.preventDefault()
+  event.stopPropagation()
+
+  const startX = event.clientX
+  const startTitleWidth = titleWidth.value
+  const startUrlWidth = urlWidth.value
+
+  const onMove = moveEvent => {
+    const delta = moveEvent.clientX - startX
+    if (column === 'title') {
+      titleWidth.value = clamp(startTitleWidth + delta, 220, 900)
+      return
+    }
+    urlWidth.value = clamp(startUrlWidth + delta, 100, 520)
+  }
+
+  const onUp = () => {
+    window.removeEventListener('pointermove', onMove)
+    window.removeEventListener('pointerup', onUp)
+    document.body.classList.remove('is-resizing-column')
+  }
+
+  document.body.classList.add('is-resizing-column')
+  window.addEventListener('pointermove', onMove)
+  window.addEventListener('pointerup', onUp, { once: true })
+}
+
 async function load() {
   if (!agent.selectedAgent) return
   offset.value = 0
@@ -57,17 +89,14 @@ defineExpose({ load })
   <div class="card" :style="rowStyle">
     <div class="card-header">
       <span class="card-title"><span class="dot" style="background:var(--amber)"></span> 浏览器历史</span>
-      <div class="card-actions">
-        <label class="width-control">
-          <span>文字</span>
-          <input v-model.number="titleWidth" type="range" min="220" max="760" step="20">
-        </label>
-        <label class="width-control">
-          <span>网址</span>
-          <input v-model.number="urlWidth" type="range" min="100" max="420" step="20">
-        </label>
-        <span class="card-count" v-if="records.length">{{ records.length }} 条</span>
-      </div>
+      <span class="card-count" v-if="records.length">{{ records.length }} 条</span>
+    </div>
+    <div class="br-head">
+      <span></span>
+      <span class="head-cell resizable">文字<button class="resize-handle" type="button" @pointerdown="startResize('title', $event)"></button></span>
+      <span class="head-cell resizable">网址<button class="resize-handle" type="button" @pointerdown="startResize('url', $event)"></button></span>
+      <span class="head-cell right">时间</span>
+      <span class="head-cell right">次数</span>
     </div>
     <div class="card-body">
       <div v-for="(r, idx) in records" :key="r.id"
@@ -93,17 +122,44 @@ defineExpose({ load })
 .card { background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius-lg); overflow: hidden; display: flex; flex-direction: column; }
 .card-header { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 16px; border-bottom: 1px solid var(--hairline); flex-shrink: 0; }
 .card-title { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
-.card-actions { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .card-count { font-size: 10px; color: var(--muted); font-family: var(--font-mono); white-space: nowrap; }
 .dot { width: 6px; height: 6px; border-radius: 50%; }
 .card-body { flex: 1; overflow-y: auto; min-height: 0; }
-.width-control { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--muted); font-family: var(--font-mono); user-select: none; }
-.width-control input { width: 84px; accent-color: var(--accent); }
+.br-head,
 .br-row {
   display: grid;
   grid-template-columns: 16px minmax(80px, var(--title-width)) minmax(60px, var(--url-width)) 44px 28px;
   align-items: center;
   gap: 10px;
+}
+.br-head {
+  flex-shrink: 0;
+  padding: 0 16px;
+  min-height: 25px;
+  background: rgba(255,255,255,.025);
+  border-bottom: 1px solid var(--hairline);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+.head-cell { position: relative; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.head-cell.right { text-align: right; }
+.head-cell.resizable { padding-right: 8px; }
+.resize-handle {
+  position: absolute;
+  top: -5px;
+  right: -6px;
+  bottom: -5px;
+  width: 11px;
+  padding: 0;
+  border: 0;
+  border-right: 1px solid rgba(255,255,255,.16);
+  background: transparent;
+  cursor: col-resize;
+}
+.resize-handle:hover,
+.resize-handle:active { border-right-color: var(--accent); background: rgba(96,165,250,.10); }
+.br-row {
   padding: 5px 16px;
   border-bottom: 1px solid rgba(255,255,255,.02);
   font-size: 12px;
@@ -122,11 +178,11 @@ defineExpose({ load })
 .empty { color: var(--muted); padding: 16px; text-align: center; font-size: 11px; }
 .load-more { text-align: center; padding: 10px; font-size: 11px; color: var(--accent); cursor: pointer; transition: background .1s; }
 .load-more:hover { background: rgba(255,255,255,.04); }
+:global(body.is-resizing-column) { cursor: col-resize; user-select: none; }
 @media (max-width: 760px) {
-  .card-header { align-items: flex-start; flex-direction: column; }
-  .card-actions { width: 100%; flex-wrap: wrap; }
-  .width-control input { width: 120px; }
+  .br-head,
   .br-row { grid-template-columns: 16px minmax(0, 1fr) 44px 28px; }
-  .br-url { display: none; }
+  .br-url,
+  .br-head .head-cell:nth-child(3) { display: none; }
 }
 </style>
