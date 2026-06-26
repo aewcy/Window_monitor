@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { useScreenshotStore } from '../stores/screenshot'
 import { useAgentStore } from '../stores/agent'
 import { useConfirm } from '../composables/useConfirm'
@@ -11,6 +11,8 @@ const { confirm } = useConfirm()
 const scrollEl = ref(null)
 const previewItem = ref(null)
 const previewZoom = ref(1)
+const dragSelecting = ref(false)
+const draggedIds = new Set()
 
 function close() {
   previewItem.value = null
@@ -27,6 +29,34 @@ function onDblClick(s) {
 function closePreview() {
   previewItem.value = null
   previewZoom.value = 1
+}
+
+function stopDragSelect() {
+  dragSelecting.value = false
+  draggedIds.clear()
+}
+
+function addDraggedItem(id) {
+  if (!dragSelecting.value || draggedIds.has(id) || ss.gridSelected.has(id)) return
+  draggedIds.add(id)
+  ss.setGridItemSelected(id, true)
+}
+
+function startDragSelect(event, id) {
+  if (event.button !== 0) return
+  dragSelecting.value = true
+  draggedIds.clear()
+  addDraggedItem(id)
+  window.addEventListener('pointerup', stopDragSelect, { once: true })
+}
+
+function continueDragSelect(event, id) {
+  if (!dragSelecting.value) return
+  if ((event.buttons & 1) !== 1) {
+    stopDragSelect()
+    return
+  }
+  addDraggedItem(id)
 }
 
 function previewPrev() {
@@ -62,6 +92,10 @@ watch(() => ss.gridMode, (v) => {
     // 关闭网格时清除预加载数据，下次打开重新加载
     ss.resetGrid()
   }
+})
+
+onBeforeUnmount(() => {
+  stopDragSelect()
 })
 
 function onScroll(e) {
@@ -158,13 +192,15 @@ function scrollTo(date) {
             <span class="date-text">{{ g.date }}</span>
             <span class="date-total">{{ g.items.length }} 张</span>
           </div>
-          <div class="grid-container">
+          <div class="grid-container" :class="{ brushing: dragSelecting }">
             <div v-for="s in g.items" :key="s.id"
               class="grid-item" :class="{ selected: ss.gridSelected.has(s.id) }"
+              @pointerdown="startDragSelect($event, s.id)"
+              @pointerenter="continueDragSelect($event, s.id)"
               @dblclick="onDblClick(s)">
               <input type="checkbox" class="grid-check"
-                :checked="ss.gridSelected.has(s.id)" @change="ss.toggleGridItem(s.id)">
-              <button class="grid-delete" @click.stop="deleteOne(s.id)">×</button>
+                :checked="ss.gridSelected.has(s.id)" @pointerdown.stop @change="ss.toggleGridItem(s.id)">
+              <button class="grid-delete" @pointerdown.stop @click.stop="deleteOne(s.id)">×</button>
               <img :src="getScreenshotImage(s.id)" loading="lazy">
               <div class="grid-time">{{ (s.timestamp||'').replace('T',' ').substring(11,19) }}</div>
               <div class="grid-monitor" v-if="s.monitor_total > 1">屏{{ (s.monitor_index||0)+1 }}</div>
@@ -258,6 +294,7 @@ function scrollTo(date) {
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 8px; padding: 4px 12px 12px;
 }
+.grid-container.brushing { cursor: crosshair; user-select: none; }
 .grid-item {
   position: relative; border-radius: 6px; overflow: hidden;
   border: 2px solid transparent; cursor: pointer; transition: border-color .15s, transform .15s;

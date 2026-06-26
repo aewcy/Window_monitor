@@ -132,6 +132,13 @@ export const useScreenshotStore = defineStore('screenshot', () => {
     gridSelected.value = s
   }
 
+  function setGridItemSelected(id, selected = true) {
+    const s = new Set(gridSelected.value)
+    if (selected) s.add(id)
+    else s.delete(id)
+    gridSelected.value = s
+  }
+
   function selectAllGrid() {
     if (gridSelected.value.size === gridItems.value.length) {
       gridSelected.value = new Set()
@@ -162,6 +169,6 @@ export const useScreenshotStore = defineStore('screenshot', () => {
     liveOpen, liveInterval, livePollMs, displaySource, displayItems, displayIndex, currentDisplayItem, BATCH,
     loadLatest, loadHistory, prev, next,
     browseTimeline, browseBrowser, goLive, goHistory,
-    loadGrid, toggleGridItem, selectAllGrid, deleteSelected, resetGrid,
+    loadGrid, toggleGridItem, setGridItemSelected, selectAllGrid, deleteSelected, resetGrid,
   }
 })
