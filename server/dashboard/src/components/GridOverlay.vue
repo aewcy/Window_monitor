@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useScreenshotStore } from '../stores/screenshot'
 import { useAgentStore } from '../stores/agent'
 import { useConfirm } from '../composables/useConfirm'
@@ -11,8 +11,8 @@ const { confirm } = useConfirm()
 const scrollEl = ref(null)
 const previewItem = ref(null)
 const previewZoom = ref(1)
-const dragSelecting = ref(false)
-const draggedIds = new Set()
+const modifierSelecting = ref(false)
+const sweptIds = new Set()
 
 function close() {
   previewItem.value = null
@@ -31,32 +31,35 @@ function closePreview() {
   previewZoom.value = 1
 }
 
-function stopDragSelect() {
-  dragSelecting.value = false
-  draggedIds.clear()
+function stopModifierSelect() {
+  modifierSelecting.value = false
+  sweptIds.clear()
 }
 
-function addDraggedItem(id) {
-  if (!dragSelecting.value || draggedIds.has(id) || ss.gridSelected.has(id)) return
-  draggedIds.add(id)
+function addSweptItem(id) {
+  if (!modifierSelecting.value || sweptIds.has(id) || ss.gridSelected.has(id)) return
+  sweptIds.add(id)
   ss.setGridItemSelected(id, true)
 }
 
-function startDragSelect(event, id) {
-  if (event.button !== 0) return
-  dragSelecting.value = true
-  draggedIds.clear()
-  addDraggedItem(id)
-  window.addEventListener('pointerup', stopDragSelect, { once: true })
+function isModifierSelect(event) {
+  return event.ctrlKey && event.shiftKey
 }
 
-function continueDragSelect(event, id) {
-  if (!dragSelecting.value) return
-  if ((event.buttons & 1) !== 1) {
-    stopDragSelect()
+function selectWithModifiers(event, id) {
+  if (!isModifierSelect(event)) {
+    if (modifierSelecting.value) stopModifierSelect()
     return
   }
-  addDraggedItem(id)
+  if (!modifierSelecting.value) {
+    modifierSelecting.value = true
+    sweptIds.clear()
+  }
+  addSweptItem(id)
+}
+
+function onModifierKeyUp(event) {
+  if (!event.ctrlKey || !event.shiftKey) stopModifierSelect()
 }
 
 function previewPrev() {
@@ -94,8 +97,15 @@ watch(() => ss.gridMode, (v) => {
   }
 })
 
+onMounted(() => {
+  window.addEventListener('keyup', onModifierKeyUp)
+  window.addEventListener('blur', stopModifierSelect)
+})
+
 onBeforeUnmount(() => {
-  stopDragSelect()
+  window.removeEventListener('keyup', onModifierKeyUp)
+  window.removeEventListener('blur', stopModifierSelect)
+  stopModifierSelect()
 })
 
 function onScroll(e) {
@@ -192,16 +202,16 @@ function scrollTo(date) {
             <span class="date-text">{{ g.date }}</span>
             <span class="date-total">{{ g.items.length }} 张</span>
           </div>
-          <div class="grid-container" :class="{ brushing: dragSelecting }">
+          <div class="grid-container" :class="{ brushing: modifierSelecting }">
             <div v-for="s in g.items" :key="s.id"
               class="grid-item" :class="{ selected: ss.gridSelected.has(s.id) }"
-              @pointerdown="startDragSelect($event, s.id)"
-              @pointerenter="continueDragSelect($event, s.id)"
+              @pointerenter="selectWithModifiers($event, s.id)"
+              @pointermove="selectWithModifiers($event, s.id)"
               @dblclick="onDblClick(s)">
               <input type="checkbox" class="grid-check"
                 :checked="ss.gridSelected.has(s.id)" @pointerdown.stop @change="ss.toggleGridItem(s.id)">
               <button class="grid-delete" @pointerdown.stop @click.stop="deleteOne(s.id)">×</button>
-              <img :src="getScreenshotImage(s.id)" loading="lazy">
+              <img :src="getScreenshotImage(s.id)" loading="lazy" draggable="false">
               <div class="grid-time">{{ (s.timestamp||'').replace('T',' ').substring(11,19) }}</div>
               <div class="grid-monitor" v-if="s.monitor_total > 1">屏{{ (s.monitor_index||0)+1 }}</div>
             </div>
