@@ -61,8 +61,8 @@ BROWSER_HISTORY_INTERVAL = int(os.environ.get("BROWSER_HISTORY_INTERVAL", "60"))
 # ============================================
 # 截图配置
 # ============================================
-SCREENSHOT_QUALITY = int(os.environ.get("SCREENSHOT_QUALITY", "60"))
-SCREENSHOT_MAX_WIDTH = int(os.environ.get("SCREENSHOT_MAX_WIDTH", "1280"))
+SCREENSHOT_QUALITY = int(os.environ.get("SCREENSHOT_QUALITY", "35"))
+SCREENSHOT_MAX_WIDTH = int(os.environ.get("SCREENSHOT_MAX_WIDTH", "1920"))
 
 # ============================================
 # 浏览器历史配置
