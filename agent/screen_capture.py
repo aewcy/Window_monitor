@@ -237,8 +237,9 @@ class ScreenCapture:
                 except queue.Full:
                     print("[ScreenCapture] 上传队列已满，丢弃本帧")
 
-            # 时间补偿: 确保平均频率准确
-            next_time += self.interval
+            # 从当前时间重新计算等待时间，避免从 600s/60s 空闲档切回高频时
+            # 继续沿用旧的远期 next_time，导致 Live 显示 4fps 但实际长时间不更新。
+            next_time = time.monotonic() + self.interval
             remaining = next_time - time.monotonic()
             if remaining < 0:
                 # 已经超时，重置基准避免追赶
