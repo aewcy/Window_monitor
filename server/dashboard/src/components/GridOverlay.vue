@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useScreenshotStore } from '../stores/screenshot'
 import { useAgentStore } from '../stores/agent'
 import { useConfirm } from '../composables/useConfirm'
@@ -11,6 +11,7 @@ const { confirm } = useConfirm()
 const scrollEl = ref(null)
 const previewItem = ref(null)
 const previewZoom = ref(1)
+const savedGridScrollTop = ref(0)
 const modifierSelecting = ref(false)
 const sweptIds = new Set()
 
@@ -22,13 +23,25 @@ function close() {
 
 // 双击截图 → 打开 overlay
 function onDblClick(s) {
+  savedGridScrollTop.value = scrollEl.value?.scrollTop || 0
   previewItem.value = s
   previewZoom.value = 1
 }
 
 function closePreview() {
+  const targetId = previewItem.value?.id
   previewItem.value = null
   previewZoom.value = 1
+  nextTick(() => {
+    const el = scrollEl.value
+    if (!el) return
+    const target = targetId ? el.querySelector(`[data-grid-id="${targetId}"]`) : null
+    if (target) {
+      target.scrollIntoView({ block: 'center' })
+    } else {
+      el.scrollTop = savedGridScrollTop.value
+    }
+  })
 }
 
 function stopModifierSelect() {
@@ -205,6 +218,7 @@ function scrollTo(date) {
           <div class="grid-container" :class="{ brushing: modifierSelecting }">
             <div v-for="s in g.items" :key="s.id"
               class="grid-item" :class="{ selected: ss.gridSelected.has(s.id) }"
+              :data-grid-id="s.id"
               @pointerenter="selectWithModifiers($event, s.id)"
               @pointermove="selectWithModifiers($event, s.id)"
               @dblclick="onDblClick(s)">

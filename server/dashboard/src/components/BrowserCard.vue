@@ -36,10 +36,10 @@ function startResize(column, event) {
   const onMove = moveEvent => {
     const delta = moveEvent.clientX - startX
     if (column === 'title') {
-      titleWidth.value = clamp(startTitleWidth + delta, 220, 900)
+      titleWidth.value = clamp(startTitleWidth + delta, 180, 1400)
       return
     }
-    urlWidth.value = clamp(startUrlWidth + delta, 100, 520)
+    urlWidth.value = clamp(startUrlWidth + delta, 100, 900)
   }
 
   const onUp = () => {
@@ -93,8 +93,8 @@ defineExpose({ load })
     </div>
     <div class="br-head">
       <span></span>
-      <span class="head-cell resizable">文字<button class="resize-handle" type="button" @pointerdown="startResize('title', $event)"></button></span>
-      <span class="head-cell resizable">网址<button class="resize-handle" type="button" @pointerdown="startResize('url', $event)"></button></span>
+      <span class="head-cell resizable">文字<button class="resize-handle" type="button" aria-label="resize title column" @pointerdown="startResize('title', $event)"></button></span>
+      <span class="head-cell resizable">网址<button class="resize-handle" type="button" aria-label="resize url column" @pointerdown="startResize('url', $event)"></button></span>
       <span class="head-cell right">时间</span>
       <span class="head-cell right">次数</span>
     </div>
@@ -136,7 +136,7 @@ defineExpose({ load })
   flex-shrink: 0;
   padding: 0 16px;
   min-height: 25px;
-  background: rgba(255,255,255,.025);
+  background: rgba(255,255,255,.035);
   border-bottom: 1px solid var(--hairline);
   color: var(--muted);
   font-family: var(--font-mono);
@@ -147,18 +147,18 @@ defineExpose({ load })
 .head-cell.resizable { padding-right: 8px; }
 .resize-handle {
   position: absolute;
-  top: -5px;
-  right: -6px;
-  bottom: -5px;
-  width: 11px;
+  top: -7px;
+  right: -8px;
+  bottom: -7px;
+  width: 16px;
   padding: 0;
   border: 0;
-  border-right: 1px solid rgba(255,255,255,.16);
+  border-right: 1px solid rgba(255,255,255,.22);
   background: transparent;
   cursor: col-resize;
 }
 .resize-handle:hover,
-.resize-handle:active { border-right-color: var(--accent); background: rgba(96,165,250,.10); }
+.resize-handle:active { border-right-color: var(--accent); background: rgba(96,165,250,.16); }
 .br-row {
   padding: 5px 16px;
   border-bottom: 1px solid rgba(255,255,255,.02);
