@@ -8,6 +8,7 @@ import time
 import json
 import subprocess
 import threading
+import queue
 
 import requests
 
@@ -15,6 +16,8 @@ from config import (
     SERVER_URL, AGENT_NAME, IS_WINDOWS, IS_LINUX,
     SCREENSHOT_INTERVAL, APP_TRACK_INTERVAL, BROWSER_HISTORY_INTERVAL,
     HEARTBEAT_INTERVAL, RETRY_TIMES, RETRY_DELAY,
+    SCREENSHOT_UPLOAD_QUEUE_SIZE, APP_EVENT_UPLOAD_QUEUE_SIZE,
+    BROWSER_UPLOAD_QUEUE_SIZE, CONTROL_UPLOAD_QUEUE_SIZE,
     get_machine_id,
 )
 from screen_capture import ScreenCapture
@@ -28,18 +31,37 @@ from keyboard_monitor import KeyboardEnterMonitor
 # ============================================
 
 class Reporter:
-    """HTTP 上报器"""
+    """HTTP 上报器
+
+    截图、事件、浏览器、控制消息分别走独立队列，避免截图洪峰拖慢其他上报。
+    """
 
     def __init__(self, server_url: str, agent_name: str):
         self.url = server_url.rstrip("/")
         self.agent = agent_name
-        self.sess = requests.Session()
-        self.sess.headers["Content-Type"] = "application/json"
+        self._running = True
+        self._workers = []
+        self._queues = {
+            "screenshot": queue.Queue(maxsize=max(1, SCREENSHOT_UPLOAD_QUEUE_SIZE)),
+            "app_event": queue.Queue(maxsize=max(1, APP_EVENT_UPLOAD_QUEUE_SIZE)),
+            "browser_history": queue.Queue(maxsize=max(1, BROWSER_UPLOAD_QUEUE_SIZE)),
+            "control": queue.Queue(maxsize=max(1, CONTROL_UPLOAD_QUEUE_SIZE)),
+        }
+        self._start_worker("screenshot", "screenshot")
+        self._start_worker("app_event", "app_event")
+        self._start_worker("browser_history", "browser_history")
+        self._start_worker("control", None)
 
-    def _post(self, endpoint: str, data: dict) -> bool:
+    def _make_session(self) -> requests.Session:
+        sess = requests.Session()
+        sess.headers["Content-Type"] = "application/json"
+        return sess
+
+    def _post_sync(self, endpoint: str, data: dict, session: requests.Session | None = None) -> bool:
+        sess = session or self._make_session()
         for i in range(RETRY_TIMES):
             try:
-                r = self.sess.post(
+                r = sess.post(
                     f"{self.url}/api/{endpoint}",
                     json=data, timeout=10
                 )
@@ -58,26 +80,94 @@ class Reporter:
                 time.sleep(RETRY_DELAY)
         return False
 
+    def _start_worker(self, channel: str, fixed_endpoint: str | None):
+        def _worker():
+            sess = self._make_session()
+            q = self._queues[channel]
+            while True:
+                item = q.get()
+                if item is None:
+                    q.task_done()
+                    break
+                endpoint, data = item if fixed_endpoint is None else (fixed_endpoint, item)
+                try:
+                    self._post_sync(endpoint, data, session=sess)
+                finally:
+                    q.task_done()
+            try:
+                sess.close()
+            except Exception:
+                pass
+
+        t = threading.Thread(target=_worker, daemon=True, name=f"reporter-{channel}")
+        t.start()
+        self._workers.append((channel, t))
+
+    def _emit_control_diagnostic(self, level: str, message: str):
+        payload = {
+            "agent_name": self.agent,
+            "category": "system",
+            "level": level,
+            "message": message,
+        }
+        self._enqueue("control", ("diagnostics", payload), drop_oldest=True, warn=False)
+
+    def _enqueue(self, channel: str, item, drop_oldest: bool = False, warn: bool = True) -> bool:
+        q = self._queues[channel]
+        if not self._running:
+            return False
+        try:
+            q.put_nowait(item)
+            return True
+        except queue.Full:
+            pass
+
+        if drop_oldest:
+            try:
+                old = q.get_nowait()
+                q.task_done()
+                q.put_nowait(item)
+                if warn:
+                    self._emit_control_diagnostic("WARNING", f"{channel} 上报队列已满，已丢弃最旧消息并保留最新消息。")
+                return True
+            except queue.Empty:
+                pass
+            except queue.Full:
+                pass
+
+        if warn:
+            self._emit_control_diagnostic("WARNING", f"{channel} 上报队列已满，当前消息已丢弃。")
+        print(f"  [WARN] {channel} 上报队列已满")
+        return False
+
+    def stop(self, flush_timeout: float = 5.0):
+        """停止工作线程，尽量在限定时间内刷新队列。"""
+        deadline = time.time() + max(0.0, flush_timeout)
+        while time.time() < deadline:
+            if all(q.unfinished_tasks == 0 for q in self._queues.values()):
+                break
+            time.sleep(0.1)
+
+        self._running = False
+        for q in self._queues.values():
+            q.put(None)
+        for _, worker in self._workers:
+            worker.join(timeout=2)
+
     def diagnostic(self, category: str, level: str, message: str):
         """上报诊断信息 — 被控机不写本地日志"""
-        try:
-            self.sess.post(
-                f"{self.url}/api/diagnostics",
-                json={
-                    "agent_name": self.agent,
-                    "category": category,
-                    "level": level,
-                    "message": message,
-                },
-                timeout=5
-            )
-        except Exception:
-            pass  # 诊断上报失败不应阻塞主流程
+        payload = {
+            "agent_name": self.agent,
+            "category": category,
+            "level": level,
+            "message": message,
+        }
+        self._enqueue("control", ("diagnostics", payload), drop_oldest=True, warn=False)
 
     def screenshot(self, data: dict):
         mon_idx = data.get("monitor_index", 0)
         mon_total = data.get("monitor_total", 1)
-        ok = self._post("screenshot", {
+        ok = self._enqueue("screenshot", {
             "agent_name": self.agent,
             "type": "screenshot",
             "timestamp": data["timestamp"],
@@ -86,13 +176,13 @@ class Reporter:
             "monitor_index": mon_idx,
             "monitor_total": mon_total,
             "capture_interval": data.get("capture_interval", 0),
-        })
+        }, drop_oldest=True)
         if ok:
             mon_tag = f" [屏{mon_idx+1}/{mon_total}]" if mon_total > 1 else ""
             print(f"  [OK] 截图 {data['timestamp']}{mon_tag}")
 
     def window(self, data: dict):
-        self._post("app_event", {
+        self._enqueue("app_event", {
             "agent_name": self.agent,
             "type": "app_switch",
             "window_title": data.get("window_title", ""),
@@ -100,19 +190,19 @@ class Reporter:
             "process_path": data.get("process_path", ""),
             "timestamp": data.get("timestamp", ""),
             "screenshot_timestamp": data.get("screenshot_timestamp", ""),
-        })
+        }, drop_oldest=True)
 
     def browser(self, records: list):
-        ok = self._post("browser_history", {
+        ok = self._enqueue("browser_history", {
             "agent_name": self.agent,
             "records": records,
-        })
+        }, drop_oldest=True)
         if ok:
             print(f"  [OK] 浏览器 {len(records)} 条")
 
     def chat_enter(self, data: dict):
         """上报聊天 Enter 事件 — process_name 使用原始进程名保持一致"""
-        ok = self._post("app_event", {
+        ok = self._enqueue("app_event", {
             "agent_name": self.agent,
             "type": "chat_enter",
             "window_title": data.get("window_title", ""),
@@ -122,7 +212,7 @@ class Reporter:
             "display_name": data.get("display_name", ""),
             "timestamp": data.get("timestamp", ""),
             "screenshot_timestamp": data.get("screenshot_timestamp", ""),
-        })
+        }, drop_oldest=True)
         if ok:
             print(f"  [OK] Enter事件 {data.get('display_name', '?')}")
 
@@ -135,7 +225,17 @@ class Reporter:
             data["ip"] = ip
         if machine_id:
             data["machine_id"] = machine_id
-        self._post("heartbeat", data)
+        self._enqueue("control", ("heartbeat", data), drop_oldest=True, warn=False)
+
+    def status(self, status: str, message: str, machine_id: str = ""):
+        data = {
+            "agent_name": self.agent,
+            "status": status,
+            "message": message,
+        }
+        if machine_id:
+            data["machine_id"] = machine_id
+        self._enqueue("control", ("status", data), drop_oldest=True, warn=False)
 
 
 # ============================================
@@ -148,6 +248,33 @@ class Reporter:
 _state_lock = threading.Lock()               # 保护以下两个跨线程共享变量
 _last_activity_time = time.time()            # 最后一次用户活动时间
 _server_interval = SCREENSHOT_INTERVAL       # 服务端下发的截图间隔
+
+
+def resolve_screenshot_strategy(idle_sec: float, server_interval: float) -> tuple[float, str]:
+    """根据空闲秒数和服务端观察状态，计算目标截图间隔与模式。
+
+    注意：
+    - Windows 下 idle_sec 默认来自 GetLastInputInfo，表示系统级最后输入时间，
+      Agent 启动前已经发生的空闲也会计入。
+    - 观察者 LIVE 模式只会把空闲态降到 1s，不会覆盖 ACTIVE 的 0.25s。
+    """
+    ACTIVE_INTERVAL = 0.25
+    LIGHT_IDLE_INTERVAL = 10.0
+    DEEP_IDLE_INTERVAL = 60.0
+    VERY_DEEP_IDLE_INTERVAL = 600.0
+    ACTIVE_THRESHOLD = 60.0
+    LIGHT_IDLE_THRESHOLD = 300.0
+    DEEP_IDLE_THRESHOLD = 1800.0
+
+    if idle_sec < ACTIVE_THRESHOLD:
+        return ACTIVE_INTERVAL, "ACTIVE"
+    if server_interval <= 1.5:
+        return float(server_interval), "VIEWER"
+    if idle_sec < LIGHT_IDLE_THRESHOLD:
+        return LIGHT_IDLE_INTERVAL, "LIGHT_IDLE"
+    if idle_sec < DEEP_IDLE_THRESHOLD:
+        return DEEP_IDLE_INTERVAL, "DEEP_IDLE"
+    return VERY_DEEP_IDLE_INTERVAL, "VERY_DEEP_IDLE"
 
 
 def record_activity():
@@ -553,17 +680,13 @@ def main(stop_event=None):
                 pass  # 无控制台时 input 会失败，自动继续
 
     # 上报上线
-    reporter._post("status", {
-        "agent_name": agent_name,
-        "status": "online",
-        "message": f"Agent started ({platform})",
-        "machine_id": machine_id,
-    })
+    reporter.status("online", f"Agent started ({platform})", machine_id)
     reporter.diagnostic("system", "INFO", f"Agent 启动 ({platform})")
 
     # 启动采集模块
     screenshot = ScreenCapture(interval=SCREENSHOT_INTERVAL)
     screenshot.add_listener(reporter.screenshot)
+    screenshot.add_diagnostic_listener(reporter.diagnostic)
 
     window = AppTracker(interval=APP_TRACK_INTERVAL)
 
@@ -640,13 +763,6 @@ def main(stop_event=None):
     # 自适应截图频率控制器 — 4级: ACTIVE → LIGHT_IDLE → DEEP_IDLE → VERY_DEEP_IDLE
     def screenshot_frequency_controller():
         global _server_interval
-        ACTIVE_INTERVAL = 0.25         # 活跃 → 每秒 4 次
-        LIGHT_IDLE_INTERVAL = 10.0     # 轻度闲置 (1-5min) → 每 10 秒 1 次
-        DEEP_IDLE_INTERVAL = 60.0      # 深度闲置 (5-30min) → 每分钟 1 次
-        VERY_DEEP_IDLE_INTERVAL = 600.0 # 极深闲置 (30min+) → 每 10 分钟 1 次
-        ACTIVE_THRESHOLD = 60.0        # 1 分钟无操作 → 进入轻度闲置
-        LIGHT_IDLE_THRESHOLD = 300.0   # 5 分钟无操作 → 进入深度闲置
-        DEEP_IDLE_THRESHOLD = 1800.0   # 30 分钟无操作 → 进入极深闲置
         last_interval = None
 
         while True:
@@ -655,31 +771,21 @@ def main(stop_event=None):
             with _state_lock:
                 srv_interval = _server_interval
 
-            # LIVE 模式 (观察者存在): 所有闲置级别都降到 srv_interval，除非 ACTIVE 更快
-            if srv_interval <= 1.5 and idle_sec >= ACTIVE_THRESHOLD:
-                target = srv_interval
-            elif idle_sec < ACTIVE_THRESHOLD:
-                target = ACTIVE_INTERVAL
-            elif idle_sec < LIGHT_IDLE_THRESHOLD:
-                target = LIGHT_IDLE_INTERVAL
-            elif idle_sec < DEEP_IDLE_THRESHOLD:
-                target = DEEP_IDLE_INTERVAL
-            else:
-                target = VERY_DEEP_IDLE_INTERVAL
+            target, mode_name = resolve_screenshot_strategy(idle_sec, srv_interval)
 
             if target != last_interval:
                 screenshot.set_interval(target)
-                if idle_sec < ACTIVE_THRESHOLD:
-                    mode = f"ACTIVE ({idle_sec:.0f}s 空闲)"
-                elif target <= 1.5:
-                    mode = "VIEWER"
-                elif target == LIGHT_IDLE_INTERVAL:
-                    mode = f"LIGHT_IDLE ({idle_sec:.0f}s 空闲)"
-                elif target == DEEP_IDLE_INTERVAL:
-                    mode = f"DEEP_IDLE ({idle_sec:.0f}s 空闲)"
+                if mode_name == "VIEWER":
+                    mode = f"VIEWER (idle={idle_sec:.0f}s, server={srv_interval}s)"
                 else:
-                    mode = f"VERY_DEEP_IDLE ({idle_sec:.0f}s 空闲)"
+                    mode = f"{mode_name} ({idle_sec:.0f}s 空闲)"
                 print(f"  [Adaptive] {mode}  截图间隔: {target}s")
+                reporter.diagnostic(
+                    "screenshot",
+                    "INFO",
+                    f"截图策略切换: mode={mode_name}, idle_seconds={idle_sec:.1f}, "
+                    f"server_interval={srv_interval}, target_interval={target}"
+                )
                 last_interval = target
 
             time.sleep(1)
@@ -691,16 +797,12 @@ def main(stop_event=None):
     def shutdown():
         """统一关闭逻辑"""
         print("\n  正在停止...")
-        reporter._post("status", {
-            "agent_name": agent_name,
-            "status": "offline",
-            "message": "Agent stopped",
-            "machine_id": machine_id,
-        })
+        reporter.status("offline", "Agent stopped", machine_id)
         screenshot.stop()
         window.stop()
         browser.stop()
         keyboard_monitor.stop()
+        reporter.stop(flush_timeout=5)
         print("  Agent 已停止")
 
     try:

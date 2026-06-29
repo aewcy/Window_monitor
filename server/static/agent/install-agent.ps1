@@ -1,9 +1,11 @@
-﻿param(
+param(
     [switch]$Install,
     [switch]$Remove,
     [switch]$Start,
     [switch]$Stop,
-    [switch]$Status
+    [switch]$Status,
+    [string]$ServerHost,
+    [string]$ServerPort
 )
 
 $ErrorActionPreference = "Stop"
@@ -12,8 +14,8 @@ $script:ProductName = "Windows Monitor"
 $script:ProcessName = "WindowsMonitor"
 $script:MainTaskName = "Windows Monitor"
 $script:WatchdogTaskName = "Windows Monitor Watchdog"
-$script:ServerHost = "108.187.15.71"
-$script:ServerPort = "8899"
+$script:ServerHost = if ([string]::IsNullOrWhiteSpace($ServerHost)) { "108.187.15.71" } else { $ServerHost.Trim() }
+$script:ServerPort = if ([string]::IsNullOrWhiteSpace($ServerPort)) { "8899" } else { $ServerPort.Trim() }
 $script:InstallDir = Join-Path $env:ProgramData "WindowsMonitor"
 $script:UserDataDir = Join-Path $env:LOCALAPPDATA "Windows Monitor"
 $script:LegacyUserDataDir = Join-Path $env:LOCALAPPDATA "MonitorAgent"
@@ -61,6 +63,8 @@ function Assert-Admin {
     if ($Start) { $argList += "-Start" }
     if ($Stop) { $argList += "-Stop" }
     if ($Status) { $argList += "-Status" }
+    if ($script:ServerHost) { $argList += "-ServerHost `"$script:ServerHost`"" }
+    if ($script:ServerPort) { $argList += "-ServerPort `"$script:ServerPort`"" }
     Start-Process powershell.exe -ArgumentList ($argList -join " ") -Verb RunAs
     exit
 }
@@ -271,6 +275,7 @@ function Show-Status {
     } else {
         Write-Host "$script:ProcessName.exe 未运行"
     }
+    Write-Host "服务端地址: $script:ServerHost`:$script:ServerPort"
 }
 
 try {
@@ -302,6 +307,7 @@ try {
     Write-Host "服务器地址: $script:ServerHost`:$script:ServerPort"
     Write-Host "安装目录: $script:InstallDir"
     Write-Host "日志目录: $script:LogDir"
+    Write-Host "说明: 需要用户登录到 Windows 桌面后，截图/窗口/键盘采集才会生效。"
     exit 0
 } catch {
     Write-InstallLog "失败：$($_.Exception.Message)"

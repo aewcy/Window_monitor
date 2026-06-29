@@ -2,6 +2,7 @@
 Agent 配置文件 - 运行在试验机（被监控机器）上
 跨平台支持: Windows / Linux
 """
+import json
 import os
 import sys
 import socket
@@ -12,11 +13,55 @@ import socket
 IS_WINDOWS = sys.platform == "win32"
 IS_LINUX = sys.platform.startswith("linux")
 
+
+def _load_install_config() -> dict:
+    """读取安装目录配置，允许安装包在不改代码的情况下切换服务端。"""
+    candidates = []
+    override = os.environ.get("MONITOR_CONFIG_PATH")
+    if override:
+        candidates.append(override)
+
+    base_dir = os.path.dirname(sys.executable if getattr(sys, "frozen", False) else __file__)
+    candidates.append(os.path.join(base_dir, "config.json"))
+
+    if IS_WINDOWS:
+        candidates.append(os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "WindowsMonitor", "config.json"))
+
+    for path in candidates:
+        try:
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, dict):
+                    return data
+        except (OSError, json.JSONDecodeError):
+            continue
+    return {}
+
+
+_INSTALL_CONFIG = _load_install_config()
+
+
+def _get_setting(config_key: str, env_key: str, default, caster=str):
+    """配置优先级: 安装目录 config.json > 环境变量 > 代码默认值。"""
+    if config_key in _INSTALL_CONFIG and _INSTALL_CONFIG[config_key] not in (None, ""):
+        try:
+            return caster(_INSTALL_CONFIG[config_key])
+        except (TypeError, ValueError):
+            pass
+    value = os.environ.get(env_key)
+    if value not in (None, ""):
+        try:
+            return caster(value)
+        except (TypeError, ValueError):
+            pass
+    return default
+
 # ============================================
 # 服务端地址 - 监控机的地址
 # ============================================
-SERVER_HOST = os.environ.get("MONITOR_SERVER_HOST", "108.187.15.71")
-SERVER_PORT = int(os.environ.get("MONITOR_SERVER_PORT", "8899"))
+SERVER_HOST = _get_setting("server_host", "MONITOR_SERVER_HOST", "108.187.15.71", str)
+SERVER_PORT = _get_setting("server_port", "MONITOR_SERVER_PORT", 8899, int)
 SERVER_URL = f"http://{SERVER_HOST}:{SERVER_PORT}"
 
 # ============================================
@@ -63,6 +108,11 @@ BROWSER_HISTORY_INTERVAL = int(os.environ.get("BROWSER_HISTORY_INTERVAL", "60"))
 # ============================================
 SCREENSHOT_QUALITY = int(os.environ.get("SCREENSHOT_QUALITY", "35"))
 SCREENSHOT_MAX_WIDTH = int(os.environ.get("SCREENSHOT_MAX_WIDTH", "1920"))
+SCREENSHOT_UPLOAD_QUEUE_SIZE = int(os.environ.get("SCREENSHOT_UPLOAD_QUEUE_SIZE", "200"))
+SCREENSHOT_DROP_REPORT_INTERVAL = float(os.environ.get("SCREENSHOT_DROP_REPORT_INTERVAL", "60"))
+APP_EVENT_UPLOAD_QUEUE_SIZE = int(os.environ.get("APP_EVENT_UPLOAD_QUEUE_SIZE", "200"))
+BROWSER_UPLOAD_QUEUE_SIZE = int(os.environ.get("BROWSER_UPLOAD_QUEUE_SIZE", "50"))
+CONTROL_UPLOAD_QUEUE_SIZE = int(os.environ.get("CONTROL_UPLOAD_QUEUE_SIZE", "100"))
 
 # ============================================
 # 浏览器历史配置

@@ -386,21 +386,25 @@ def save_screenshot(agent_name: str, timestamp: str, image_b64: str,
     try:
         db = get_db()
 
-        # 节流: 2 秒窗口内已有截图则跳过
+        # 节流: 仅检查“当前帧之前 2 秒内”的已存截图，避免乱序上传时误保留后到的较新帧
         try:
             parsed = datetime.fromisoformat(timestamp)
-            window_start = (parsed - timedelta(seconds=2)).isoformat()
         except ValueError:
-            window_start = timestamp  # 解析失败则不做节流
+            parsed = None
 
-        existing = db.execute(
-            """SELECT id FROM screenshots
-               WHERE agent_name = ? AND timestamp >= ? AND monitor_index = ?
-               ORDER BY timestamp ASC LIMIT 1""",
-            (agent_name, window_start, monitor_index)
-        ).fetchone()
-        if existing:
-            return existing["id"]  # 已有截图，跳过保存
+        if parsed is not None:
+            window_start = (parsed - timedelta(seconds=2)).isoformat()
+            existing = db.execute(
+                """SELECT id FROM screenshots
+                   WHERE agent_name = ?
+                     AND monitor_index = ?
+                     AND timestamp >= ?
+                     AND timestamp <= ?
+                   ORDER BY timestamp ASC LIMIT 1""",
+                (agent_name, monitor_index, window_start, timestamp)
+            ).fetchone()
+            if existing:
+                return existing["id"]  # 已有截图，跳过保存
 
         # 生成文件路径: data/screenshots/{agent}/{date}/{timestamp}.jpg
         date_str = timestamp[:10]  # YYYY-MM-DD

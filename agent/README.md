@@ -47,6 +47,11 @@ MONITOR_SERVER_HOST=<IP> python main.py
 | `BROWSER_HISTORY_INTERVAL` | `BROWSER_HISTORY_INTERVAL` | `60` | 浏览器采集间隔(秒) |
 | `SCREENSHOT_QUALITY` | `SCREENSHOT_QUALITY` | `35` | JPEG 质量(1-100) |
 | `SCREENSHOT_MAX_WIDTH` | `SCREENSHOT_MAX_WIDTH` | `1920` | 截图最大宽度 |
+| `SCREENSHOT_UPLOAD_QUEUE_SIZE` | `SCREENSHOT_UPLOAD_QUEUE_SIZE` | `200` | 截图异步上传队列长度，满时丢最旧帧 |
+| `SCREENSHOT_DROP_REPORT_INTERVAL` | `SCREENSHOT_DROP_REPORT_INTERVAL` | `60` | 丢帧诊断上报最短间隔(秒) |
+| `APP_EVENT_UPLOAD_QUEUE_SIZE` | `APP_EVENT_UPLOAD_QUEUE_SIZE` | `200` | 窗口/聊天事件上报队列长度 |
+| `BROWSER_UPLOAD_QUEUE_SIZE` | `BROWSER_UPLOAD_QUEUE_SIZE` | `50` | 浏览器历史上报队列长度 |
+| `CONTROL_UPLOAD_QUEUE_SIZE` | `CONTROL_UPLOAD_QUEUE_SIZE` | `100` | 心跳/状态/诊断控制队列长度 |
 
 ### 前台白名单
 
@@ -63,6 +68,8 @@ MONITOR_SERVER_HOST=<IP> python main.py
 | VERY_DEEP_IDLE | 600s | 无人查看，且本机空闲 30 分钟以上 |
 
 Dashboard 每秒向服务端发送观察者心跳。服务端在 10 秒内收到心跳时，`/api/config` 会向 Agent 下发 `screenshot_interval=1`，Agent 轮询配置后进入 VIEWER/LIVE 策略。
+
+Windows 下空闲时间使用 `GetLastInputInfo` 读取系统级“最后一次键鼠输入”时间，不是从 Agent 启动时重新计时。也就是说，如果桌面在启动 Agent 前已经闲置了 2 分钟，Agent 启动后会直接按 `LIGHT_IDLE` 甚至更深的空闲策略运行，这属于预期行为。
 
 Live 画面跟随 Agent 实际上传频率刷新：ACTIVE 时约 1 秒 4 张，VIEWER 时约 1 秒 1 张，LIGHT_IDLE 后按 10 秒、60 秒、600 秒递减。
 

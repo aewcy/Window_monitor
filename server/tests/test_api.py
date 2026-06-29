@@ -304,6 +304,22 @@ class TestScreenshot:
         id2, _ = _upload_screenshot(client, "throttle-agent", ts2)
         assert id1 == id2
 
+    def test_throttle_2s_window_out_of_order_keeps_earliest(self, client):
+        """乱序上传时，也应保留 2 秒窗口内时间更早的那张。"""
+        _register_agent(client, "throttle-out-of-order")
+        base_ts = datetime.now()
+        ts_late = (base_ts + timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%S")
+        ts_early = base_ts.strftime("%Y-%m-%dT%H:%M:%S")
+
+        late_id, _ = _upload_screenshot(client, "throttle-out-of-order", ts_late)
+        early_id, _ = _upload_screenshot(client, "throttle-out-of-order", ts_early)
+        assert late_id != early_id
+
+        rows = client.get("/api/screenshots?agent=throttle-out-of-order").json()
+        assert len(rows) == 2
+        assert rows[0]["timestamp"] == ts_late
+        assert rows[1]["timestamp"] == ts_early
+
     def test_screenshot_image_retrievable(self, client):
         _register_agent(client, "img-agent")
         sid, _ = _upload_screenshot(client, "img-agent")
@@ -574,6 +590,24 @@ class TestStatsAndStorage:
     def test_storage_cleanup_invalid_hours_400(self, client):
         resp = client.post("/api/storage/cleanup", json={"older_than_hours": 0})
         assert resp.status_code == 400
+
+    def test_storage_cleanup_removes_old_screenshots(self, client):
+        _register_agent(client, "cleanup-agent")
+        old_ts = (datetime.now() - timedelta(hours=50)).strftime("%Y-%m-%dT%H:%M:%S")
+        new_ts = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+        old_id, _ = _upload_screenshot(client, "cleanup-agent", old_ts)
+        new_id, _ = _upload_screenshot(client, "cleanup-agent", new_ts)
+
+        resp = client.post("/api/storage/cleanup", json={"older_than_hours": 24, "agent": "cleanup-agent"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["deleted_count"] == 1
+        assert data["freed_bytes"] > 0
+
+        rows = client.get("/api/screenshots?agent=cleanup-agent").json()
+        ids = [row["id"] for row in rows]
+        assert old_id not in ids
+        assert new_id in ids
 
 
 # ============================================================

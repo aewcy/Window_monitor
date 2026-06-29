@@ -2,6 +2,7 @@
 服务端主程序 - 运行在监控机上
 FastAPI + 静态文件服务 + 自动初始化
 """
+import asyncio
 import os
 from contextlib import asynccontextmanager
 
@@ -11,8 +12,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from config import HOST, PORT, DATA_DIR, SCREENSHOT_DIR, CORS_ORIGINS
-from models import init_db
+from config import (
+    HOST, PORT, DATA_DIR, SCREENSHOT_DIR, CORS_ORIGINS,
+    SCREENSHOT_RETENTION_HOURS, SCREENSHOT_CLEANUP_INTERVAL_MINUTES,
+)
+from logger import log
+from models import init_db, cleanup_old_screenshots
 from routes import router
 
 # 初始化目录
@@ -20,17 +25,51 @@ os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(SCREENSHOT_DIR, exist_ok=True)
 
 
+async def storage_cleanup_loop():
+    """后台定时清理历史截图，避免磁盘无限增长。"""
+    interval_seconds = max(60, SCREENSHOT_CLEANUP_INTERVAL_MINUTES * 60)
+    while True:
+        try:
+            result = cleanup_old_screenshots(SCREENSHOT_RETENTION_HOURS)
+            log.info(
+                "自动清理完成: deleted=%s freed_bytes=%s cutoff=%s retention_hours=%s",
+                result["deleted_count"],
+                result["freed_bytes"],
+                result["cutoff_time"],
+                SCREENSHOT_RETENTION_HOURS,
+                extra={"category": "storage"},
+            )
+        except Exception as exc:
+            log.warning(
+                "自动清理失败: %s",
+                exc,
+                extra={"category": "storage"},
+            )
+        await asyncio.sleep(interval_seconds)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     init_db()
+    cleanup_task = None
+    if SCREENSHOT_RETENTION_HOURS > 0 and SCREENSHOT_CLEANUP_INTERVAL_MINUTES > 0:
+        cleanup_task = asyncio.create_task(storage_cleanup_loop())
     print("=" * 60)
     print(f"  Monitor Server started")
     print(f"  Listen: http://{HOST}:{PORT}")
     print(f"  API Docs: http://localhost:{PORT}/docs")
     print(f"  Dashboard: http://localhost:{PORT}/")
     print("=" * 60)
-    yield
+    try:
+        yield
+    finally:
+        if cleanup_task:
+            cleanup_task.cancel()
+            try:
+                await cleanup_task
+            except asyncio.CancelledError:
+                pass
 
 
 # 创建 FastAPI 应用

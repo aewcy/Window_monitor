@@ -16,7 +16,12 @@ from PIL import Image, ImageGrab
 
 IS_WINDOWS = sys.platform == "win32"
 
-from config import SCREENSHOT_QUALITY, SCREENSHOT_MAX_WIDTH
+from config import (
+    SCREENSHOT_QUALITY,
+    SCREENSHOT_MAX_WIDTH,
+    SCREENSHOT_UPLOAD_QUEUE_SIZE,
+    SCREENSHOT_DROP_REPORT_INTERVAL,
+)
 
 
 def _get_monitors_win32() -> list[dict]:
@@ -73,26 +78,90 @@ class ScreenCapture:
         self._running = False
         self._thread = None
         self._listeners = []
+        self._diagnostic_listeners = []
         self._capture_lock = threading.Lock()
         self.monitor_count = 1
         self._virtual_bounds = None  # (left, top, width, height) 缓存
         # 可中断 sleep: 频率切换时立即唤醒
         self._wake = threading.Event()
         # 异步上传队列: 采集不阻塞于上传
-        self._upload_queue = queue.Queue(maxsize=200)
+        self._upload_queue = queue.Queue(maxsize=max(1, int(SCREENSHOT_UPLOAD_QUEUE_SIZE)))
         self._upload_thread = None
+        self._dropped_frames = 0
+        self._last_drop_report_at = 0.0
+        self._queue_lock = threading.Lock()
 
     def add_listener(self, callback):
         self._listeners.append(callback)
+
+    def add_diagnostic_listener(self, callback):
+        self._diagnostic_listeners.append(callback)
 
     def set_interval(self, value: float):
         """设置截图间隔并唤醒采集循环，使频率切换立即生效"""
         self.interval = value
         self._wake.set()
 
+    def _emit_diagnostic(self, category: str, level: str, message: str):
+        """向外层上报采集诊断，避免队列问题只留在本地控制台。"""
+        for cb in self._diagnostic_listeners:
+            try:
+                cb(category, level, message)
+            except Exception as e:
+                print(f"[ScreenCapture] 诊断回调异常: {e}")
+
+    def _report_drop_if_needed(self, force: bool = False):
+        """限频上报丢帧统计，避免网络抖动时刷爆诊断日志。"""
+        if self._dropped_frames <= 0:
+            return
+        now = time.monotonic()
+        if not force and (now - self._last_drop_report_at) < SCREENSHOT_DROP_REPORT_INTERVAL:
+            return
+        queue_size = self._upload_queue.qsize()
+        message = (
+            f"截图上传队列拥塞，最近丢弃 {self._dropped_frames} 帧；"
+            f"当前队列 {queue_size}/{self._upload_queue.maxsize}，"
+            f"当前截图间隔 {self.interval}s。已优先保留最新帧。"
+        )
+        self._emit_diagnostic("capture", "WARNING", message)
+        self._last_drop_report_at = now
+        self._dropped_frames = 0
+
+    def _enqueue_frame(self, data: dict):
+        """队列满时丢弃最旧帧，保留最新帧，避免 Live 长时间卡在旧画面。"""
+        try:
+            self._upload_queue.put_nowait(data)
+            self._report_drop_if_needed()
+            return
+        except queue.Full:
+            pass
+
+        dropped_old = None
+        with self._queue_lock:
+            try:
+                dropped_old = self._upload_queue.get_nowait()
+                self._upload_queue.task_done()
+            except queue.Empty:
+                dropped_old = None
+
+            try:
+                self._upload_queue.put_nowait(data)
+            except queue.Full:
+                self._dropped_frames += 1
+                print("[ScreenCapture] 上传队列持续满，当前帧未入队")
+                self._report_drop_if_needed(force=True)
+                return
+
+        self._dropped_frames += 1
+        if dropped_old:
+            print("[ScreenCapture] 上传队列已满，已丢弃最旧帧并保留最新帧")
+        else:
+            print("[ScreenCapture] 上传队列竞争繁忙，已跳过 1 帧")
+        self._report_drop_if_needed()
+
     def _upload_worker(self):
         """异步上传线程: 从队列取截图数据，串行调用 listeners"""
-        while self._running:
+        while self._running or not self._upload_queue.empty():
             try:
                 data = self._upload_queue.get(timeout=1)
             except queue.Empty:
@@ -232,10 +301,7 @@ class ScreenCapture:
         while self._running:
             # 采集 → 放入上传队列（非阻塞）
             for data in self.capture_once():
-                try:
-                    self._upload_queue.put_nowait(data)
-                except queue.Full:
-                    print("[ScreenCapture] 上传队列已满，丢弃本帧")
+                self._enqueue_frame(data)
 
             # 从当前时间重新计算等待时间，避免从 600s/60s 空闲档切回高频时
             # 继续沿用旧的远期 next_time，导致 Live 显示 4fps 但实际长时间不更新。
@@ -261,8 +327,10 @@ class ScreenCapture:
 
     def stop(self):
         self._running = False
+        self._wake.set()
         if self._thread:
             self._thread.join(timeout=5)
         if self._upload_thread:
             self._upload_thread.join(timeout=5)
+        self._report_drop_if_needed(force=True)
         print("[ScreenCapture] 已停止")
