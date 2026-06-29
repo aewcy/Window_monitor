@@ -67,7 +67,7 @@ SERVER_URL = f"http://{SERVER_HOST}:{SERVER_PORT}"
 # ============================================
 # Agent 版本与后台更新
 # ============================================
-AGENT_VERSION = _get_setting("agent_version", "AGENT_VERSION", "0.51", str)
+AGENT_VERSION = _get_setting("agent_version", "AGENT_VERSION", "0.52", str)
 UPDATE_ENABLED = _get_setting(
     "update_enabled",
     "MONITOR_UPDATE_ENABLED",

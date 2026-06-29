@@ -76,7 +76,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Monitor Server",
     description="Monitor System - Server",
-    version="0.51",
+    version="0.52",
     lifespan=lifespan,
 )
 

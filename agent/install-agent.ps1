@@ -75,10 +75,10 @@ function Assert-Admin {
 
 function Test-AgentSource {
     if (-not (Test-Path $script:SourceExe)) {
-        throw "未找到 monitor-agent.exe，请把安装脚本和程序放在同一个文件夹。"
+        throw "monitor-agent.exe not found. Keep installer script and program in the same folder."
     }
     if (-not (Test-Path $script:SourceUpdater)) {
-        throw "未找到 updater.ps1，请把安装脚本、更新器和程序放在同一个文件夹。"
+        throw "updater.ps1 not found. Keep installer script, updater, and program in the same folder."
     }
 }
 
@@ -86,10 +86,10 @@ function Stop-AgentProcesses {
     foreach ($name in @($script:ProcessName, "monitor-agent")) {
         Get-Process -Name $name -ErrorAction SilentlyContinue | ForEach-Object {
             try {
-                Write-InstallLog "停止旧进程 $name PID=$($_.Id)"
+                Write-InstallLog "Stopping old process $name PID=$($_.Id)"
                 Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
             } catch {
-                Write-InstallLog "停止旧进程失败 $name PID=$($_.Id): $($_.Exception.Message)"
+                Write-InstallLog "Failed to stop old process $name PID=$($_.Id): $($_.Exception.Message)"
             }
         }
     }
@@ -109,7 +109,7 @@ function Write-LegacyNoopLauncher {
 WScript.Quit 0
 "@
     Set-Content -Path $script:LegacyLauncherPath -Value $content -Encoding ASCII
-    Write-InstallLog "旧版 MonitorAgent 任务仍存在，已写入静默占位 VBS: $script:LegacyLauncherPath"
+    Write-InstallLog "Legacy MonitorAgent task still exists; wrote noop VBS: $script:LegacyLauncherPath"
 }
 
 function Remove-OldTasksAndService {
@@ -122,7 +122,7 @@ function Remove-OldTasksAndService {
         Write-LegacyNoopLauncher
     } elseif (Test-Path $script:LegacyUserDataDir) {
         Remove-Item -LiteralPath $script:LegacyUserDataDir -Recurse -Force -ErrorAction SilentlyContinue
-        Write-InstallLog "已清理旧版本地目录: $script:LegacyUserDataDir"
+        Write-InstallLog "Removed legacy local dir: $script:LegacyUserDataDir"
     }
 
     $svc = Get-Service -Name "MonitorAgent" -ErrorAction SilentlyContinue
@@ -133,9 +133,9 @@ function Remove-OldTasksAndService {
                 Start-Sleep -Seconds 1
             }
             Invoke-NativeQuiet "sc.exe" @("delete", "MonitorAgent") | Out-Null
-            Write-InstallLog "已清理旧 Windows 服务"
+            Write-InstallLog "Removed legacy Windows service"
         } catch {
-            Write-InstallLog "清理旧 Windows 服务失败: $($_.Exception.Message)"
+            Write-InstallLog "Failed to remove legacy Windows service: $($_.Exception.Message)"
         }
     }
 }
@@ -206,38 +206,38 @@ function New-MonitorTasks {
 
     $mainOut = Invoke-NativeQuiet "schtasks.exe" @("/Create", "/TN", $script:MainTaskName, "/TR", $mainAction, "/SC", "ONLOGON", "/RL", "HIGHEST", "/IT", "/F")
     if ($mainOut.ExitCode -ne 0) {
-        throw "创建登录启动任务失败：$($mainOut.Output)"
+        throw "Failed to create logon task: $($mainOut.Output)"
     }
 
     $watchOut = Invoke-NativeQuiet "schtasks.exe" @("/Create", "/TN", $script:WatchdogTaskName, "/TR", $watchdogAction, "/SC", "MINUTE", "/MO", "1", "/RL", "HIGHEST", "/IT", "/F")
     if ($watchOut.ExitCode -ne 0) {
-        throw "创建自恢复任务失败：$($watchOut.Output)"
+        throw "Failed to create watchdog task: $($watchOut.Output)"
     }
 }
 
 function Start-Monitor {
     $runOut = Invoke-NativeQuiet "schtasks.exe" @("/Run", "/TN", $script:MainTaskName)
     if ($runOut.ExitCode -ne 0) {
-        Write-InstallLog "计划任务启动失败，改为直接启动: $($runOut.Output)"
+        Write-InstallLog "Scheduled task start failed, falling back to direct start: $($runOut.Output)"
     }
     Start-Sleep -Seconds 3
     $proc = Get-Process -Name $script:ProcessName -ErrorAction SilentlyContinue
     if (-not $proc) {
-        Write-InstallLog "计划任务未拉起进程，改为直接启动隐藏启动器"
+        Write-InstallLog "Scheduled task did not start process, falling back to hidden launcher"
         Start-Process -FilePath "wscript.exe" -ArgumentList "`"$script:LauncherPath`"" -WindowStyle Hidden
         Start-Sleep -Seconds 3
     }
     $proc = Get-Process -Name $script:ProcessName -ErrorAction SilentlyContinue
     if (-not $proc) {
-        throw "$script:ProcessName.exe 没有运行。请查看日志：$script:LogPath"
+        throw "$script:ProcessName.exe is not running. Check log: $script:LogPath"
     }
-    Write-InstallLog "后台进程已启动 PID=$($proc[0].Id)"
+    Write-InstallLog "Background process started PID=$($proc[0].Id)"
 }
 
 function Install-Agent {
     Assert-Admin
     Test-AgentSource
-    Write-InstallLog "开始安装 $script:ProductName，服务器 $script:ServerHost`:$script:ServerPort"
+    Write-InstallLog "Installing $script:ProductName, server $script:ServerHost`:$script:ServerPort"
 
     New-Item -ItemType Directory -Force -Path $script:InstallDir | Out-Null
     New-Item -ItemType Directory -Force -Path $script:DownloadsDir | Out-Null
@@ -255,7 +255,7 @@ function Install-Agent {
     New-MonitorTasks
     Start-Monitor
 
-    Write-InstallLog "安装完成"
+    Write-InstallLog "Install completed"
 }
 
 function Remove-Agent {
@@ -268,7 +268,7 @@ function Remove-Agent {
         Set-Acl -Path $script:InstallDir -AclObject $acl
         Remove-Item -LiteralPath $script:InstallDir -Recurse -Force -ErrorAction SilentlyContinue
     }
-    Write-InstallLog "卸载完成"
+    Write-InstallLog "Uninstall completed"
 }
 
 function Show-Status {
@@ -278,35 +278,35 @@ function Show-Status {
         if ($result.ExitCode -eq 0) {
             Write-Host $result.Output
         } else {
-            Write-Host "$task 未注册"
+            Write-Host "$task is not registered"
         }
     }
     $proc = Get-Process -Name $script:ProcessName -ErrorAction SilentlyContinue
     if ($proc) {
-        Write-Host "$script:ProcessName.exe 正在运行，PID=$($proc[0].Id)"
+        Write-Host "$script:ProcessName.exe is running, PID=$($proc[0].Id)"
     } else {
-        Write-Host "$script:ProcessName.exe 未运行"
+        Write-Host "$script:ProcessName.exe is not running"
     }
-    Write-Host "服务端地址: $script:ServerHost`:$script:ServerPort"
+    Write-Host "Server: $script:ServerHost`:$script:ServerPort"
 }
 
 try {
     if ($Remove) {
         Remove-Agent
-        Write-Host "$script:ProductName 已卸载。"
+        Write-Host "$script:ProductName uninstalled."
         exit 0
     }
     if ($Stop) {
         Assert-Admin
         Invoke-NativeQuiet "schtasks.exe" @("/End", "/TN", $script:MainTaskName) | Out-Null
         Stop-AgentProcesses
-        Write-Host "$script:ProductName 已停止。"
+        Write-Host "$script:ProductName stopped."
         exit 0
     }
     if ($Start) {
         Assert-Admin
         Start-Monitor
-        Write-Host "$script:ProductName 已启动。"
+        Write-Host "$script:ProductName started."
         exit 0
     }
     if ($Status) {
@@ -315,14 +315,14 @@ try {
     }
 
     Install-Agent
-    Write-Host "$script:ProductName 已安装并在后台运行。"
-    Write-Host "服务器地址: $script:ServerHost`:$script:ServerPort"
-    Write-Host "安装目录: $script:InstallDir"
-    Write-Host "日志目录: $script:LogDir"
-    Write-Host "说明: 需要用户登录到 Windows 桌面后，截图/窗口/键盘采集才会生效。"
+    Write-Host "$script:ProductName installed and running in background."
+    Write-Host "Server: $script:ServerHost`:$script:ServerPort"
+    Write-Host "Install dir: $script:InstallDir"
+    Write-Host "Log dir: $script:LogDir"
+    Write-Host "Note: screenshot/window/keyboard collection requires an active Windows desktop session."
     exit 0
 } catch {
-    Write-InstallLog "失败：$($_.Exception.Message)"
+    Write-InstallLog "Failed: $($_.Exception.Message)"
     Write-Error $_.Exception.Message
     exit 1
 }

@@ -619,7 +619,7 @@ class TestAgentUpdate:
         resp = client.get("/api/agent/version")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["version"] == "0.51"
+        assert data["version"] == "0.52"
         assert data["exe_url"] == "/api/agent/exe"
         assert data["sha256"]
         assert data["size_bytes"] > 0
@@ -629,7 +629,7 @@ class TestAgentUpdate:
 
         allow = client.post("/api/agents/update-agent/update/allow", json={})
         assert allow.status_code == 200
-        assert allow.json()["version"] == "0.51"
+        assert allow.json()["version"] == "0.52"
 
         check = client.get("/api/agent/update/check?agent=update-agent&version=0.50")
         assert check.status_code == 200
