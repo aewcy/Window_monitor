@@ -1,5 +1,5 @@
 #define AppName "Windows Monitor"
-#define AppVersion "0.41"
+#define AppVersion "0.49"
 #define Publisher "Monitor Demo"
 #define SourceRoot ".."
 
