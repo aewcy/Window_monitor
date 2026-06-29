@@ -200,37 +200,122 @@ def init_db():
     except sqlite3.OperationalError:
         pass  # 列已存在
 
+    # 向前兼容迁移: Agent 后台更新状态
+    for column, ddl in [
+        ("agent_version", "ALTER TABLE agents ADD COLUMN agent_version TEXT DEFAULT ''"),
+        ("update_status", "ALTER TABLE agents ADD COLUMN update_status TEXT DEFAULT 'idle'"),
+        ("update_target_version", "ALTER TABLE agents ADD COLUMN update_target_version TEXT DEFAULT ''"),
+        ("update_error", "ALTER TABLE agents ADD COLUMN update_error TEXT DEFAULT ''"),
+        ("update_checked_at", "ALTER TABLE agents ADD COLUMN update_checked_at TEXT DEFAULT ''"),
+        ("update_allowed_version", "ALTER TABLE agents ADD COLUMN update_allowed_version TEXT DEFAULT ''"),
+        ("update_allowed_at", "ALTER TABLE agents ADD COLUMN update_allowed_at TEXT DEFAULT ''"),
+    ]:
+        try:
+            db.execute(ddl)
+            db.commit()
+        except sqlite3.OperationalError:
+            pass  # 列已存在
+
 
 # ============================================
 # Agent 管理
 # ============================================
 
-def upsert_agent(name: str, status: str = "online", message: str = "", ip: str = "", machine_id: str = ""):
+def upsert_agent(name: str, status: str = "online", message: str = "", ip: str = "",
+                 machine_id: str = "", agent_version: str = "", update_status: str = "",
+                 update_target_version: str = "", update_error: str = ""):
     name = name.strip()
     if not name:
         return
     db = get_db()
     try:
         db.execute(
-            """INSERT INTO agents (name, status, last_seen, message, ip, machine_id)
-               VALUES (?, ?, datetime('now', 'localtime'), ?, ?, ?)
+            """INSERT INTO agents (
+                    name, status, last_seen, message, ip, machine_id,
+                    agent_version, update_status, update_target_version, update_error, update_checked_at
+                  )
+               VALUES (?, ?, datetime('now', 'localtime'), ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
                ON CONFLICT(name) DO UPDATE SET
                  status=excluded.status,
                  last_seen=excluded.last_seen,
                  message=excluded.message,
                  ip=CASE WHEN excluded.ip != '' THEN excluded.ip ELSE agents.ip END,
-                 machine_id=CASE WHEN excluded.machine_id != '' THEN excluded.machine_id ELSE agents.machine_id END""",
-            (name, status, message, ip, machine_id)
+                 machine_id=CASE WHEN excluded.machine_id != '' THEN excluded.machine_id ELSE agents.machine_id END,
+                 agent_version=CASE WHEN excluded.agent_version != '' THEN excluded.agent_version ELSE agents.agent_version END,
+                 update_status=CASE WHEN excluded.update_status != '' THEN excluded.update_status ELSE agents.update_status END,
+                 update_target_version=CASE WHEN excluded.update_target_version != '' THEN excluded.update_target_version ELSE agents.update_target_version END,
+                 update_error=CASE WHEN excluded.update_error != '' THEN excluded.update_error ELSE agents.update_error END,
+                 update_checked_at=CASE WHEN excluded.agent_version != '' OR excluded.update_status != '' THEN excluded.update_checked_at ELSE agents.update_checked_at END,
+                 update_allowed_version=CASE
+                   WHEN excluded.agent_version != '' AND excluded.agent_version = agents.update_allowed_version THEN ''
+                   WHEN excluded.update_status IN ('updated', 'failed', 'rolled_back') THEN ''
+                   ELSE agents.update_allowed_version
+                 END""",
+            (name, status, message, ip, machine_id, agent_version, update_status, update_target_version, update_error)
         )
     except sqlite3.IntegrityError:
         # 并发 INSERT 竞态兜底：另一个线程先 INSERT 成功，改为 UPDATE
         db.execute(
-            "UPDATE agents SET status=?, last_seen=datetime('now','localtime'), message=?, ip=CASE WHEN ? != '' THEN ? ELSE ip END, machine_id=CASE WHEN ? != '' THEN ? ELSE machine_id END WHERE name=?",
-            (status, message, ip, ip, machine_id, machine_id, name)
+            """UPDATE agents SET
+                 status=?,
+                 last_seen=datetime('now','localtime'),
+                 message=?,
+                 ip=CASE WHEN ? != '' THEN ? ELSE ip END,
+                 machine_id=CASE WHEN ? != '' THEN ? ELSE machine_id END,
+                 agent_version=CASE WHEN ? != '' THEN ? ELSE agent_version END,
+                 update_status=CASE WHEN ? != '' THEN ? ELSE update_status END,
+                 update_target_version=CASE WHEN ? != '' THEN ? ELSE update_target_version END,
+                 update_error=CASE WHEN ? != '' THEN ? ELSE update_error END,
+                 update_checked_at=CASE WHEN ? != '' OR ? != '' THEN datetime('now','localtime') ELSE update_checked_at END,
+                 update_allowed_version=CASE
+                   WHEN ? != '' AND ? = update_allowed_version THEN ''
+                   WHEN ? IN ('updated', 'failed', 'rolled_back') THEN ''
+                   ELSE update_allowed_version
+                 END
+               WHERE name=?""",
+            (
+                status, message, ip, ip, machine_id, machine_id,
+                agent_version, agent_version, update_status, update_status,
+                update_target_version, update_target_version, update_error, update_error,
+                agent_version, update_status, agent_version, agent_version, update_status, name,
+            )
         )
     if machine_id:
         _merge_duplicate_agents_by_machine_id(db, machine_id)
     db.commit()
+
+
+def set_agent_update_permission(name: str, target_version: str = "") -> bool:
+    """允许单台 Agent 更新到指定版本。"""
+    db = get_db()
+    cursor = db.execute(
+        """UPDATE agents
+           SET update_allowed_version = ?,
+               update_allowed_at = datetime('now', 'localtime'),
+               update_target_version = ?,
+               update_status = CASE WHEN update_status = '' THEN 'idle' ELSE update_status END,
+               update_error = ''
+           WHERE name = ?""",
+        (target_version, target_version, name),
+    )
+    db.commit()
+    return cursor.rowcount > 0
+
+
+def clear_agent_update_permission(name: str) -> bool:
+    """暂停/清除单台 Agent 的更新许可。"""
+    db = get_db()
+    cursor = db.execute(
+        """UPDATE agents
+           SET update_allowed_version = '',
+               update_allowed_at = '',
+               update_target_version = '',
+               update_status = CASE WHEN update_status IN ('downloading', 'installing') THEN 'idle' ELSE update_status END
+           WHERE name = ?""",
+        (name,),
+    )
+    db.commit()
+    return cursor.rowcount > 0
 
 
 def _merge_duplicate_agents_by_machine_id(db: sqlite3.Connection, machine_id: str):

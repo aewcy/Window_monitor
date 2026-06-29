@@ -14,6 +14,15 @@ export const renameAgent = (name, displayName) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ display_name: displayName }),
   })
+export const allowAgentUpdate = (name) =>
+  request(`/agents/${encodeURIComponent(name)}/update/allow`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  })
+export const pauseAgentUpdate = (name) =>
+  request(`/agents/${encodeURIComponent(name)}/update/pause`, { method: 'POST' })
+export const getAgentVersion = () => request('/agent/version')
 
 // Screenshots
 export const getLatestScreenshot = (agent, monitor) => {

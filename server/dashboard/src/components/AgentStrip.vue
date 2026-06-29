@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useAgentStore } from '../stores/agent'
-import { renameAgent } from '../api'
+import { allowAgentUpdate, getAgentVersion, pauseAgentUpdate, renameAgent } from '../api'
 
 const agent = useAgentStore()
 
@@ -13,6 +13,7 @@ const renaming = ref({ show: false, agent: null, name: '' })
 
 // 删除确认状态
 const deleting = ref({ show: false, agent: null })
+const latestVersion = ref('')
 
 function onContext(e, a) {
   e.preventDefault()
@@ -47,6 +48,36 @@ function cancelRename() {
 function startDelete() {
   deleting.value = { show: true, agent: ctxMenu.value.agent }
   closeCtx()
+}
+
+async function allowUpdate() {
+  const a = ctxMenu.value.agent
+  if (!a) return
+  try {
+    await allowAgentUpdate(a.name)
+    await agent.fetchAgents()
+  } catch (e) {
+    console.error('Allow update failed:', e)
+  }
+  closeCtx()
+}
+
+async function pauseUpdate() {
+  const a = ctxMenu.value.agent
+  if (!a) return
+  try {
+    await pauseAgentUpdate(a.name)
+    await agent.fetchAgents()
+  } catch (e) {
+    console.error('Pause update failed:', e)
+  }
+  closeCtx()
+}
+
+function updateLabel(a) {
+  if (!a?.agent_version) return '未上报版本'
+  const status = a.update_status && a.update_status !== 'idle' ? ` · ${a.update_status}` : ''
+  return `v${a.agent_version}${status}`
 }
 
 async function confirmDelete() {
@@ -85,6 +116,7 @@ function onDocClick() {
 onMounted(() => {
   document.addEventListener('keydown', onKey)
   document.addEventListener('click', onDocClick)
+  getAgentVersion().then(v => { latestVersion.value = v.version || '' }).catch(() => {})
 })
 onUnmounted(() => {
   document.removeEventListener('keydown', onKey)
@@ -100,6 +132,7 @@ onUnmounted(() => {
       @contextmenu="onContext($event, a)">
       <span class="dot" :class="a.status === 'online' ? 'online' : 'offline'"></span>
       <span class="name">{{ a.display_name || a.name }}</span>
+      <span class="meta">{{ updateLabel(a) }}</span>
       <span class="meta">{{ a.screenshot_interval ? a.screenshot_interval + 's' : (a.status === 'online' ? '在线' : '离线') }}</span>
     </div>
     <div v-if="!agent.agents.length" class="agent-pill" style="opacity:0.5">
@@ -113,6 +146,14 @@ onUnmounted(() => {
       <div class="ctx-item" @click="startRename">
         <span class="ctx-icon">✏️</span>
         <span>改名</span>
+      </div>
+      <div class="ctx-item" :class="{ disabled: ctxMenu.agent?.status !== 'online' }" @click="ctxMenu.agent?.status === 'online' && allowUpdate()">
+        <span class="ctx-icon">⬆️</span>
+        <span>允许更新到 v{{ latestVersion || 'latest' }}</span>
+      </div>
+      <div class="ctx-item" @click="pauseUpdate">
+        <span class="ctx-icon">⏸️</span>
+        <span>暂停更新</span>
       </div>
       <div class="ctx-item danger" @click="startDelete">
         <span class="ctx-icon">🗑️</span>
@@ -188,6 +229,8 @@ onUnmounted(() => {
 .ctx-item:hover { background: var(--surface-hover, rgba(255,255,255,.08)); }
 .ctx-item.danger { color: #f87171; }
 .ctx-item.danger:hover { background: rgba(248,113,113,.12); }
+.ctx-item.disabled { opacity: .45; cursor: not-allowed; }
+.ctx-item.disabled:hover { background: transparent; }
 .ctx-icon { font-size: 14px; }
 
 /* 弹窗 */

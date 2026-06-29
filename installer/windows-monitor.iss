@@ -1,5 +1,5 @@
 #define AppName "Windows Monitor"
-#define AppVersion "0.50"
+#define AppVersion "0.51"
 #define Publisher "Monitor Demo"
 #define SourceRoot ".."
 
@@ -30,6 +30,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Files]
 Source: "{#SourceRoot}\server\static\agent\monitor-agent.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceRoot}\agent\install-agent.ps1"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourceRoot}\agent\updater.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceRoot}\agent\uninstall-agent.bat"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]

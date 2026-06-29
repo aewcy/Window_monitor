@@ -52,6 +52,7 @@ if %errorlevel% neq 0 (
 copy /y "install-agent.bat" "..\server\static\agent\install-agent.bat" >nul
 copy /y "uninstall-agent.bat" "..\server\static\agent\uninstall-agent.bat" >nul
 copy /y "install-agent.ps1" "..\server\static\agent\install-agent.ps1" >nul
+copy /y "updater.ps1" "..\server\static\agent\updater.ps1" >nul
 
 echo.
 echo ============================================

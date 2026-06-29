@@ -1,6 +1,7 @@
 """
 FastAPI 路由定义
 """
+import hashlib
 import os
 from datetime import datetime
 from typing import Optional
@@ -21,6 +22,7 @@ from models import (
     get_storage_stats, cleanup_old_screenshots,
     save_diagnostic, query_diagnostics, get_diagnostic_categories,
     get_agent_by_ip, get_agent_by_machine_id,
+    set_agent_update_permission, clear_agent_update_permission,
 )
 from logger import log, format_log_entry
 
@@ -108,7 +110,20 @@ async def heartbeat(data: dict):
     agent_name = data.get("agent_name", "unknown")
     ip = data.get("ip", "")
     machine_id = data.get("machine_id", "")
-    upsert_agent(agent_name, "online", ip=ip, machine_id=machine_id)
+    agent_version = data.get("agent_version", "")
+    update_status = data.get("update_status", "")
+    update_target_version = data.get("update_target_version", "")
+    update_error = data.get("update_error", "")
+    upsert_agent(
+        agent_name,
+        "online",
+        ip=ip,
+        machine_id=machine_id,
+        agent_version=agent_version,
+        update_status=update_status,
+        update_target_version=update_target_version,
+        update_error=update_error,
+    )
     # 记录 Agent 当前截图间隔
     interval = data.get("screenshot_interval", 0)
     if interval:
@@ -123,7 +138,20 @@ async def agent_status(data: dict):
     status = data.get("status", "online")
     message = data.get("message", "")
     machine_id = data.get("machine_id", "")
-    upsert_agent(agent_name, status, message, machine_id=machine_id)
+    agent_version = data.get("agent_version", "")
+    update_status = data.get("update_status", "")
+    update_target_version = data.get("update_target_version", "")
+    update_error = data.get("update_error", "")
+    upsert_agent(
+        agent_name,
+        status,
+        message,
+        machine_id=machine_id,
+        agent_version=agent_version,
+        update_status=update_status,
+        update_target_version=update_target_version,
+        update_error=update_error,
+    )
     return {"status": "ok"}
 
 
@@ -463,6 +491,115 @@ async def detect_agent(request: Request):
 SERVER_DIR = os.path.dirname(__file__)
 AGENT_STATIC_DIR = os.path.join(SERVER_DIR, "static", "agent")
 AGENT_SETUP_PATH = os.path.join(AGENT_STATIC_DIR, "WindowsMonitorSetup.exe")
+AGENT_EXE_PATH = os.path.join(AGENT_STATIC_DIR, "monitor-agent.exe")
+AGENT_LATEST_VERSION = "0.51"
+
+
+def _file_sha256(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest().upper()
+
+
+def _agent_version_payload() -> dict:
+    setup_size = os.path.getsize(AGENT_SETUP_PATH) if os.path.exists(AGENT_SETUP_PATH) else 0
+    exe_size = os.path.getsize(AGENT_EXE_PATH) if os.path.exists(AGENT_EXE_PATH) else 0
+    exe_sha = _file_sha256(AGENT_EXE_PATH) if os.path.exists(AGENT_EXE_PATH) else ""
+    setup_sha = _file_sha256(AGENT_SETUP_PATH) if os.path.exists(AGENT_SETUP_PATH) else ""
+    return {
+        "version": AGENT_LATEST_VERSION,
+        "download_url": "/api/agent/download",
+        "exe_url": "/api/agent/exe",
+        "sha256": exe_sha,
+        "setup_sha256": setup_sha,
+        "size_bytes": exe_size,
+        "setup_size_bytes": setup_size,
+        "released_at": datetime.fromtimestamp(os.path.getmtime(AGENT_SETUP_PATH)).isoformat() if os.path.exists(AGENT_SETUP_PATH) else "",
+        "stable": True,
+        "force_update": False,
+    }
+
+
+def _version_tuple(value: str) -> tuple[int, ...]:
+    text = str(value or "").strip().lower().lstrip("v")
+    parts = []
+    for item in text.split("."):
+        try:
+            parts.append(int(item))
+        except ValueError:
+            parts.append(0)
+    return tuple(parts or [0])
+
+
+def _is_newer_version(latest: str, current: str) -> bool:
+    return _version_tuple(latest) > _version_tuple(current)
+
+
+@router.get("/agent/version")
+async def agent_version():
+    """当前可下载 Agent 版本元数据。"""
+    if not os.path.exists(AGENT_SETUP_PATH):
+        raise HTTPException(status_code=404, detail="安装器文件缺失: WindowsMonitorSetup.exe")
+    if not os.path.exists(AGENT_EXE_PATH):
+        raise HTTPException(status_code=404, detail="Agent 文件缺失: monitor-agent.exe")
+    return _agent_version_payload()
+
+
+@router.get("/agent/exe")
+async def download_agent_exe():
+    """下载 Agent 可执行文件，供已安装 Agent 后台更新使用。"""
+    if not os.path.exists(AGENT_EXE_PATH):
+        raise HTTPException(status_code=404, detail="Agent 文件缺失: monitor-agent.exe")
+    return FileResponse(
+        path=AGENT_EXE_PATH,
+        filename="monitor-agent.exe",
+        media_type="application/vnd.microsoft.portable-executable",
+    )
+
+
+@router.get("/agent/update/check")
+async def check_agent_update(agent: str = Query(...), version: str = Query("")):
+    """Agent 检查是否允许安装最新版。"""
+    agents = {item["name"]: item for item in get_agents()}
+    row = agents.get(agent)
+    if not row:
+        raise HTTPException(status_code=404, detail="Agent 不存在")
+
+    latest = _agent_version_payload()
+    allowed_version = row.get("update_allowed_version") or ""
+    update_available = _is_newer_version(latest["version"], version)
+    allowed = bool(allowed_version) and allowed_version == latest["version"] and update_available
+    return {
+        **latest,
+        "agent": agent,
+        "current_version": version,
+        "update_available": update_available,
+        "allowed": allowed,
+        "allowed_version": allowed_version,
+    }
+
+
+@router.post("/agents/{agent_name}/update/allow")
+async def allow_agent_update(agent_name: str, data: dict | None = None):
+    """允许单台 Agent 更新到当前最新版。"""
+    version = (data or {}).get("version") or AGENT_LATEST_VERSION
+    if version != AGENT_LATEST_VERSION:
+        raise HTTPException(status_code=400, detail="当前只允许更新到最新版")
+    ok = set_agent_update_permission(agent_name, version)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Agent 不存在")
+    return {"status": "ok", "agent": agent_name, "version": version}
+
+
+@router.post("/agents/{agent_name}/update/pause")
+async def pause_agent_update(agent_name: str):
+    """暂停/清除单台 Agent 更新许可。"""
+    ok = clear_agent_update_permission(agent_name)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Agent 不存在")
+    return {"status": "ok", "agent": agent_name}
 
 
 @router.get("/agent/download")

@@ -65,6 +65,18 @@ SERVER_PORT = _get_setting("server_port", "MONITOR_SERVER_PORT", 8899, int)
 SERVER_URL = f"http://{SERVER_HOST}:{SERVER_PORT}"
 
 # ============================================
+# Agent 版本与后台更新
+# ============================================
+AGENT_VERSION = _get_setting("agent_version", "AGENT_VERSION", "0.51", str)
+UPDATE_ENABLED = _get_setting(
+    "update_enabled",
+    "MONITOR_UPDATE_ENABLED",
+    True,
+    lambda v: str(v).lower() in ("true", "1", "yes"),
+)
+UPDATE_CHECK_INTERVAL = _get_setting("update_check_interval", "MONITOR_UPDATE_CHECK_INTERVAL", 300, int)
+
+# ============================================
 # Agent 标识 — 默认用主机名，天然唯一
 # ============================================
 def _get_default_agent_name():

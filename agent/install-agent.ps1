@@ -22,9 +22,13 @@ $script:LegacyUserDataDir = Join-Path $env:LOCALAPPDATA "MonitorAgent"
 $script:LegacyLauncherPath = Join-Path $script:LegacyUserDataDir "run-hidden.vbs"
 $script:InstallExe = Join-Path $script:InstallDir "$script:ProcessName.exe"
 $script:SourceExe = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) "monitor-agent.exe"
+$script:SourceUpdater = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) "updater.ps1"
 $script:LauncherPath = Join-Path $script:InstallDir "run-hidden.vbs"
 $script:WatchdogPath = Join-Path $script:InstallDir "watchdog.vbs"
+$script:UpdaterPath = Join-Path $script:InstallDir "updater.ps1"
 $script:ConfigPath = Join-Path $script:InstallDir "config.json"
+$script:DownloadsDir = Join-Path $script:InstallDir "downloads"
+$script:PreviousDir = Join-Path $script:InstallDir "previous"
 $script:LogDir = Join-Path $script:UserDataDir "logs"
 $script:LogPath = Join-Path $script:LogDir "install.log"
 
@@ -72,6 +76,9 @@ function Assert-Admin {
 function Test-AgentSource {
     if (-not (Test-Path $script:SourceExe)) {
         throw "未找到 monitor-agent.exe，请把安装脚本和程序放在同一个文件夹。"
+    }
+    if (-not (Test-Path $script:SourceUpdater)) {
+        throw "未找到 updater.ps1，请把安装脚本、更新器和程序放在同一个文件夹。"
     }
 }
 
@@ -143,7 +150,7 @@ function Set-InstallDirectoryAcl {
     $rules = @(
         [System.Security.AccessControl.FileSystemAccessRule]::new("SYSTEM", [System.Security.AccessControl.FileSystemRights]"FullControl", $inheritance, $propagation, $allow),
         [System.Security.AccessControl.FileSystemAccessRule]::new("Administrators", [System.Security.AccessControl.FileSystemRights]"FullControl", $inheritance, $propagation, $allow),
-        [System.Security.AccessControl.FileSystemAccessRule]::new("Users", [System.Security.AccessControl.FileSystemRights]"ReadAndExecute", $inheritance, $propagation, $allow)
+        [System.Security.AccessControl.FileSystemAccessRule]::new("Users", [System.Security.AccessControl.FileSystemRights]"Modify", $inheritance, $propagation, $allow)
     )
     foreach ($rule in $rules) {
         $acl.AddAccessRule($rule)
@@ -157,6 +164,8 @@ function Write-AgentConfig {
         server_port = $script:ServerPort
         install_dir = $script:InstallDir
         user_data_dir = $script:UserDataDir
+        update_enabled = $true
+        update_check_interval = 300
         installed_at = (Get-Date).ToString("s")
     }
     $config | ConvertTo-Json | Set-Content -Path $script:ConfigPath -Encoding UTF8
@@ -231,11 +240,14 @@ function Install-Agent {
     Write-InstallLog "开始安装 $script:ProductName，服务器 $script:ServerHost`:$script:ServerPort"
 
     New-Item -ItemType Directory -Force -Path $script:InstallDir | Out-Null
+    New-Item -ItemType Directory -Force -Path $script:DownloadsDir | Out-Null
+    New-Item -ItemType Directory -Force -Path $script:PreviousDir | Out-Null
     New-Item -ItemType Directory -Force -Path $script:LogDir | Out-Null
     Remove-OldTasksAndService
     Stop-AgentProcesses
 
     Copy-Item -Force -Path $script:SourceExe -Destination $script:InstallExe
+    Copy-Item -Force -Path $script:SourceUpdater -Destination $script:UpdaterPath
     Write-AgentConfig
     Write-HiddenLauncher
     Write-WatchdogScript

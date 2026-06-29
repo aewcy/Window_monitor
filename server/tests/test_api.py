@@ -611,7 +611,46 @@ class TestStatsAndStorage:
 
 
 # ============================================================
-# 11. 安全响应头
+# 11. Agent 后台更新
+# ============================================================
+
+class TestAgentUpdate:
+    def test_agent_version_metadata(self, client):
+        resp = client.get("/api/agent/version")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["version"] == "0.51"
+        assert data["exe_url"] == "/api/agent/exe"
+        assert data["sha256"]
+        assert data["size_bytes"] > 0
+
+    def test_allow_agent_update_then_check(self, client):
+        client.post("/api/heartbeat", json={"agent_name": "update-agent", "agent_version": "0.50"})
+
+        allow = client.post("/api/agents/update-agent/update/allow", json={})
+        assert allow.status_code == 200
+        assert allow.json()["version"] == "0.51"
+
+        check = client.get("/api/agent/update/check?agent=update-agent&version=0.50")
+        assert check.status_code == 200
+        data = check.json()
+        assert data["update_available"] is True
+        assert data["allowed"] is True
+
+    def test_pause_agent_update(self, client):
+        client.post("/api/heartbeat", json={"agent_name": "pause-agent", "agent_version": "0.50"})
+        client.post("/api/agents/pause-agent/update/allow", json={})
+
+        pause = client.post("/api/agents/pause-agent/update/pause")
+        assert pause.status_code == 200
+
+        check = client.get("/api/agent/update/check?agent=pause-agent&version=0.50")
+        assert check.status_code == 200
+        assert check.json()["allowed"] is False
+
+
+# ============================================================
+# 12. 安全响应头
 # ============================================================
 
 class TestSecurityHeaders:
@@ -624,7 +663,7 @@ class TestSecurityHeaders:
 
 
 # ============================================================
-# 12. 截图-事件关联
+# 13. 截图-事件关联
 # ============================================================
 
 class TestScreenshotEventCorrelation:
