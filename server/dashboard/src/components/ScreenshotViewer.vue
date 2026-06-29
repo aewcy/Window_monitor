@@ -24,7 +24,7 @@ const fpsLabel = () => {
 
 async function load() {
   if (!agent.selectedAgent) return
-  const data = await ss.loadLatest()
+  const data = await ss.loadLatest({ allowStoredFallback: true })
   if (data && (data.id || data.image_base64)) {
     if (data.id !== currentId.value) {
       currentId.value = data.id
@@ -35,7 +35,7 @@ async function load() {
 }
 
 function shouldPollLive() {
-  return Boolean(agent.selectedAgent && ss.liveMode && ss.displaySource === 'live')
+  return Boolean(agent.selectedAgent && ss.displaySource === 'live')
 }
 
 function startLivePolling() {
@@ -63,7 +63,7 @@ watch(() => agent.selectedMonitor, () => {
   currentId.value = null
   if (shouldPollLive()) load()
 })
-watch(() => [ss.liveMode, ss.displaySource], startLivePolling)
+watch(() => ss.displaySource, startLivePolling)
 watch(() => ss.livePollMs, startLivePolling)
 
 defineExpose({ load })

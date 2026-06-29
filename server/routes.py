@@ -346,22 +346,28 @@ async def latest_screenshot(agent: str = Query(...), monitor: Optional[int] = Qu
 
 
 @router.get("/screenshots/live/latest")
-async def latest_live_screenshot(agent: str = Query(...), monitor: Optional[int] = Query(None)):
+async def latest_live_screenshot(
+    agent: str = Query(...),
+    monitor: Optional[int] = Query(None),
+    fallback: bool = Query(False),
+):
     """获取 Agent 最近一次上传的实时帧，不受截图入库节流影响"""
     if monitor is not None:
         result = _latest_live_frames.get((agent, monitor))
         if result:
             return result
-        fallback = get_latest_screenshot(agent, monitor)
         if fallback:
-            return fallback
+            stored = get_latest_screenshot(agent, monitor)
+            if stored:
+                return stored
     else:
         candidates = [frame for (name, _), frame in _latest_live_frames.items() if name == agent]
         if candidates:
             return max(candidates, key=lambda item: item.get("timestamp", ""))
-        fallback = get_latest_screenshot(agent)
         if fallback:
-            return fallback
+            stored = get_latest_screenshot(agent)
+            if stored:
+                return stored
     raise HTTPException(status_code=404, detail="暂无实时截图")
 
 

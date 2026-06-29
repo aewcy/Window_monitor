@@ -5,8 +5,6 @@ import { useAgentStore } from './agent'
 
 export const useScreenshotStore = defineStore('screenshot', () => {
   const liveMode = ref(true)
-  const screenshotList = ref([])
-  const currentIndex = ref(0)
   const gridMode = ref(false)
   const gridItems = ref([])
   const gridSelected = ref(new Set())
@@ -30,13 +28,15 @@ export const useScreenshotStore = defineStore('screenshot', () => {
     return Math.max(250, Math.min(60000, Number(interval) * 1000 || 1000))
   })
 
-  async function loadLatest() {
+  async function loadLatest(options = {}) {
     const agent = useAgentStore()
     if (!agent.selectedAgent) return null
+    const allowStoredFallback = options.allowStoredFallback !== false
     let data
     try {
-      data = await api.getLatestLiveScreenshot(agent.selectedAgent, agent.selectedMonitor)
+      data = await api.getLatestLiveScreenshot(agent.selectedAgent, agent.selectedMonitor, allowStoredFallback)
     } catch (err) {
+      if (!allowStoredFallback) return null
       data = await api.getLatestScreenshot(agent.selectedAgent, agent.selectedMonitor)
     }
     if (data && (data.id || data.image_base64)) {
@@ -46,19 +46,10 @@ export const useScreenshotStore = defineStore('screenshot', () => {
     return data
   }
 
-  async function loadHistory() {
-    const agent = useAgentStore()
-    if (!agent.selectedAgent) return
-    screenshotList.value = await api.getScreenshots(agent.selectedAgent, 50, 0, agent.selectedMonitor)
-    currentIndex.value = 0
-  }
-
   function prev() {
     if (displayItems.value.length && displaySource.value !== 'live') {
       if (displayIndex.value > 0) displayIndex.value--
       else displayIndex.value = displayItems.value.length - 1 // 循环
-    } else {
-      if (currentIndex.value > 0) currentIndex.value--
     }
   }
 
@@ -66,8 +57,6 @@ export const useScreenshotStore = defineStore('screenshot', () => {
     if (displayItems.value.length && displaySource.value !== 'live') {
       if (displayIndex.value < displayItems.value.length - 1) displayIndex.value++
       else displayIndex.value = 0 // 循环
-    } else {
-      if (currentIndex.value < screenshotList.value.length - 1) currentIndex.value++
     }
   }
 
@@ -76,7 +65,6 @@ export const useScreenshotStore = defineStore('screenshot', () => {
     displaySource.value = 'timeline'
     displayItems.value = items.filter(e => e.screenshot_id)
     displayIndex.value = Math.max(0, displayItems.value.findIndex(e => e === items[startIndex]))
-    liveMode.value = false
   }
 
   // 进入浏览器历史浏览模式
@@ -84,7 +72,6 @@ export const useScreenshotStore = defineStore('screenshot', () => {
     displaySource.value = 'browser'
     displayItems.value = items.filter(r => r.screenshot_id)
     displayIndex.value = Math.max(0, displayItems.value.findIndex(r => r === items[startIndex]))
-    liveMode.value = false
   }
 
   // 回到实时模式
@@ -93,14 +80,6 @@ export const useScreenshotStore = defineStore('screenshot', () => {
     displayItems.value = []
     displayIndex.value = 0
     liveMode.value = true
-  }
-
-  // 回到历史模式
-  function goHistory() {
-    displaySource.value = 'live'
-    displayItems.value = []
-    displayIndex.value = 0
-    liveMode.value = false
   }
 
   async function loadGrid(append = false) {
@@ -164,11 +143,11 @@ export const useScreenshotStore = defineStore('screenshot', () => {
   }
 
   return {
-    liveMode, screenshotList, currentIndex,
+    liveMode,
     gridMode, gridItems, gridSelected, gridOffset, gridLoading, gridExhausted,
     liveOpen, liveInterval, livePollMs, displaySource, displayItems, displayIndex, currentDisplayItem, BATCH,
-    loadLatest, loadHistory, prev, next,
-    browseTimeline, browseBrowser, goLive, goHistory,
+    loadLatest, prev, next,
+    browseTimeline, browseBrowser, goLive,
     loadGrid, toggleGridItem, setGridItemSelected, selectAllGrid, deleteSelected, resetGrid,
   }
 })

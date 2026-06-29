@@ -20,7 +20,7 @@ import ConfirmDialog from './components/ConfirmDialog.vue'
 const agent = useAgentStore()
 const ss = useScreenshotStore()
 const theme = useThemeStore()
-const { startHeartbeat, startSlow, stopAll } = usePolling()
+const { startSlow, stopAll } = usePolling()
 
 const timelineRef = ref(null)
 const browserRef = ref(null)
@@ -37,7 +37,6 @@ function refreshSlow() {
 onMounted(async () => {
   theme.init()
   await agent.loadAgents()
-  startHeartbeat()
   startSlow(refreshSlow, 5000)
   document.addEventListener('keydown', onKey)
 })
@@ -68,7 +67,6 @@ function onKey(e) {
     }
     return
   }
-  if (e.key === 'l' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); ss.liveMode = !ss.liveMode }
   if (e.key === 'g' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); ss.gridMode = !ss.gridMode }
   if (e.key === 'r' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); refreshSlow() }
 }

@@ -1,7 +1,10 @@
 const BASE = '/api'
 
 async function request(path, options = {}) {
-  const resp = await fetch(BASE + path, options)
+  const resp = await fetch(BASE + path, {
+    cache: 'no-store',
+    ...options,
+  })
   if (!resp.ok) throw new Error(`${resp.status}`)
   return resp.json()
 }
@@ -30,9 +33,10 @@ export const getLatestScreenshot = (agent, monitor) => {
   if (monitor !== null && monitor !== undefined) url += `&monitor=${monitor}`
   return request(url)
 }
-export const getLatestLiveScreenshot = (agent, monitor) => {
+export const getLatestLiveScreenshot = (agent, monitor, fallback = false) => {
   let url = `/screenshots/live/latest?agent=${encodeURIComponent(agent)}`
   if (monitor !== null && monitor !== undefined) url += `&monitor=${monitor}`
+  if (fallback) url += '&fallback=true'
   return request(url)
 }
 export const getLiveScreenshotImage = (s) =>
@@ -91,4 +95,4 @@ export const getStorageStats = () => request('/storage/stats')
 
 // Heartbeat
 export const sendHeartbeat = () =>
-  fetch(BASE + '/viewer/heartbeat', { method: 'POST' }).catch(() => {})
+  fetch(BASE + '/viewer/heartbeat', { method: 'POST', cache: 'no-store' }).catch(() => {})

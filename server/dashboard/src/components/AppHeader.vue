@@ -1,10 +1,8 @@
 <script setup>
 import { useScreenshotStore } from '../stores/screenshot'
-import { usePolling } from '../composables/usePolling'
 import CalendarPicker from './CalendarPicker.vue'
 
 const ss = useScreenshotStore()
-const { startFast, stopFast } = usePolling()
 </script>
 
 <template>
@@ -14,11 +12,10 @@ const { startFast, stopFast } = usePolling()
     </div>
     <div class="header-right">
       <CalendarPicker />
-      <button class="header-chip" :class="{ active: ss.liveMode }" @click="ss.liveMode = !ss.liveMode">
+      <div class="header-chip active">
         <span class="live-dot"></span>
-        {{ ss.liveMode ? '实时模式' : '历史模式' }}
-        <span class="shortcut">⌘L</span>
-      </button>
+        实时模式
+      </div>
       <button class="header-chip" :class="{ active: ss.gridMode }" @click="ss.gridMode = !ss.gridMode">
         网格视图 <span class="shortcut">⌘G</span>
       </button>
