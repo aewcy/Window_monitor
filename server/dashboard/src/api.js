@@ -42,6 +42,12 @@ export const deleteScreenshots = (ids) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ids }),
   })
+export const deleteScreenshotsRange = (agent, dateFrom, dateTo, monitor = null) =>
+  request('/screenshots/delete-range', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ agent, date_from: dateFrom, date_to: dateTo, monitor }),
+  })
 
 // App Events
 export const getAppEvents = (agent, limit = 20, offset = 0, monitor = null) => {
@@ -72,6 +78,7 @@ export const getStats = (agent = null) => {
   if (agent) url += `?agent=${encodeURIComponent(agent)}`
   return request(url)
 }
+export const getStorageStats = () => request('/storage/stats')
 
 // Heartbeat
 export const sendHeartbeat = () =>

@@ -1,13 +1,35 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import * as api from '../api'
 import { useAgentStore } from '../stores/agent'
 
 const agent = useAgentStore()
 const stats = ref({})
+const storage = ref({})
+
+function formatBytes(bytes) {
+  const n = Number(bytes || 0)
+  if (n >= 1024 * 1024 * 1024) return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`
+  if (n >= 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`
+  if (n >= 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${n} B`
+}
+
+const currentStorage = computed(() => {
+  const rows = storage.value.agents || []
+  if (!agent.selectedAgent) return storage.value.total_size_bytes || 0
+  return rows.find(row => row.agent_name === agent.selectedAgent)?.total_size || 0
+})
 
 async function load() {
-  try { stats.value = await api.getStats(agent.selectedAgent) } catch {}
+  try {
+    const [statsData, storageData] = await Promise.all([
+      api.getStats(agent.selectedAgent),
+      api.getStorageStats(),
+    ])
+    stats.value = statsData
+    storage.value = storageData
+  } catch {}
 }
 
 defineExpose({ load })
@@ -18,6 +40,7 @@ onMounted(load)
   <div class="stats-bar">
     <div class="stat-pill"><span class="dot-live"></span> 在线 <span class="val">{{ stats.online_agents ?? 0 }}</span></div>
     <div class="stat-pill">截图 <span class="val">{{ stats.total_screenshots ?? 0 }}</span></div>
+    <div class="stat-pill">占用 <span class="val">{{ formatBytes(currentStorage) }}</span></div>
     <div class="stat-pill">事件 <span class="val">{{ stats.today_app_events ?? 0 }}</span></div>
     <div class="stat-pill">网址 <span class="val">{{ stats.total_browser_records ?? 0 }}</span></div>
   </div>

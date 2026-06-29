@@ -490,6 +490,38 @@ def delete_screenshots_batch(ids: list[int]) -> int:
     return count
 
 
+def delete_screenshots_range(agent_name: str, date_from: str, date_to: str,
+                             monitor_index: int = None) -> dict:
+    """按时间范围删除截图（文件 + DB 索引）"""
+    db = get_db()
+    conditions = ["agent_name = ?", "timestamp >= ?", "timestamp <= ?"]
+    params = [agent_name, date_from, date_to]
+    if monitor_index is not None:
+        conditions.append("monitor_index = ?")
+        params.append(monitor_index)
+
+    where = " AND ".join(conditions)
+    rows = db.execute(
+        f"SELECT id, file_path, file_size FROM screenshots WHERE {where}",
+        params,
+    ).fetchall()
+
+    deleted_count = 0
+    freed_bytes = 0
+    for row in rows:
+        try:
+            if os.path.exists(row["file_path"]):
+                os.remove(row["file_path"])
+        except OSError:
+            pass
+        db.execute("DELETE FROM screenshots WHERE id = ?", (row["id"],))
+        deleted_count += 1
+        freed_bytes += row["file_size"] or 0
+
+    db.commit()
+    return {"deleted_count": deleted_count, "freed_bytes": freed_bytes}
+
+
 def get_latest_screenshot(agent_name: str, monitor_index: int = None) -> dict | None:
     """获取最新截图，可选指定显示器"""
     db = get_db()

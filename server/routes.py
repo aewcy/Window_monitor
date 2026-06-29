@@ -12,7 +12,7 @@ from models import (
     init_db, upsert_agent, get_agents, delete_agent, rename_agent, get_db,
     save_screenshot, get_screenshots, get_latest_screenshot,
     get_screenshot_dates, get_screenshot_hours,
-    delete_screenshot, delete_screenshots_batch,
+    delete_screenshot, delete_screenshots_batch, delete_screenshots_range,
     save_app_event, get_app_usage_summary,
     save_browser_history, get_browser_history,
     get_browser_history_with_screenshots,
@@ -378,6 +378,27 @@ async def delete_batch_screenshots(data: dict):
         raise HTTPException(status_code=400, detail="缺少 ids")
     count = delete_screenshots_batch(ids)
     return {"status": "ok", "deleted": count}
+
+
+@router.post("/screenshots/delete-range")
+async def delete_range_screenshots(data: dict):
+    """按时间段删除截图  {agent, date_from, date_to, monitor?}"""
+    agent = data.get("agent")
+    date_from = data.get("date_from")
+    date_to = data.get("date_to")
+    monitor = data.get("monitor")
+
+    if not agent:
+        raise HTTPException(status_code=400, detail="缺少 agent")
+    if not date_from or not date_to:
+        raise HTTPException(status_code=400, detail="缺少 date_from/date_to")
+    if date_from > date_to:
+        raise HTTPException(status_code=400, detail="date_from 不能晚于 date_to")
+    if monitor is not None and not isinstance(monitor, int):
+        raise HTTPException(status_code=400, detail="monitor 必须是整数")
+
+    result = delete_screenshots_range(agent, date_from, date_to, monitor)
+    return {"status": "ok", **result}
 
 
 @router.get("/app_usage")

@@ -3,9 +3,11 @@ import { ref, computed, watch } from 'vue'
 import * as api from '../api'
 import { useAgentStore } from '../stores/agent'
 import { useScreenshotStore } from '../stores/screenshot'
+import { useConfirm } from '../composables/useConfirm'
 
 const agent = useAgentStore()
 const ss = useScreenshotStore()
+const { confirm } = useConfirm()
 
 const open = ref(false)
 const dates = ref([])       // [{date: '2025-06-12', count: 42}, ...]
@@ -13,6 +15,8 @@ const hours = ref([])       // [{hour: 9, count: 12}, ...]
 const selectedDate = ref(null)
 const selectedHour = ref(null)
 const loading = ref(false)
+const clearing = ref(false)
+const message = ref('')
 
 const today = new Date()
 const viewYear = ref(today.getFullYear())
@@ -57,22 +61,37 @@ async function selectDate(day) {
   if (!day || !day.hasData) return
   selectedDate.value = day.date
   selectedHour.value = null
+  message.value = ''
   try {
     hours.value = await api.getScreenshotHours(agent.selectedAgent, day.date)
   } catch { hours.value = [] }
+}
+
+function selectedRange() {
+  if (!selectedDate.value) return null
+  let dateFrom = `${selectedDate.value}T00:00:00`
+  let dateTo = `${selectedDate.value}T23:59:59`
+  if (selectedHour.value !== null) {
+    const hour = String(selectedHour.value).padStart(2, '0')
+    dateFrom = `${selectedDate.value}T${hour}:00:00`
+    dateTo = `${selectedDate.value}T${hour}:59:59`
+  }
+  return { dateFrom, dateTo }
+}
+
+function formatBytes(bytes) {
+  const n = Number(bytes || 0)
+  if (n >= 1024 * 1024 * 1024) return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`
+  if (n >= 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`
+  if (n >= 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${n} B`
 }
 
 async function applyFilter() {
   if (!selectedDate.value) return
   loading.value = true
   try {
-    // 用 T 分隔符匹配数据库 ISO 格式
-    let dateFrom = `${selectedDate.value}T00:00:00`
-    let dateTo = `${selectedDate.value}T23:59:59`
-    if (selectedHour.value !== null) {
-      dateFrom = `${selectedDate.value}T${String(selectedHour.value).padStart(2,'0')}:00:00`
-      dateTo = `${selectedDate.value}T${String(selectedHour.value).padStart(2,'0')}:59:59`
-    }
+    const { dateFrom, dateTo } = selectedRange()
     // 分页加载全部筛选结果到网格视图
     let allData = []
     let offset = 0
@@ -92,12 +111,43 @@ async function applyFilter() {
   } finally { loading.value = false }
 }
 
-function clearFilter() {
-  selectedDate.value = null
-  selectedHour.value = null
-  hours.value = []
-  ss.liveMode = true
-  open.value = false
+async function clearFilter() {
+  if (!selectedDate.value || clearing.value) return
+  const label = selectedHour.value === null
+    ? `${selectedDate.value} 全天`
+    : `${selectedDate.value} ${String(selectedHour.value).padStart(2, '0')}:00`
+  const ok = await confirm(`清除 ${label} 的截图？此操作不可撤销。`)
+  if (!ok) return
+
+  clearing.value = true
+  message.value = ''
+  try {
+    const { dateFrom, dateTo } = selectedRange()
+    const result = await api.deleteScreenshotsRange(
+      agent.selectedAgent,
+      dateFrom,
+      dateTo,
+      agent.selectedMonitor,
+    )
+    message.value = `已清除 ${result.deleted_count || 0} 张，释放 ${formatBytes(result.freed_bytes)}`
+    await loadDates()
+    if (selectedDate.value) {
+      try {
+        hours.value = await api.getScreenshotHours(agent.selectedAgent, selectedDate.value)
+      } catch { hours.value = [] }
+      const stillHasDate = dates.value.some(d => d.date === selectedDate.value)
+      if (!stillHasDate) {
+        selectedDate.value = null
+        selectedHour.value = null
+        hours.value = []
+      }
+    }
+    ss.resetGrid()
+  } catch (err) {
+    message.value = '清除失败，请稍后再试'
+  } finally {
+    clearing.value = false
+  }
 }
 
 function toggle() {
@@ -157,8 +207,11 @@ watch(open, v => {
         <button class="cal-apply" @click="applyFilter" :disabled="loading">
           {{ loading ? '加载中...' : '查看' }}
         </button>
-        <button class="cal-clear" @click="clearFilter">清除</button>
+        <button class="cal-clear" @click="clearFilter" :disabled="clearing">
+          {{ clearing ? '清除中...' : '清除' }}
+        </button>
       </div>
+      <div v-if="message" class="cal-message">{{ message }}</div>
     </div>
   </div>
 </template>
@@ -217,4 +270,9 @@ watch(open, v => {
   color: var(--text-secondary); padding: 6px 12px; font-size: 11px; cursor: pointer;
 }
 .cal-clear:hover { background: var(--surface-hover); }
+.cal-clear:disabled { opacity: .5; cursor: not-allowed; }
+.cal-message {
+  margin-top: 8px; font-size: 10px; line-height: 1.4;
+  color: var(--text-secondary); font-family: var(--font-mono);
+}
 </style>
