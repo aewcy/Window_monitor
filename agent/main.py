@@ -5,8 +5,6 @@ Agent 主程序 - 精简版
 import sys
 import os
 import time
-import json
-import hashlib
 import subprocess
 import threading
 import queue
@@ -19,9 +17,10 @@ from config import (
     HEARTBEAT_INTERVAL, RETRY_TIMES, RETRY_DELAY,
     SCREENSHOT_UPLOAD_QUEUE_SIZE, APP_EVENT_UPLOAD_QUEUE_SIZE,
     BROWSER_UPLOAD_QUEUE_SIZE, CONTROL_UPLOAD_QUEUE_SIZE,
-    AGENT_VERSION, UPDATE_ENABLED, UPDATE_CHECK_INTERVAL,
+    AGENT_VERSION,
     get_machine_id,
 )
+from auto_update import AutoUpdater
 from screen_capture import ScreenCapture
 from app_tracker import AppTracker
 from browser_history import BrowserHistoryCollector
@@ -254,165 +253,6 @@ class Reporter:
         if update_error:
             data["update_error"] = update_error
         self._enqueue("control", ("status", data), drop_oldest=True, warn=False)
-
-
-# ============================================
-# 后台更新
-# ============================================
-
-def _version_tuple(value: str) -> tuple[int, ...]:
-    text = str(value or "").strip().lower().lstrip("v")
-    parts = []
-    for item in text.split("."):
-        try:
-            parts.append(int(item))
-        except ValueError:
-            parts.append(0)
-    return tuple(parts or [0])
-
-
-def _is_newer_version(latest: str, current: str) -> bool:
-    return _version_tuple(latest) > _version_tuple(current)
-
-
-class AutoUpdater:
-    """后台更新器：只在服务端允许当前 Agent 更新时执行。"""
-
-    def __init__(self, server_url: str, agent_name: str, reporter: Reporter, machine_id: str):
-        self.url = server_url.rstrip("/")
-        self.agent = agent_name
-        self.reporter = reporter
-        self.machine_id = machine_id
-        self.install_dir = os.path.dirname(sys.executable if getattr(sys, "frozen", False) else __file__)
-        self.download_dir = os.path.join(self.install_dir, "downloads")
-        self.updater_path = os.path.join(self.install_dir, "updater.ps1")
-        self.state_path = os.path.join(self.install_dir, "update-state.json")
-        self._stop = threading.Event()
-        self._running_update = False
-
-    def start(self):
-        if not self._can_update():
-            return
-        os.makedirs(self.download_dir, exist_ok=True)
-        self._report_pending_state()
-        t = threading.Thread(target=self._loop, daemon=True, name="auto-updater")
-        t.start()
-
-    def _can_update(self) -> bool:
-        return bool(UPDATE_ENABLED and IS_WINDOWS and getattr(sys, "frozen", False))
-
-    def _report(self, status: str, message: str = "", target_version: str = "", error: str = ""):
-        self.reporter.status(
-            "online",
-            message or f"update {status}",
-            self.machine_id,
-            update_status=status,
-            update_target_version=target_version,
-            update_error=error,
-        )
-
-    def _report_pending_state(self):
-        if not os.path.exists(self.state_path):
-            self._report("idle", "Agent running")
-            return
-        try:
-            with open(self.state_path, "r", encoding="utf-8") as f:
-                state = json.load(f)
-            status = state.get("status") or "idle"
-            target = state.get("target_version") or ""
-            message = state.get("message") or ""
-            self._report(status, message, target, "" if status in ("updated", "idle") else message)
-            if status in ("updated", "rolled_back", "failed"):
-                os.remove(self.state_path)
-        except Exception as e:
-            self._report("failed", "读取更新状态失败", error=str(e))
-
-    def _loop(self):
-        while not self._stop.is_set():
-            try:
-                self.check_once()
-            except Exception as e:
-                self._report("failed", "更新检查异常", error=str(e))
-            self._stop.wait(max(60, int(UPDATE_CHECK_INTERVAL or 300)))
-
-    def check_once(self):
-        if self._running_update:
-            return
-        r = requests.get(
-            f"{self.url}/api/agent/update/check",
-            params={"agent": self.agent, "version": AGENT_VERSION},
-            timeout=10,
-        )
-        if r.status_code != 200:
-            return
-        data = r.json()
-        latest = data.get("version", "")
-        if not data.get("update_available") or not data.get("allowed"):
-            self._report("idle", "Agent update idle")
-            return
-        if not _is_newer_version(latest, AGENT_VERSION):
-            self._report("idle", "Agent already latest")
-            return
-        self._running_update = True
-        try:
-            self._install(data)
-        finally:
-            self._running_update = False
-
-    def _install(self, data: dict):
-        target_version = data.get("version", "")
-        expected_sha = (data.get("sha256") or "").upper()
-        exe_url = data.get("exe_url") or "/api/agent/exe"
-        download_url = exe_url if exe_url.startswith("http") else f"{self.url}{exe_url}"
-        target_path = os.path.join(self.download_dir, f"WindowsMonitor-{target_version}.exe")
-
-        if not os.path.exists(self.updater_path):
-            self._report("failed", "缺少 updater.ps1", target_version, "missing updater.ps1")
-            return
-
-        self._report("downloading", "正在下载更新", target_version)
-        with requests.get(download_url, stream=True, timeout=60) as resp:
-            resp.raise_for_status()
-            digest = hashlib.sha256()
-            tmp_path = target_path + ".tmp"
-            with open(tmp_path, "wb") as f:
-                for chunk in resp.iter_content(chunk_size=1024 * 1024):
-                    if not chunk:
-                        continue
-                    digest.update(chunk)
-                    f.write(chunk)
-            actual_sha = digest.hexdigest().upper()
-            if expected_sha and actual_sha != expected_sha:
-                try:
-                    os.remove(tmp_path)
-                except OSError:
-                    pass
-                self._report("failed", "更新包校验失败", target_version, f"sha256 {actual_sha} != {expected_sha}")
-                return
-            os.replace(tmp_path, target_path)
-
-        self._report("installing", "正在安装更新", target_version)
-        creationflags = 0x00000008 | 0x08000000 if IS_WINDOWS else 0
-        subprocess.Popen(
-            [
-                "powershell.exe",
-                "-NoProfile",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-File",
-                self.updater_path,
-                "-InstallDir",
-                self.install_dir,
-                "-NewExe",
-                target_path,
-                "-TargetVersion",
-                target_version,
-            ],
-            creationflags=creationflags,
-            close_fds=True,
-        )
-        time.sleep(1)
-        os._exit(0)
 
 
 # ============================================
