@@ -104,10 +104,15 @@ export const useScreenshotStore = defineStore('screenshot', () => {
         gridExhausted.value = false
         gridSelected.value = new Set()
       }
+      if (!append && !query.dateTo && data.length) {
+        gridQuery.value = { ...gridQuery.value, dateTo: data[0].timestamp }
+      }
+      const existingIds = new Set(gridItems.value.map(item => item.id))
+      const uniqueData = data.filter(item => !existingIds.has(item.id))
       // 只有真正没有数据时才标记耗尽（不再因 partial batch 停止）
       if (data.length === 0) gridExhausted.value = true
       gridOffset.value += data.length
-      gridItems.value = [...gridItems.value, ...data]
+      gridItems.value = [...gridItems.value, ...uniqueData]
     } finally {
       gridLoading.value = false
     }

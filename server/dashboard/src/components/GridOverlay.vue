@@ -13,6 +13,8 @@ const previewItem = ref(null)
 const previewZoom = ref(1)
 const savedGridScrollTop = ref(0)
 const modifierSelecting = ref(false)
+const previewLoadingNext = ref(false)
+const previewPendingNext = ref(false)
 const gridScrollTop = ref(0)
 const gridViewportHeight = ref(0)
 const gridViewportWidth = ref(0)
@@ -157,13 +159,59 @@ function previewPrev() {
   if (idx > 0) previewItem.value = ss.gridItems[idx - 1]
 }
 
-async function previewNext() {
+function waitForGridIdle() {
+  if (!ss.gridLoading) return Promise.resolve()
+  return new Promise(resolve => {
+    const startedAt = Date.now()
+    const timer = window.setInterval(() => {
+      if (!ss.gridLoading || Date.now() - startedAt > 10000) {
+        window.clearInterval(timer)
+        resolve()
+      }
+    }, 50)
+  })
+}
+
+async function advancePreviewNext() {
   const idx = ss.gridItems.findIndex(s => s.id === previewItem.value?.id)
-  if (idx >= 0 && idx < ss.gridItems.length - 1) previewItem.value = ss.gridItems[idx + 1]
-  else if (idx >= 0 && !ss.gridExhausted && !ss.gridLoading) {
-    const nextIndex = ss.gridItems.length
-    await ss.loadGrid(true)
-    if (ss.gridItems.length > nextIndex) previewItem.value = ss.gridItems[nextIndex]
+  if (idx < 0) return false
+  if (idx < ss.gridItems.length - 1) {
+    previewItem.value = ss.gridItems[idx + 1]
+    return true
+  }
+  if (ss.gridExhausted) return false
+
+  await waitForGridIdle()
+  const currentIdx = ss.gridItems.findIndex(s => s.id === previewItem.value?.id)
+  if (currentIdx < 0) return false
+  if (currentIdx < ss.gridItems.length - 1) {
+    previewItem.value = ss.gridItems[currentIdx + 1]
+    return true
+  }
+  if (ss.gridExhausted) return false
+
+  const nextIndex = ss.gridItems.length
+  await ss.loadGrid(true)
+  if (ss.gridItems.length > nextIndex) {
+    previewItem.value = ss.gridItems[nextIndex]
+    return true
+  }
+  return false
+}
+
+async function previewNext() {
+  previewPendingNext.value = true
+  if (previewLoadingNext.value) return
+
+  previewLoadingNext.value = true
+  try {
+    while (previewPendingNext.value) {
+      previewPendingNext.value = false
+      const advanced = await advancePreviewNext()
+      if (!advanced) break
+    }
+  } finally {
+    previewLoadingNext.value = false
   }
 }
 
