@@ -11,7 +11,7 @@ const offset = ref(0)
 const hasMore = ref(true)
 const loading = ref(false)
 const filterQuery = ref('')
-const BATCH = 20
+const BATCH = 200
 
 const filteredEvents = computed(() => {
   const query = filterQuery.value.trim().toLowerCase()

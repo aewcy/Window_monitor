@@ -11,6 +11,7 @@ export const useScreenshotStore = defineStore('screenshot', () => {
   const gridOffset = ref(0)
   const gridLoading = ref(false)
   const gridExhausted = ref(false)
+  const gridQuery = ref({ monitor: null, dateFrom: null, dateTo: null })
   const liveOpen = ref(false)
   const liveInterval = ref(null)
 
@@ -88,7 +89,15 @@ export const useScreenshotStore = defineStore('screenshot', () => {
     gridLoading.value = true
     try {
       const offset = append ? gridOffset.value : 0
-      const data = await api.getScreenshots(agent.selectedAgent, BATCH, offset)
+      const query = gridQuery.value
+      const data = await api.getScreenshots(
+        agent.selectedAgent,
+        BATCH,
+        offset,
+        query.monitor,
+        query.dateFrom,
+        query.dateTo,
+      )
       if (!append) {
         gridItems.value = []
         gridOffset.value = 0
@@ -101,6 +110,14 @@ export const useScreenshotStore = defineStore('screenshot', () => {
       gridItems.value = [...gridItems.value, ...data]
     } finally {
       gridLoading.value = false
+    }
+  }
+
+  function setGridQuery(query = {}) {
+    gridQuery.value = {
+      monitor: query.monitor ?? null,
+      dateFrom: query.dateFrom ?? null,
+      dateTo: query.dateTo ?? null,
     }
   }
 
@@ -148,21 +165,22 @@ export const useScreenshotStore = defineStore('screenshot', () => {
     notifyScreenshotsChanged()
   }
 
-  function resetGrid() {
+  function resetGrid(options = {}) {
     gridItems.value = []
     gridOffset.value = 0
     gridExhausted.value = false
     gridSelected.value = new Set()
     gridLoading.value = false
+    if (options.resetQuery) setGridQuery()
   }
 
   return {
     liveMode,
-    gridMode, gridItems, gridSelected, gridOffset, gridLoading, gridExhausted,
+    gridMode, gridItems, gridSelected, gridOffset, gridLoading, gridExhausted, gridQuery,
     liveOpen, liveInterval, livePollMs, displaySource, displayItems, displayIndex, currentDisplayItem, BATCH,
     loadLatest, prev, next,
     browseTimeline, browseBrowser, goLive,
-    loadGrid, toggleGridItem, setGridItemSelected, selectAllGrid, deleteSelected, resetGrid,
+    loadGrid, setGridQuery, toggleGridItem, setGridItemSelected, selectAllGrid, deleteSelected, resetGrid,
     removeGridItems, notifyScreenshotsChanged,
   }
 })

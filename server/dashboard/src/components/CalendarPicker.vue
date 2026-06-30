@@ -118,20 +118,10 @@ async function applyFilter() {
   loading.value = true
   try {
     const { dateFrom, dateTo } = selectedRange()
-    // 分页加载全部筛选结果到网格视图
-    let allData = []
-    let offset = 0
-    const batchSize = 5000
-    while (true) {
-      const batch = await api.getScreenshots(agent.selectedAgent, batchSize, offset, null, dateFrom, dateTo)
-      allData = allData.concat(batch)
-      if (batch.length < batchSize) break
-      offset += batchSize
-    }
-    ss.gridItems = allData
-    ss.gridOffset = allData.length
-    ss.gridExhausted = true
-    ss.gridSelected = new Set()
+    // 保存筛选范围，网格滚动和预览翻页会继续按同一范围分页加载。
+    ss.setGridQuery({ dateFrom, dateTo })
+    ss.resetGrid()
+    await ss.loadGrid(false)
     ss.gridMode = true   // 打开网格视图
     open.value = false
   } finally { loading.value = false }

@@ -10,7 +10,7 @@ const records = ref([])
 const offset = ref(0)
 const hasMore = ref(true)
 const loading = ref(false)
-const BATCH = 20
+const BATCH = 200
 const titleWidth = ref(Number(localStorage.getItem('browserHistory:titleWidth') || 560))
 const urlWidth = ref(Number(localStorage.getItem('browserHistory:urlWidth') || 240))
 const rowStyle = computed(() => ({

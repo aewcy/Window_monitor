@@ -13,7 +13,64 @@ const previewItem = ref(null)
 const previewZoom = ref(1)
 const savedGridScrollTop = ref(0)
 const modifierSelecting = ref(false)
+const gridScrollTop = ref(0)
+const gridViewportHeight = ref(0)
+const gridViewportWidth = ref(0)
 const sweptIds = new Set()
+let gridResizeObserver = null
+
+const GRID_MIN_WIDTH = 180
+const GRID_GAP = 8
+const GRID_PADDING_X = 24
+const GRID_OVERSCAN_ROWS = 4
+
+const gridColumnCount = computed(() => {
+  const width = Math.max(0, gridViewportWidth.value - GRID_PADDING_X)
+  return Math.max(1, Math.floor((width + GRID_GAP) / (GRID_MIN_WIDTH + GRID_GAP)))
+})
+
+const virtualItemWidth = computed(() => {
+  const width = Math.max(0, gridViewportWidth.value - GRID_PADDING_X)
+  return (width - GRID_GAP * (gridColumnCount.value - 1)) / gridColumnCount.value
+})
+
+const virtualRowHeight = computed(() => Math.max(120, virtualItemWidth.value * 10 / 16 + GRID_GAP))
+const totalVirtualRows = computed(() => Math.ceil(ss.gridItems.length / gridColumnCount.value))
+const totalVirtualHeight = computed(() => totalVirtualRows.value * virtualRowHeight.value)
+const virtualStartRow = computed(() => Math.max(0, Math.floor(gridScrollTop.value / virtualRowHeight.value) - GRID_OVERSCAN_ROWS))
+const virtualEndRow = computed(() => {
+  const visibleRows = Math.ceil((gridViewportHeight.value || 1) / virtualRowHeight.value)
+  return Math.min(totalVirtualRows.value, virtualStartRow.value + visibleRows + GRID_OVERSCAN_ROWS * 2)
+})
+const topSpacerHeight = computed(() => virtualStartRow.value * virtualRowHeight.value)
+const bottomSpacerHeight = computed(() => Math.max(0, totalVirtualHeight.value - virtualEndRow.value * virtualRowHeight.value))
+const visibleRows = computed(() => {
+  const rows = []
+  const columns = gridColumnCount.value
+  for (let rowIndex = virtualStartRow.value; rowIndex < virtualEndRow.value; rowIndex++) {
+    const start = rowIndex * columns
+    rows.push({
+      rowIndex,
+      items: ss.gridItems.slice(start, start + columns),
+    })
+  }
+  return rows
+})
+
+function updateGridMetrics() {
+  const el = scrollEl.value
+  if (!el) return
+  gridScrollTop.value = el.scrollTop
+  gridViewportHeight.value = el.clientHeight
+  gridViewportWidth.value = el.clientWidth
+}
+
+function observeGridBody() {
+  if (!gridResizeObserver || !scrollEl.value) return
+  gridResizeObserver.disconnect()
+  gridResizeObserver.observe(scrollEl.value)
+  updateGridMetrics()
+}
 
 function close() {
   previewItem.value = null
@@ -33,15 +90,27 @@ function closePreview() {
   previewItem.value = null
   previewZoom.value = 1
   nextTick(() => {
-    const el = scrollEl.value
-    if (!el) return
-    const target = targetId ? el.querySelector(`[data-grid-id="${targetId}"]`) : null
-    if (target) {
-      target.scrollIntoView({ block: 'center' })
-    } else {
-      el.scrollTop = savedGridScrollTop.value
-    }
+    observeGridBody()
+    if (targetId) scrollToGridItem(targetId, 'center')
+    else if (scrollEl.value) scrollEl.value.scrollTop = savedGridScrollTop.value
   })
+}
+
+function scrollToGridItem(id, block = 'start') {
+  const el = scrollEl.value
+  if (!el) return
+  const index = ss.gridItems.findIndex(item => item.id === id)
+  if (index < 0) {
+    el.scrollTop = savedGridScrollTop.value
+    updateGridMetrics()
+    return
+  }
+  const rowIndex = Math.floor(index / gridColumnCount.value)
+  const centeredOffset = block === 'center'
+    ? Math.max(0, (gridViewportHeight.value - virtualRowHeight.value) / 2)
+    : 0
+  el.scrollTop = Math.max(0, rowIndex * virtualRowHeight.value - centeredOffset)
+  updateGridMetrics()
 }
 
 function stopModifierSelect() {
@@ -88,9 +157,14 @@ function previewPrev() {
   if (idx > 0) previewItem.value = ss.gridItems[idx - 1]
 }
 
-function previewNext() {
+async function previewNext() {
   const idx = ss.gridItems.findIndex(s => s.id === previewItem.value?.id)
   if (idx >= 0 && idx < ss.gridItems.length - 1) previewItem.value = ss.gridItems[idx + 1]
+  else if (idx >= 0 && !ss.gridExhausted && !ss.gridLoading) {
+    const nextIndex = ss.gridItems.length
+    await ss.loadGrid(true)
+    if (ss.gridItems.length > nextIndex) previewItem.value = ss.gridItems[nextIndex]
+  }
 }
 
 function onPreviewWheel(e) {
@@ -105,7 +179,7 @@ function onPreviewWheel(e) {
 }
 
 watch(() => ss.gridMode, (v) => {
-  if (v && agent.selectedAgent && !ss.gridItems.length) {
+  if (v && agent.selectedAgent && !ss.gridItems.length && !ss.gridQuery.dateFrom && !ss.gridQuery.dateTo) {
     // 没有预加载数据时才重新加载
     closePreview()
     ss.resetGrid()
@@ -114,25 +188,34 @@ watch(() => ss.gridMode, (v) => {
   if (!v) {
     closePreview()
     // 关闭网格时清除预加载数据，下次打开重新加载
-    ss.resetGrid()
+    ss.resetGrid({ resetQuery: true })
   }
+  nextTick(observeGridBody)
 })
+
+watch(() => ss.gridItems.length, () => nextTick(updateGridMetrics))
 
 onMounted(() => {
   window.addEventListener('keyup', onModifierKeyUp)
   window.addEventListener('blur', stopModifierSelect)
   document.addEventListener('keydown', onPreviewKeyDown, true)
+  gridResizeObserver = new ResizeObserver(updateGridMetrics)
+  nextTick(() => {
+    observeGridBody()
+  })
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keyup', onModifierKeyUp)
   window.removeEventListener('blur', stopModifierSelect)
   document.removeEventListener('keydown', onPreviewKeyDown, true)
+  gridResizeObserver?.disconnect()
   stopModifierSelect()
 })
 
 function onScroll(e) {
   const el = e.target
+  updateGridMetrics()
   if (ss.gridLoading || ss.gridExhausted) return
   // 距底部 200px 时预加载，确保滚轮滚动流畅
   if (el.scrollTop + el.clientHeight >= el.scrollHeight - 200) {
@@ -171,8 +254,10 @@ const grouped = computed(() => {
 function scrollTo(date) {
   const el = scrollEl.value
   if (!el) return
-  const target = el.querySelector(`[data-date="${date}"]`)
-  if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  const index = ss.gridItems.findIndex(s => (s.timestamp || '').substring(0, 10) === date)
+  if (index < 0) return
+  const rowIndex = Math.floor(index / gridColumnCount.value)
+  el.scrollTo({ top: rowIndex * virtualRowHeight.value, behavior: 'smooth' })
 }
 </script>
 
@@ -221,13 +306,14 @@ function scrollTo(date) {
         </div>
       </div>
       <div v-else class="grid-body" @scroll="onScroll" ref="scrollEl">
-        <template v-for="g in grouped" :key="g.date">
-          <div class="grid-date-label" :data-date="g.date">
-            <span class="date-text">{{ g.date }}</span>
-            <span class="date-total">{{ g.items.length }} 张</span>
-          </div>
-          <div class="grid-container" :class="{ brushing: modifierSelecting }">
-            <div v-for="s in g.items" :key="s.id"
+        <div class="grid-virtual">
+          <div :style="{ height: `${topSpacerHeight}px` }"></div>
+          <div
+            v-for="row in visibleRows"
+            :key="row.rowIndex"
+            class="grid-container"
+            :class="{ brushing: modifierSelecting }">
+            <div v-for="s in row.items" :key="s.id"
               class="grid-item" :class="{ selected: ss.gridSelected.has(s.id) }"
               :data-grid-id="s.id"
               @pointerenter="selectWithModifiers($event, s.id)"
@@ -241,7 +327,8 @@ function scrollTo(date) {
               <div class="grid-monitor" v-if="s.monitor_total > 1">屏{{ (s.monitor_index||0)+1 }}</div>
             </div>
           </div>
-        </template>
+          <div :style="{ height: `${bottomSpacerHeight}px` }"></div>
+        </div>
         <div class="grid-status" v-if="ss.gridExhausted">已加载 {{ ss.gridOffset }} 张截图</div>
         <div class="grid-status" v-else-if="ss.gridLoading">加载中...</div>
         <div class="grid-status" v-else-if="!ss.gridItems.length && !ss.gridLoading">暂无截图</div>
@@ -324,10 +411,11 @@ function scrollTo(date) {
 }
 .date-text { font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: var(--accent); }
 .date-total { font-family: var(--font-mono); font-size: 10px; color: var(--muted); }
+.grid-virtual { padding: 4px 12px 12px; }
 .grid-container {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 8px; padding: 4px 12px 12px;
+  gap: 8px; padding: 0 0 8px;
 }
 .grid-container.brushing { cursor: crosshair; user-select: none; }
 .grid-item {
