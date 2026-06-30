@@ -447,7 +447,7 @@ async def app_usage(
 @router.get("/app_events")
 async def app_events_list(
     agent: str = Query(...),
-    limit: int = Query(50, le=200),
+    limit: int = Query(50, le=5000),
     offset: int = Query(0),
     with_screenshots: bool = Query(False),
     monitor: Optional[int] = Query(None),

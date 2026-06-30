@@ -37,7 +37,7 @@ async function load() {
 
 async function refresh() {
   if (!agent.selectedAgent || loading.value) return
-  const keepCount = Math.min(Math.max(events.value.length, BATCH), 200)
+  const keepCount = Math.max(events.value.length, BATCH)
   try {
     loading.value = true
     const fresh = await api.getAppEvents(agent.selectedAgent, keepCount, 0, agent.selectedMonitor)
