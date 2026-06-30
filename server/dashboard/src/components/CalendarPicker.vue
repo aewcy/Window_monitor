@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import * as api from '../api'
 import { useAgentStore } from '../stores/agent'
 import { useScreenshotStore } from '../stores/screenshot'
@@ -55,6 +55,32 @@ async function loadDates() {
   try {
     dates.value = await api.getScreenshotDates(agent.selectedAgent)
   } catch { dates.value = [] }
+  await refreshSelectedHours()
+}
+
+function sameHour(a, b) {
+  return String(a).padStart(2, '0') === String(b).padStart(2, '0')
+}
+
+async function refreshSelectedHours() {
+  if (!selectedDate.value) return
+  const stillHasDate = dates.value.some(d => d.date === selectedDate.value)
+  if (!stillHasDate) {
+    selectedDate.value = null
+    selectedHour.value = null
+    hours.value = []
+    return
+  }
+
+  try {
+    hours.value = await api.getScreenshotHours(agent.selectedAgent, selectedDate.value)
+  } catch {
+    hours.value = []
+  }
+
+  if (selectedHour.value !== null && !hours.value.some(h => sameHour(h.hour, selectedHour.value))) {
+    selectedHour.value = null
+  }
 }
 
 async function selectDate(day) {
@@ -127,22 +153,12 @@ async function clearFilter() {
       agent.selectedAgent,
       dateFrom,
       dateTo,
-      agent.selectedMonitor,
+      null,
     )
     message.value = `已清除 ${result.deleted_count || 0} 张，释放 ${formatBytes(result.freed_bytes)}`
     await loadDates()
-    if (selectedDate.value) {
-      try {
-        hours.value = await api.getScreenshotHours(agent.selectedAgent, selectedDate.value)
-      } catch { hours.value = [] }
-      const stillHasDate = dates.value.some(d => d.date === selectedDate.value)
-      if (!stillHasDate) {
-        selectedDate.value = null
-        selectedHour.value = null
-        hours.value = []
-      }
-    }
     ss.resetGrid()
+    ss.notifyScreenshotsChanged()
   } catch (err) {
     message.value = '清除失败，请稍后再试'
   } finally {
@@ -155,10 +171,24 @@ function toggle() {
   if (open.value) loadDates()
 }
 
+async function onScreenshotsChanged(event) {
+  if (event.detail?.agent && event.detail.agent !== agent.selectedAgent) return
+  if (open.value || selectedDate.value) await loadDates()
+}
+
 // 点击外部关闭 (用 nextTick 延迟注册，避免当前点击事件触发)
 function onDocClick(e) {
   if (!e.target.closest('.cal-wrap')) open.value = false
 }
+
+onMounted(() => {
+  window.addEventListener('screenshots:changed', onScreenshotsChanged)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('screenshots:changed', onScreenshotsChanged)
+  document.removeEventListener('click', onDocClick)
+})
 
 watch(open, v => {
   if (v) {

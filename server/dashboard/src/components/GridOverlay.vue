@@ -75,6 +75,14 @@ function onModifierKeyUp(event) {
   if (!event.ctrlKey || !event.shiftKey) stopModifierSelect()
 }
 
+function onPreviewKeyDown(event) {
+  if (!ss.gridMode || !previewItem.value || event.key !== 'Escape') return
+  event.preventDefault()
+  event.stopPropagation()
+  event.stopImmediatePropagation?.()
+  closePreview()
+}
+
 function previewPrev() {
   const idx = ss.gridItems.findIndex(s => s.id === previewItem.value?.id)
   if (idx > 0) previewItem.value = ss.gridItems[idx - 1]
@@ -113,11 +121,13 @@ watch(() => ss.gridMode, (v) => {
 onMounted(() => {
   window.addEventListener('keyup', onModifierKeyUp)
   window.addEventListener('blur', stopModifierSelect)
+  document.addEventListener('keydown', onPreviewKeyDown, true)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keyup', onModifierKeyUp)
   window.removeEventListener('blur', stopModifierSelect)
+  document.removeEventListener('keydown', onPreviewKeyDown, true)
   stopModifierSelect()
 })
 
@@ -141,7 +151,8 @@ async function deleteOne(id) {
   if (ok) {
     await deleteScreenshots([id])
     if (previewItem.value?.id === id) closePreview()
-    ss.loadGrid(false)
+    ss.removeGridItems([id])
+    ss.notifyScreenshotsChanged()
   }
 }
 

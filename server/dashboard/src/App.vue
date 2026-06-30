@@ -55,6 +55,7 @@ watch(() => [agent.selectedAgent, agent.selectedMonitor], () => {
 })
 
 function onKey(e) {
+  if (e.defaultPrevented) return
   // ESC 逐层退出: overlay → 网格 → 主题面板
   if (e.key === 'Escape') {
     if (ss.liveOpen) {

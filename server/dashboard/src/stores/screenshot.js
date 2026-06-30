@@ -126,12 +126,26 @@ export const useScreenshotStore = defineStore('screenshot', () => {
     }
   }
 
+  function notifyScreenshotsChanged() {
+    const agent = useAgentStore()
+    window.dispatchEvent(new CustomEvent('screenshots:changed', {
+      detail: { agent: agent.selectedAgent },
+    }))
+  }
+
+  function removeGridItems(ids) {
+    const deleted = new Set(ids)
+    gridItems.value = gridItems.value.filter(s => !deleted.has(s.id))
+    gridOffset.value = gridItems.value.length
+    gridSelected.value = new Set([...gridSelected.value].filter(id => !deleted.has(id)))
+  }
+
   async function deleteSelected() {
     const ids = [...gridSelected.value]
     if (!ids.length) return
     await api.deleteScreenshots(ids)
-    gridSelected.value = new Set()
-    await loadGrid(false)
+    removeGridItems(ids)
+    notifyScreenshotsChanged()
   }
 
   function resetGrid() {
@@ -149,5 +163,6 @@ export const useScreenshotStore = defineStore('screenshot', () => {
     loadLatest, prev, next,
     browseTimeline, browseBrowser, goLive,
     loadGrid, toggleGridItem, setGridItemSelected, selectAllGrid, deleteSelected, resetGrid,
+    removeGridItems, notifyScreenshotsChanged,
   }
 })
