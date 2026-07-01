@@ -75,9 +75,38 @@ async function pauseUpdate() {
 }
 
 function updateLabel(a) {
-  if (!a?.agent_version) return '未上报版本'
-  const status = a.update_status && a.update_status !== 'idle' ? ` · ${a.update_status}` : ''
-  return `v${a.agent_version}${status}`
+  return a?.agent_version ? `v${a.agent_version}` : '未上报版本'
+}
+
+function updateState(a) {
+  const target = a?.update_target_version || a?.update_allowed_version || latestVersion.value
+  const targetText = target ? ` v${target}` : ''
+  if (a?.update_status === 'downloading') return `下载中${targetText}`
+  if (a?.update_status === 'installing') return `安装中${targetText}`
+  if (a?.update_status === 'updated') return `已更新${targetText}`
+  if (a?.update_status === 'failed') return `更新失败${targetText}`
+  if (a?.update_status === 'rolled_back') return `已回滚${targetText}`
+  if (a?.update_allowed_version) return `等待拉取 v${a.update_allowed_version}`
+  return ''
+}
+
+function updateStateClass(a) {
+  if (a?.update_status === 'failed' || a?.update_status === 'rolled_back') return 'danger'
+  if (a?.update_status === 'downloading' || a?.update_status === 'installing') return 'active'
+  if (a?.update_allowed_version) return 'pending'
+  return ''
+}
+
+function updateTitle(a) {
+  const lines = [
+    `当前版本: ${a?.agent_version ? `v${a.agent_version}` : '未上报'}`,
+  ]
+  if (a?.update_target_version) lines.push(`目标版本: v${a.update_target_version}`)
+  if (a?.update_allowed_version) lines.push(`允许更新: v${a.update_allowed_version}`)
+  if (a?.update_status) lines.push(`更新状态: ${a.update_status}`)
+  if (a?.update_checked_at) lines.push(`最近检查: ${a.update_checked_at}`)
+  if (a?.update_error) lines.push(`错误: ${a.update_error}`)
+  return lines.join('\n')
 }
 
 async function confirmDelete() {
@@ -128,11 +157,13 @@ onUnmounted(() => {
   <div class="agent-strip">
     <div v-for="a in agent.agents" :key="a.name"
       class="agent-pill" :class="{ active: agent.selectedAgent === a.name }"
+      :title="updateTitle(a)"
       @click="agent.selectAgent(a.name)"
       @contextmenu="onContext($event, a)">
       <span class="dot" :class="a.status === 'online' ? 'online' : 'offline'"></span>
       <span class="name">{{ a.display_name || a.name }}</span>
       <span class="meta">{{ updateLabel(a) }}</span>
+      <span v-if="updateState(a)" class="update-badge" :class="updateStateClass(a)">{{ updateState(a) }}</span>
       <span class="meta">{{ a.screenshot_interval ? a.screenshot_interval + 's' : (a.status === 'online' ? '在线' : '离线') }}</span>
     </div>
     <div v-if="!agent.agents.length" class="agent-pill" style="opacity:0.5">
@@ -211,6 +242,29 @@ onUnmounted(() => {
 .dot.offline { background: var(--muted); }
 .name { font-size: 12px; font-weight: 600; }
 .meta { font-family: var(--font-mono); font-size: 10px; color: var(--muted); }
+.update-badge {
+  padding: 2px 6px;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  font-size: 10px;
+  color: var(--muted);
+  background: rgba(255,255,255,.04);
+}
+.update-badge.pending {
+  color: #fde68a;
+  border-color: rgba(253,230,138,.35);
+  background: rgba(253,230,138,.08);
+}
+.update-badge.active {
+  color: #93c5fd;
+  border-color: rgba(147,197,253,.35);
+  background: rgba(147,197,253,.08);
+}
+.update-badge.danger {
+  color: #fca5a5;
+  border-color: rgba(252,165,165,.35);
+  background: rgba(252,165,165,.08);
+}
 </style>
 
 <style>
