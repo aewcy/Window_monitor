@@ -627,17 +627,25 @@ def get_latest_screenshot(agent_name: str, monitor_index: int = None) -> dict | 
     return dict(row) if row else None
 
 
-def get_screenshot_dates(agent_name: str) -> list[dict]:
+def get_screenshot_dates(agent_name: str, date_from: str = "", date_to: str = "") -> list[dict]:
     """返回指定 Agent 有截图的日期列表及每天数量，供日历组件使用"""
     db = get_db()
+    params = [agent_name]
+    where = ["agent_name = ?"]
+    if date_from:
+        where.append("timestamp >= ?")
+        params.append(date_from)
+    if date_to:
+        where.append("timestamp <= ?")
+        params.append(date_to)
     rows = db.execute(
-        """SELECT substr(timestamp, 1, 10) as date,
-                  COUNT(*) as count
-           FROM screenshots
-           WHERE agent_name = ?
-           GROUP BY date
-           ORDER BY date ASC""",
-        (agent_name,)
+        f"""SELECT substr(timestamp, 1, 10) as date,
+                   COUNT(*) as count
+            FROM screenshots
+            WHERE {' AND '.join(where)}
+            GROUP BY date
+            ORDER BY date ASC""",
+        params,
     ).fetchall()
     return [dict(r) for r in rows]
 

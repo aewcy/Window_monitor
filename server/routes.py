@@ -421,9 +421,13 @@ async def latest_live_screenshot(
 
 
 @router.get("/screenshots/dates")
-async def screenshot_dates(agent: str = Query(...)):
+async def screenshot_dates(
+    agent: str = Query(...),
+    date_from: str = Query("", description="可选，YYYY-MM-DD 或 ISO 时间"),
+    date_to: str = Query("", description="可选，YYYY-MM-DD 或 ISO 时间"),
+):
     """返回有截图的日期列表及每天数量"""
-    return get_screenshot_dates(agent)
+    return get_screenshot_dates(agent, date_from, date_to)
 
 
 @router.get("/screenshots/hours")

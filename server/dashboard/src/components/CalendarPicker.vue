@@ -17,6 +17,8 @@ const selectedHour = ref(null)
 const loading = ref(false)
 const clearing = ref(false)
 const message = ref('')
+const datesLoading = ref(false)
+const dateRequestSeq = ref(0)
 
 const today = new Date()
 const viewYear = ref(today.getFullYear())
@@ -50,12 +52,30 @@ function nextMonth() {
   else viewMonth.value++
 }
 
+function monthRange() {
+  const month = String(viewMonth.value + 1).padStart(2, '0')
+  const last = new Date(viewYear.value, viewMonth.value + 1, 0)
+  return {
+    dateFrom: `${viewYear.value}-${month}-01T00:00:00`,
+    dateTo: `${viewYear.value}-${month}-${String(last.getDate()).padStart(2, '0')}T23:59:59`,
+  }
+}
+
 async function loadDates() {
   if (!agent.selectedAgent) return
+  const requestId = ++dateRequestSeq.value
+  const { dateFrom, dateTo } = monthRange()
+  datesLoading.value = true
   try {
-    dates.value = await api.getScreenshotDates(agent.selectedAgent)
-  } catch { dates.value = [] }
-  await refreshSelectedHours()
+    const nextDates = await api.getScreenshotDates(agent.selectedAgent, dateFrom, dateTo)
+    if (requestId !== dateRequestSeq.value) return
+    dates.value = nextDates
+  } catch {
+    if (requestId === dateRequestSeq.value) dates.value = []
+  } finally {
+    if (requestId === dateRequestSeq.value) datesLoading.value = false
+  }
+  if (requestId === dateRequestSeq.value) await refreshSelectedHours()
 }
 
 function sameHour(a, b) {
@@ -187,6 +207,10 @@ watch(open, v => {
     document.removeEventListener('click', onDocClick)
   }
 })
+
+watch([viewYear, viewMonth], () => {
+  if (open.value) loadDates()
+})
 </script>
 
 <template>
@@ -213,6 +237,7 @@ watch(open, v => {
           <span v-if="d">{{ d.day }}</span>
         </div>
       </div>
+      <div v-if="datesLoading" class="cal-loading">加载日期...</div>
       <div v-if="hours.length" class="cal-hours">
         <div class="cal-hours-title">选择时段</div>
         <div class="cal-hour-grid">
@@ -269,6 +294,12 @@ watch(open, v => {
   background: var(--accent); margin: 1px auto 0;
 }
 .cal-day.selected::after { background: rgba(255,255,255,.6); }
+.cal-loading {
+  margin-top: 8px;
+  font-size: 10px;
+  color: var(--muted);
+  text-align: center;
+}
 .cal-hours { margin-top: 8px; border-top: 1px solid var(--hairline); padding-top: 8px; }
 .cal-hours-title { font-size: 10px; color: var(--muted); margin-bottom: 6px; }
 .cal-hour-grid { display: flex; flex-wrap: wrap; gap: 4px; }

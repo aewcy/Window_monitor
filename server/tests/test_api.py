@@ -390,6 +390,18 @@ class TestScreenshotQuery:
         assert "date" in dates[0]
         assert "count" in dates[0]
 
+    def test_screenshot_dates_range(self, client):
+        _register_agent(client, "date-range-agent")
+        _upload_screenshot(client, "date-range-agent", "2026-06-30T10:00:00")
+        _upload_screenshot(client, "date-range-agent", "2026-07-01T10:00:00")
+
+        resp = client.get(
+            "/api/screenshots/dates?agent=date-range-agent"
+            "&date_from=2026-07-01T00:00:00&date_to=2026-07-31T23:59:59"
+        )
+        assert resp.status_code == 200
+        assert resp.json() == [{"date": "2026-07-01", "count": 1}]
+
     def test_screenshot_hours(self, client):
         _register_agent(client, "hour-agent")
         _upload_screenshot(client, "hour-agent")

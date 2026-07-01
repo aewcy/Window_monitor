@@ -77,8 +77,12 @@ export const getBrowserHistory = (agent, limit = 20, offset = 0, monitor = null)
 }
 
 // Screenshot dates/hours for calendar
-export const getScreenshotDates = (agent) =>
-  request(`/screenshots/dates?agent=${encodeURIComponent(agent)}`)
+export const getScreenshotDates = (agent, dateFrom = null, dateTo = null) => {
+  let url = `/screenshots/dates?agent=${encodeURIComponent(agent)}`
+  if (dateFrom) url += `&date_from=${encodeURIComponent(dateFrom)}`
+  if (dateTo) url += `&date_to=${encodeURIComponent(dateTo)}`
+  return request(url)
+}
 export const getScreenshotHours = (agent, date) =>
   request(`/screenshots/hours?agent=${encodeURIComponent(agent)}&date=${encodeURIComponent(date)}`)
 
