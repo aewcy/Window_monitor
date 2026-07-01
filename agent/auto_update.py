@@ -16,7 +16,14 @@ import time
 
 import requests
 
-from config import AGENT_VERSION, IS_WINDOWS, UPDATE_CHECK_INTERVAL, UPDATE_ENABLED
+from config import (
+    AGENT_VERSION,
+    IS_WINDOWS,
+    UPDATE_CHECK_INTERVAL,
+    UPDATE_DOWNLOAD_CONNECT_TIMEOUT,
+    UPDATE_DOWNLOAD_READ_TIMEOUT,
+    UPDATE_ENABLED,
+)
 
 
 def _version_tuple(value: str) -> tuple[int, ...]:
@@ -132,7 +139,7 @@ class AutoUpdater:
             return
 
         self._report("downloading", "正在下载更新", target_version)
-        if not self._download_and_verify(download_url, target_path, expected_sha):
+        if not self._download_and_verify(download_url, target_path, expected_sha, target_version):
             return
 
         self._report("installing", "正在安装更新", target_version)
@@ -140,17 +147,51 @@ class AutoUpdater:
         time.sleep(1)
         os._exit(0)
 
-    def _download_and_verify(self, download_url: str, target_path: str, expected_sha: str) -> bool:
-        with requests.get(download_url, stream=True, timeout=60) as response:
-            response.raise_for_status()
-            digest = hashlib.sha256()
-            tmp_path = target_path + ".tmp"
-            with open(tmp_path, "wb") as f:
-                for chunk in response.iter_content(chunk_size=1024 * 1024):
-                    if not chunk:
-                        continue
-                    digest.update(chunk)
-                    f.write(chunk)
+    def _download_and_verify(self, download_url: str, target_path: str, expected_sha: str, target_version: str) -> bool:
+        digest = hashlib.sha256()
+        tmp_path = target_path + ".tmp"
+        downloaded = 0
+        last_reported_mb = -1
+
+        try:
+            with requests.get(
+                download_url,
+                stream=True,
+                timeout=(UPDATE_DOWNLOAD_CONNECT_TIMEOUT, UPDATE_DOWNLOAD_READ_TIMEOUT),
+            ) as response:
+                response.raise_for_status()
+                total = int(response.headers.get("content-length") or 0)
+                total_mb = max(1, round(total / 1024 / 1024)) if total else 0
+                with open(tmp_path, "wb") as f:
+                    for chunk in response.iter_content(chunk_size=1024 * 1024):
+                        if not chunk:
+                            continue
+                        digest.update(chunk)
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        current_mb = downloaded // 1024 // 1024
+                        if current_mb == 0 or current_mb - last_reported_mb < 10:
+                            continue
+                        last_reported_mb = current_mb
+                        if total_mb:
+                            self._report("downloading", f"正在下载更新 {current_mb}/{total_mb} MB", target_version)
+                        else:
+                            self._report("downloading", f"正在下载更新 {current_mb} MB", target_version)
+        except Exception as e:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+            self._report("failed", "更新包下载失败", target_version, str(e))
+            return False
+
+        if downloaded <= 0:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+            self._report("failed", "更新包下载为空", target_version, "downloaded 0 bytes")
+            return False
 
         actual_sha = digest.hexdigest().upper()
         if expected_sha and actual_sha != expected_sha:

@@ -67,7 +67,7 @@ SERVER_URL = f"http://{SERVER_HOST}:{SERVER_PORT}"
 # ============================================
 # Agent 版本与后台更新
 # ============================================
-AGENT_VERSION = _get_setting("agent_version", "AGENT_VERSION", "0.54", str)
+AGENT_VERSION = _get_setting("agent_version", "AGENT_VERSION", "0.55", str)
 UPDATE_ENABLED = _get_setting(
     "update_enabled",
     "MONITOR_UPDATE_ENABLED",
@@ -75,6 +75,8 @@ UPDATE_ENABLED = _get_setting(
     lambda v: str(v).lower() in ("true", "1", "yes"),
 )
 UPDATE_CHECK_INTERVAL = _get_setting("update_check_interval", "MONITOR_UPDATE_CHECK_INTERVAL", 300, int)
+UPDATE_DOWNLOAD_CONNECT_TIMEOUT = _get_setting("update_download_connect_timeout", "MONITOR_UPDATE_DOWNLOAD_CONNECT_TIMEOUT", 10, int)
+UPDATE_DOWNLOAD_READ_TIMEOUT = _get_setting("update_download_read_timeout", "MONITOR_UPDATE_DOWNLOAD_READ_TIMEOUT", 15, int)
 
 # ============================================
 # Agent 标识 — 默认用主机名，天然唯一
