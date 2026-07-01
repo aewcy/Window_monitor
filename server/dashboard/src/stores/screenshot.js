@@ -126,6 +126,18 @@ export const useScreenshotStore = defineStore('screenshot', () => {
     }
   }
 
+  function openGrid(query = {}) {
+    const agent = useAgentStore()
+    setGridQuery({
+      monitor: Object.prototype.hasOwnProperty.call(query, 'monitor') ? query.monitor : agent.selectedMonitor,
+      dateFrom: query.dateFrom ?? null,
+      dateTo: query.dateTo ?? null,
+    })
+    resetGrid()
+    gridMode.value = true
+    loadGrid(false)
+  }
+
   function toggleGridItem(id) {
     const s = new Set(gridSelected.value)
     if (s.has(id)) s.delete(id)
@@ -185,7 +197,7 @@ export const useScreenshotStore = defineStore('screenshot', () => {
     liveOpen, liveInterval, livePollMs, displaySource, displayItems, displayIndex, currentDisplayItem, BATCH,
     loadLatest, prev, next,
     browseTimeline, browseBrowser, goLive,
-    loadGrid, setGridQuery, toggleGridItem, setGridItemSelected, selectAllGrid, deleteSelected, resetGrid,
+    loadGrid, setGridQuery, openGrid, toggleGridItem, setGridItemSelected, selectAllGrid, deleteSelected, resetGrid,
     removeGridItems, notifyScreenshotsChanged,
   }
 })

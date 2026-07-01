@@ -138,11 +138,8 @@ async function applyFilter() {
   loading.value = true
   try {
     const { dateFrom, dateTo } = selectedRange()
-    // 保存筛选范围，网格滚动和预览翻页会继续按同一范围分页加载。
-    ss.setGridQuery({ dateFrom, dateTo })
-    ss.resetGrid()
-    await ss.loadGrid(false)
-    ss.gridMode = true   // 打开网格视图
+    // 保存筛选范围和当前屏幕，网格滚动和预览翻页会继续按同一范围分页加载。
+    ss.openGrid({ monitor: agent.selectedMonitor, dateFrom, dateTo })
     open.value = false
   } finally { loading.value = false }
 }

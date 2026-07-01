@@ -59,6 +59,19 @@ const visibleRows = computed(() => {
   return rows
 })
 
+const monitorOptions = computed(() => {
+  const total = Math.max(agent.monitorTotal || 1, ...ss.gridItems.map(s => Number(s.monitor_total || 1)))
+  return Array.from({ length: total }, (_, index) => index)
+})
+
+const gridMonitorValue = computed(() =>
+  ss.gridQuery.monitor === null || ss.gridQuery.monitor === undefined ? 'all' : String(ss.gridQuery.monitor)
+)
+
+const gridMonitorLabel = computed(() =>
+  gridMonitorValue.value === 'all' ? '全部屏幕' : `屏${Number(gridMonitorValue.value) + 1}`
+)
+
 function updateGridMetrics() {
   const el = scrollEl.value
   if (!el) return
@@ -157,6 +170,20 @@ function onPreviewKeyDown(event) {
 function previewPrev() {
   const idx = ss.gridItems.findIndex(s => s.id === previewItem.value?.id)
   if (idx > 0) previewItem.value = ss.gridItems[idx - 1]
+}
+
+async function changeGridMonitor(event) {
+  const value = event.target.value
+  const monitor = value === 'all' ? null : Number(value)
+  const { dateFrom, dateTo } = ss.gridQuery
+  closePreview()
+  ss.setGridQuery({ monitor, dateFrom, dateTo })
+  ss.resetGrid()
+  await ss.loadGrid(false)
+  nextTick(() => {
+    if (scrollEl.value) scrollEl.value.scrollTop = 0
+    updateGridMetrics()
+  })
 }
 
 function waitForGridIdle() {
@@ -317,6 +344,13 @@ function scrollTo(date) {
           <span class="dot" style="background:var(--blue)"></span>
           网格视图
           <span class="grid-count" v-if="ss.gridOffset">{{ ss.gridOffset }} 张</span>
+          <label class="monitor-filter" title="筛选网格截图屏幕">
+            <span>{{ gridMonitorLabel }}</span>
+            <select :value="gridMonitorValue" @change="changeGridMonitor">
+              <option value="all">全部屏幕</option>
+              <option v-for="idx in monitorOptions" :key="idx" :value="String(idx)">屏{{ idx + 1 }}</option>
+            </select>
+          </label>
         </span>
         <div class="grid-actions">
           <div class="date-nav" v-if="grouped.length > 1">
@@ -409,6 +443,27 @@ function scrollTo(date) {
 .grid-title { font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .dot { width: 6px; height: 6px; border-radius: 50%; }
 .grid-count { font-family: var(--font-mono); font-size: 10px; color: var(--muted); }
+.monitor-filter {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  background: rgba(255,255,255,.04);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  cursor: pointer;
+}
+.monitor-filter:hover { border-color: var(--accent); color: var(--text); }
+.monitor-filter select {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
 .grid-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .date-nav { display: flex; gap: 4px; }
 .date-chip {

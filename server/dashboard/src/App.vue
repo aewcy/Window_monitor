@@ -68,7 +68,11 @@ function onKey(e) {
     }
     return
   }
-  if (e.key === 'g' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); ss.gridMode = !ss.gridMode }
+  if (e.key === 'g' && (e.metaKey || e.ctrlKey)) {
+    e.preventDefault()
+    if (ss.gridMode) ss.gridMode = false
+    else ss.openGrid()
+  }
   if (e.key === 'r' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); refreshSlow() }
 }
 </script>

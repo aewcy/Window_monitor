@@ -3,6 +3,11 @@ import { useScreenshotStore } from '../stores/screenshot'
 import CalendarPicker from './CalendarPicker.vue'
 
 const ss = useScreenshotStore()
+
+function toggleGrid() {
+  if (ss.gridMode) ss.gridMode = false
+  else ss.openGrid()
+}
 </script>
 
 <template>
@@ -16,7 +21,7 @@ const ss = useScreenshotStore()
         <span class="live-dot"></span>
         实时模式
       </div>
-      <button class="header-chip" :class="{ active: ss.gridMode }" @click="ss.gridMode = !ss.gridMode">
+      <button class="header-chip" :class="{ active: ss.gridMode }" @click="toggleGrid">
         网格视图 <span class="shortcut">⌘G</span>
       </button>
     </div>
