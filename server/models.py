@@ -248,7 +248,7 @@ def upsert_agent(name: str, status: str = "online", message: str = "", ip: str =
                  update_checked_at=CASE WHEN excluded.agent_version != '' OR excluded.update_status != '' THEN excluded.update_checked_at ELSE agents.update_checked_at END,
                  update_allowed_version=CASE
                    WHEN excluded.agent_version != '' AND excluded.agent_version = agents.update_allowed_version THEN ''
-                   WHEN excluded.update_status IN ('updated', 'failed', 'rolled_back') THEN ''
+                   WHEN excluded.update_status IN ('updated', 'rolled_back') THEN ''
                    ELSE agents.update_allowed_version
                  END""",
             (name, status, message, ip, machine_id, agent_version, update_status, update_target_version, update_error)
@@ -269,7 +269,7 @@ def upsert_agent(name: str, status: str = "online", message: str = "", ip: str =
                  update_checked_at=CASE WHEN ? != '' OR ? != '' THEN datetime('now','localtime') ELSE update_checked_at END,
                  update_allowed_version=CASE
                    WHEN ? != '' AND ? = update_allowed_version THEN ''
-                   WHEN ? IN ('updated', 'failed', 'rolled_back') THEN ''
+                   WHEN ? IN ('updated', 'rolled_back') THEN ''
                    ELSE update_allowed_version
                  END
                WHERE name=?""",

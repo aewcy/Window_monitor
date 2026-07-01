@@ -84,6 +84,7 @@ function updateState(a) {
   if (a?.update_status === 'downloading') return `下载中${targetText}`
   if (a?.update_status === 'installing') return `安装中${targetText}`
   if (a?.update_status === 'updated') return `已更新${targetText}`
+  if (a?.update_status === 'failed' && a?.update_allowed_version) return `更新失败，待重试${targetText}`
   if (a?.update_status === 'failed') return `更新失败${targetText}`
   if (a?.update_status === 'rolled_back') return `已回滚${targetText}`
   if (a?.update_allowed_version) return `等待拉取 v${a.update_allowed_version}`

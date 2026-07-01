@@ -673,6 +673,25 @@ class TestAgentUpdate:
         assert check.status_code == 200
         assert check.json()["allowed"] is False
 
+    def test_failed_update_keeps_permission_for_retry(self, client):
+        client.post("/api/heartbeat", json={"agent_name": "retry-agent", "agent_version": "0.50"})
+        client.post("/api/agents/retry-agent/update/allow", json={})
+
+        failed = client.post("/api/heartbeat", json={
+            "agent_name": "retry-agent",
+            "agent_version": "0.50",
+            "update_status": "failed",
+            "update_target_version": "0.56",
+            "update_error": "network reset",
+        })
+        assert failed.status_code == 200
+
+        check = client.get("/api/agent/update/check?agent=retry-agent&version=0.50")
+        assert check.status_code == 200
+        data = check.json()
+        assert data["allowed"] is True
+        assert data["allowed_version"] == "0.56"
+
 
 # ============================================================
 # 12. 安全响应头
