@@ -24,7 +24,7 @@ const fpsLabel = () => {
 
 async function load() {
   if (!agent.selectedAgent) return
-  const data = await ss.loadLatest({ allowStoredFallback: true })
+  const data = await ss.loadLatest({ allowStoredFallback: false })
   if (data && (data.id || data.image_base64)) {
     if (data.id !== currentId.value) {
       currentId.value = data.id

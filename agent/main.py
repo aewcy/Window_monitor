@@ -17,6 +17,7 @@ from config import (
     HEARTBEAT_INTERVAL, RETRY_TIMES, RETRY_DELAY,
     SCREENSHOT_UPLOAD_QUEUE_SIZE, APP_EVENT_UPLOAD_QUEUE_SIZE,
     BROWSER_UPLOAD_QUEUE_SIZE, CONTROL_UPLOAD_QUEUE_SIZE,
+    SCREENSHOT_DROP_REPORT_INTERVAL,
     AGENT_VERSION,
     get_machine_id,
 )
@@ -42,6 +43,8 @@ class Reporter:
         self.agent = agent_name
         self._running = True
         self._workers = []
+        self._drop_stats = {}
+        self._drop_lock = threading.Lock()
         self._queues = {
             "screenshot": queue.Queue(maxsize=max(1, SCREENSHOT_UPLOAD_QUEUE_SIZE)),
             "app_event": queue.Queue(maxsize=max(1, APP_EVENT_UPLOAD_QUEUE_SIZE)),
@@ -113,23 +116,58 @@ class Reporter:
         }
         self._enqueue("control", ("diagnostics", payload), drop_oldest=True, warn=False)
 
+    def _record_drop(self, channel: str, replaced_oldest: bool):
+        with self._drop_lock:
+            stat = self._drop_stats.setdefault(channel, {
+                "dropped": 0,
+                "replaced": 0,
+                "last_report": 0.0,
+            })
+            stat["dropped"] += 1
+            if replaced_oldest:
+                stat["replaced"] += 1
+
+    def _report_drop_if_needed(self, channel: str, force: bool = False):
+        now = time.monotonic()
+        with self._drop_lock:
+            stat = self._drop_stats.get(channel)
+            if not stat or stat["dropped"] <= 0:
+                return
+            if not force and (now - stat["last_report"]) < SCREENSHOT_DROP_REPORT_INTERVAL:
+                return
+            dropped = stat["dropped"]
+            replaced = stat["replaced"]
+            stat["dropped"] = 0
+            stat["replaced"] = 0
+            stat["last_report"] = now
+
+        q = self._queues[channel]
+        self._emit_control_diagnostic(
+            "WARNING",
+            f"{channel} upload queue congested: dropped={dropped}, replaced_oldest={replaced}, "
+            f"queue={q.qsize()}/{q.maxsize}.",
+        )
+
     def _enqueue(self, channel: str, item, drop_oldest: bool = False, warn: bool = True) -> bool:
         q = self._queues[channel]
         if not self._running:
             return False
         try:
             q.put_nowait(item)
+            if warn:
+                self._report_drop_if_needed(channel)
             return True
         except queue.Full:
             pass
 
         if drop_oldest:
             try:
-                old = q.get_nowait()
+                q.get_nowait()
                 q.task_done()
                 q.put_nowait(item)
                 if warn:
-                    self._emit_control_diagnostic("WARNING", f"{channel} 上报队列已满，已丢弃最旧消息并保留最新消息。")
+                    self._record_drop(channel, replaced_oldest=True)
+                    self._report_drop_if_needed(channel)
                 return True
             except queue.Empty:
                 pass
@@ -137,12 +175,14 @@ class Reporter:
                 pass
 
         if warn:
-            self._emit_control_diagnostic("WARNING", f"{channel} 上报队列已满，当前消息已丢弃。")
-        print(f"  [WARN] {channel} 上报队列已满")
+            self._record_drop(channel, replaced_oldest=False)
+            self._report_drop_if_needed(channel)
         return False
 
     def stop(self, flush_timeout: float = 5.0):
         """停止工作线程，尽量在限定时间内刷新队列。"""
+        for channel in list(self._queues.keys()):
+            self._report_drop_if_needed(channel, force=True)
         deadline = time.time() + max(0.0, flush_timeout)
         while time.time() < deadline:
             if all(q.unfinished_tasks == 0 for q in self._queues.values()):

@@ -3,7 +3,8 @@ FastAPI 路由定义
 """
 import hashlib
 import os
-from datetime import datetime
+from collections import deque
+from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -36,6 +37,62 @@ _agent_intervals: dict[str, float] = {}
 
 # Live 最新帧缓存。它不入库，只服务实时画面；历史/网格仍读取 screenshots 表。
 _latest_live_frames: dict[tuple[str, int], dict] = {}
+_live_frame_buffers: dict[tuple[str, int], deque] = {}
+LIVE_DELAY_SECONDS = float(os.getenv("LIVE_DELAY_SECONDS", "5"))
+LIVE_BUFFER_SECONDS = float(os.getenv("LIVE_BUFFER_SECONDS", "15"))
+
+
+def _parse_iso_datetime(value: str) -> datetime:
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).replace(tzinfo=None)
+    except (TypeError, ValueError):
+        return datetime.now()
+
+
+def _store_live_frame(agent_name: str, monitor_index: int, frame: dict):
+    key = (agent_name, int(monitor_index or 0))
+    frame["_received_at"] = datetime.now()
+    frame["_captured_at"] = _parse_iso_datetime(frame.get("timestamp", ""))
+    _latest_live_frames[key] = frame
+
+    buf = _live_frame_buffers.setdefault(key, deque())
+    buf.append(frame)
+    cutoff = datetime.now() - timedelta(seconds=max(LIVE_BUFFER_SECONDS, LIVE_DELAY_SECONDS + 2))
+    while buf and buf[0].get("_received_at", cutoff) < cutoff:
+        buf.popleft()
+
+
+def _public_live_frame(frame: dict) -> dict:
+    return {k: v for k, v in frame.items() if not k.startswith("_")}
+
+
+def _select_delayed_live_frame(agent_name: str, monitor_index: int | None = None) -> dict | None:
+    target_time = datetime.now() - timedelta(seconds=max(0, LIVE_DELAY_SECONDS))
+    if monitor_index is not None:
+        candidates = list(_live_frame_buffers.get((agent_name, int(monitor_index)), ()))
+    else:
+        candidates = [
+            frame
+            for (name, _), buf in _live_frame_buffers.items()
+            if name == agent_name
+            for frame in buf
+        ]
+
+    ready = [frame for frame in candidates if frame.get("_received_at", datetime.now()) <= target_time]
+    if ready:
+        return _public_live_frame(max(ready, key=lambda item: item.get("_received_at", datetime.min)))
+
+    if monitor_index is not None:
+        latest = _latest_live_frames.get((agent_name, int(monitor_index)))
+        if latest and latest.get("_received_at", datetime.now()) <= target_time:
+            return _public_live_frame(latest)
+        return None
+
+    latest_candidates = [frame for (name, _), frame in _latest_live_frames.items() if name == agent_name]
+    ready_latest = [frame for frame in latest_candidates if frame.get("_received_at", datetime.now()) <= target_time]
+    if ready_latest:
+        return _public_live_frame(max(ready_latest, key=lambda item: item.get("_received_at", datetime.min)))
+    return None
 
 
 # ============================================
@@ -177,7 +234,7 @@ async def screenshot(data: dict):
         except (TypeError, ValueError):
             pass
 
-    _latest_live_frames[(agent_name, int(monitor_index or 0))] = {
+    live_frame = {
         "id": f"live:{agent_name}:{monitor_index}:{timestamp}",
         "agent_name": agent_name,
         "timestamp": timestamp,
@@ -187,6 +244,7 @@ async def screenshot(data: dict):
         "monitor_total": monitor_total,
         "capture_interval": capture_interval,
     }
+    _store_live_frame(agent_name, int(monitor_index or 0), live_frame)
 
     # 入库存储仍执行 2 秒节流；Live 画面读取上面的内存最新帧，不受节流影响。
     screenshot_id = save_screenshot(agent_name, timestamp, image_b64,
@@ -352,22 +410,13 @@ async def latest_live_screenshot(
     fallback: bool = Query(False),
 ):
     """获取 Agent 最近一次上传的实时帧，不受截图入库节流影响"""
-    if monitor is not None:
-        result = _latest_live_frames.get((agent, monitor))
-        if result:
-            return result
-        if fallback:
-            stored = get_latest_screenshot(agent, monitor)
-            if stored:
-                return stored
-    else:
-        candidates = [frame for (name, _), frame in _latest_live_frames.items() if name == agent]
-        if candidates:
-            return max(candidates, key=lambda item: item.get("timestamp", ""))
-        if fallback:
-            stored = get_latest_screenshot(agent)
-            if stored:
-                return stored
+    result = _select_delayed_live_frame(agent, monitor)
+    if result:
+        return result
+    if fallback:
+        stored = get_latest_screenshot(agent, monitor) if monitor is not None else get_latest_screenshot(agent)
+        if stored:
+            return stored
     raise HTTPException(status_code=404, detail="暂无实时截图")
 
 

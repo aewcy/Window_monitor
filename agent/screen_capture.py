@@ -148,15 +148,10 @@ class ScreenCapture:
                 self._upload_queue.put_nowait(data)
             except queue.Full:
                 self._dropped_frames += 1
-                print("[ScreenCapture] 上传队列持续满，当前帧未入队")
                 self._report_drop_if_needed(force=True)
                 return
 
         self._dropped_frames += 1
-        if dropped_old:
-            print("[ScreenCapture] 上传队列已满，已丢弃最旧帧并保留最新帧")
-        else:
-            print("[ScreenCapture] 上传队列竞争繁忙，已跳过 1 帧")
         self._report_drop_if_needed()
 
     def _upload_worker(self):

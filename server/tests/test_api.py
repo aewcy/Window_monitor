@@ -37,6 +37,10 @@ def setup_test_env(tmp_path):
     import routes
     routes._viewer_last_seen.clear()
     routes._agent_intervals.clear()
+    routes._latest_live_frames.clear()
+    routes._live_frame_buffers.clear()
+    routes.LIVE_DELAY_SECONDS = 5
+    routes.LIVE_BUFFER_SECONDS = 15
     yield
 
 
@@ -354,6 +358,27 @@ class TestScreenshotQuery:
     def test_latest_screenshot_not_found_404(self, client):
         resp = client.get("/api/screenshots/latest?agent=no-screenshots-xyz")
         assert resp.status_code == 404
+
+    def test_live_latest_uses_delayed_buffer(self, client):
+        import routes
+
+        routes.LIVE_DELAY_SECONDS = 5
+        _register_agent(client, "live-delay-agent")
+        _, ts = _upload_screenshot(client, "live-delay-agent", monitor=0)
+
+        immediate = client.get("/api/screenshots/live/latest?agent=live-delay-agent&monitor=0")
+        assert immediate.status_code == 404
+
+        frame = routes._live_frame_buffers[("live-delay-agent", 0)][0]
+        frame["_received_at"] = datetime.now() - timedelta(seconds=6)
+
+        delayed = client.get("/api/screenshots/live/latest?agent=live-delay-agent&monitor=0")
+        assert delayed.status_code == 200
+        body = delayed.json()
+        assert body["timestamp"] == ts
+        assert "image_base64" in body
+        assert "_received_at" not in body
+        assert "_captured_at" not in body
 
     def test_screenshot_dates(self, client):
         _register_agent(client, "date-agent")
