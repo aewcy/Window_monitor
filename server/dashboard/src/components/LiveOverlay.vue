@@ -12,6 +12,11 @@ const imgSrc = ref(null)
 const currentLiveId = ref(null)
 let liveTimer = null
 const zoom = ref(1)
+const panX = ref(0)
+const panY = ref(0)
+const imageStageEl = ref(null)
+const dragging = ref(false)
+let dragStart = null
 
 const currentItem = computed(() => ss.currentDisplayItem)
 const isBrowse = computed(() => ss.displaySource !== 'live')
@@ -72,13 +77,13 @@ function loadBrowseItem() {
   const item = currentItem.value
   if (item && item.screenshot_id) {
     imgSrc.value = getScreenshotImage(item.screenshot_id)
-    zoom.value = 1
+    resetImageTransform()
   }
 }
 
 async function syncOpenImage() {
   if (!ss.liveOpen) return
-  zoom.value = 1
+  resetImageTransform()
   if (isBrowse.value) {
     stopLivePolling()
     loadBrowseItem()
@@ -103,7 +108,7 @@ watch(() => ss.liveOpen, v => {
 watch(() => ss.currentDisplayItem, item => {
   if (item && item.screenshot_id && ss.liveOpen && isBrowse.value) {
     imgSrc.value = getScreenshotImage(item.screenshot_id)
-    zoom.value = 1
+    resetImageTransform()
   }
 }, { immediate: true })
 
@@ -139,12 +144,59 @@ function next() {
 function onWheel(e) {
   if (e.ctrlKey || e.metaKey) {
     e.preventDefault()
-    const delta = e.deltaY > 0 ? -0.1 : 0.1
-    zoom.value = Math.min(3, Math.max(0.3, zoom.value + delta))
+    const oldZoom = zoom.value
+    const nextZoom = Math.min(3, Math.max(0.3, oldZoom + (e.deltaY > 0 ? -0.1 : 0.1)))
+    if (nextZoom === oldZoom) return
+
+    const rect = imageStageEl.value?.getBoundingClientRect()
+    if (rect) {
+      const pointerX = e.clientX - rect.left - rect.width / 2
+      const pointerY = e.clientY - rect.top - rect.height / 2
+      panX.value = pointerX - ((pointerX - panX.value) / oldZoom) * nextZoom
+      panY.value = pointerY - ((pointerY - panY.value) / oldZoom) * nextZoom
+    }
+    zoom.value = nextZoom
   } else if (showUI.value) {
     if (e.deltaY > 0) next()
     else if (e.deltaY < 0) prev()
   }
+}
+
+function resetImageTransform() {
+  zoom.value = 1
+  panX.value = 0
+  panY.value = 0
+  dragging.value = false
+  dragStart = null
+}
+
+function onPointerDown(e) {
+  if (e.button !== 0 || !imgSrc.value) return
+  e.preventDefault()
+  dragging.value = true
+  dragStart = {
+    pointerId: e.pointerId,
+    x: e.clientX,
+    y: e.clientY,
+    panX: panX.value,
+    panY: panY.value,
+  }
+  e.currentTarget.setPointerCapture?.(e.pointerId)
+}
+
+function onPointerMove(e) {
+  if (!dragging.value || !dragStart) return
+  e.preventDefault()
+  panX.value = dragStart.panX + e.clientX - dragStart.x
+  panY.value = dragStart.panY + e.clientY - dragStart.y
+}
+
+function stopDrag(e) {
+  if (dragStart && e?.pointerId === dragStart.pointerId) {
+    e.currentTarget?.releasePointerCapture?.(e.pointerId)
+  }
+  dragging.value = false
+  dragStart = null
 }
 </script>
 
@@ -168,9 +220,19 @@ function onWheel(e) {
         </div>
       </div>
       <div class="live-body">
-        <img v-if="imgSrc" :src="imgSrc" class="live-img" :key="imgSrc"
-          :style="{ transform: `scale(${zoom})`, transition: 'transform .15s' }" />
-        <div v-else class="placeholder"><span class="big">[ ]</span>暂无截图</div>
+        <div
+          ref="imageStageEl"
+          class="image-stage"
+          :class="{ dragging }"
+          @pointerdown="onPointerDown"
+          @pointermove="onPointerMove"
+          @pointerup="stopDrag"
+          @pointercancel="stopDrag">
+          <img v-if="imgSrc" :src="imgSrc" class="live-img" :key="imgSrc"
+            draggable="false"
+            :style="{ transform: `translate(${panX}px, ${panY}px) scale(${zoom})` }" />
+          <div v-else class="placeholder"><span class="big">[ ]</span>暂无截图</div>
+        </div>
         <div class="mon-chips" v-if="agent.monitorTotal > 1 && !showUI">
           <button v-for="i in agent.monitorTotal" :key="i"
             class="mon-chip" :class="{ active: agent.selectedMonitor === i-1 }"
@@ -236,8 +298,18 @@ function onWheel(e) {
   display: flex; align-items: center; gap: 4px;
 }
 .close-btn:hover { border-color: var(--red); color: var(--red); }
-.live-body { flex: 1; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.3); position: relative; overflow: hidden; }
-.live-img { max-width: 100%; max-height: 100%; object-fit: contain; transform-origin: center center; }
+.live-body { flex: 1; background: rgba(0,0,0,0.3); position: relative; overflow: hidden; }
+.image-stage {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  cursor: grab; user-select: none; touch-action: none; overflow: hidden;
+}
+.image-stage.dragging { cursor: grabbing; }
+.live-img {
+  max-width: 100%; max-height: 100%; object-fit: contain; transform-origin: center center;
+  transition: transform .12s; pointer-events: none;
+}
+.image-stage.dragging .live-img { transition: none; }
 .placeholder { text-align: center; color: var(--muted); }
 .placeholder .big { font-size: 64px; opacity: 0.1; display: block; margin-bottom: 12px; }
 .mon-chips { position: absolute; top: 12px; left: 16px; display: flex; gap: 6px; }

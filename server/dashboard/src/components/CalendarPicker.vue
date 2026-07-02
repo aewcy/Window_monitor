@@ -144,6 +144,11 @@ async function applyFilter() {
   } finally { loading.value = false }
 }
 
+async function openHour(hour) {
+  selectedHour.value = hour
+  await applyFilter()
+}
+
 async function clearFilter() {
   if (!selectedDate.value || clearing.value) return
   const label = selectedHour.value === null
@@ -240,7 +245,7 @@ watch([viewYear, viewMonth], () => {
         <div class="cal-hour-grid">
           <button v-for="h in hours" :key="h.hour"
             class="cal-hour-btn" :class="{ selected: selectedHour === h.hour }"
-            @click="selectedHour = (selectedHour === h.hour ? null : h.hour)">
+            @click="openHour(h.hour)">
             {{ String(h.hour).padStart(2,'0') }}:00 <span class="cal-hour-count">({{ h.count }})</span>
           </button>
         </div>
