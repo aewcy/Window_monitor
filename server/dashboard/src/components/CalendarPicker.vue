@@ -144,9 +144,21 @@ async function applyFilter() {
   } finally { loading.value = false }
 }
 
-async function openHour(hour) {
+async function openHour(hour, count = 0) {
   selectedHour.value = hour
-  await applyFilter()
+  if (!selectedDate.value) return
+  loading.value = true
+  try {
+    const { dateFrom, dateTo } = selectedRange()
+    ss.openGrid({
+      monitor: agent.selectedMonitor,
+      dateFrom,
+      dateTo,
+      preloadAll: true,
+      expectedCount: count,
+    })
+    open.value = false
+  } finally { loading.value = false }
 }
 
 async function clearFilter() {
@@ -245,7 +257,7 @@ watch([viewYear, viewMonth], () => {
         <div class="cal-hour-grid">
           <button v-for="h in hours" :key="h.hour"
             class="cal-hour-btn" :class="{ selected: selectedHour === h.hour }"
-            @click="openHour(h.hour)">
+            @click="openHour(h.hour, h.count)">
             {{ String(h.hour).padStart(2,'0') }}:00 <span class="cal-hour-count">({{ h.count }})</span>
           </button>
         </div>

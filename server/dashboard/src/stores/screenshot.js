@@ -21,6 +21,7 @@ export const useScreenshotStore = defineStore('screenshot', () => {
   const displayIndex = ref(0)
 
   const BATCH = 200
+  const MAX_GRID_PRELOAD = 10000
 
   const currentDisplayItem = computed(() => displayItems.value[displayIndex.value] || null)
   const livePollMs = computed(() => {
@@ -83,16 +84,17 @@ export const useScreenshotStore = defineStore('screenshot', () => {
     liveMode.value = true
   }
 
-  async function loadGrid(append = false) {
+  async function loadGrid(append = false, limitOverride = null) {
     const agent = useAgentStore()
-    if (!agent.selectedAgent || gridLoading.value || (append && gridExhausted.value)) return
+    if (!agent.selectedAgent || gridLoading.value || (append && gridExhausted.value)) return 0
     gridLoading.value = true
     try {
       const offset = append ? gridOffset.value : 0
       const query = gridQuery.value
+      const limit = Math.max(1, Math.min(MAX_GRID_PRELOAD, Number(limitOverride || BATCH)))
       const data = await api.getScreenshots(
         agent.selectedAgent,
-        BATCH,
+        limit,
         offset,
         query.monitor,
         query.dateFrom,
@@ -113,9 +115,20 @@ export const useScreenshotStore = defineStore('screenshot', () => {
       if (data.length === 0) gridExhausted.value = true
       gridOffset.value += data.length
       gridItems.value = [...gridItems.value, ...uniqueData]
+      return data.length
     } finally {
       gridLoading.value = false
     }
+  }
+
+  async function loadGridComplete(expectedCount = 0) {
+    const expected = Math.max(0, Number(expectedCount || 0))
+    const firstLimit = Math.max(BATCH, Math.min(MAX_GRID_PRELOAD, expected || MAX_GRID_PRELOAD))
+    let received = await loadGrid(false, firstLimit)
+    while (!gridExhausted.value && expected > gridOffset.value && received > 0) {
+      received = await loadGrid(true, Math.min(MAX_GRID_PRELOAD, expected - gridOffset.value))
+    }
+    gridExhausted.value = true
   }
 
   function setGridQuery(query = {}) {
@@ -135,7 +148,8 @@ export const useScreenshotStore = defineStore('screenshot', () => {
     })
     resetGrid()
     gridMode.value = true
-    loadGrid(false)
+    if (query.preloadAll) loadGridComplete(query.expectedCount)
+    else loadGrid(false)
   }
 
   function toggleGridItem(id) {
@@ -197,7 +211,7 @@ export const useScreenshotStore = defineStore('screenshot', () => {
     liveOpen, liveInterval, livePollMs, displaySource, displayItems, displayIndex, currentDisplayItem, BATCH,
     loadLatest, prev, next,
     browseTimeline, browseBrowser, goLive,
-    loadGrid, setGridQuery, openGrid, toggleGridItem, setGridItemSelected, selectAllGrid, deleteSelected, resetGrid,
+    loadGrid, loadGridComplete, setGridQuery, openGrid, toggleGridItem, setGridItemSelected, selectAllGrid, deleteSelected, resetGrid,
     removeGridItems, notifyScreenshotsChanged,
   }
 })
