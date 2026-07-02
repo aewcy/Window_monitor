@@ -14,8 +14,8 @@ from config import DB_PATH, SCREENSHOT_DIR
 # 线程本地存储，每个线程使用自己的连接
 _local = threading.local()
 AGENT_ONLINE_TIMEOUT_SECONDS = 60
-SCREENSHOT_THUMB_WIDTH = 360
-SCREENSHOT_THUMB_QUALITY = 55
+SCREENSHOT_THUMB_WIDTH = 220
+SCREENSHOT_THUMB_QUALITY = 38
 SCREENSHOT_PREVIEW_WIDTH = 1280
 SCREENSHOT_PREVIEW_QUALITY = 65
 
@@ -47,6 +47,8 @@ def _is_agent_online(row: dict, now: datetime | None = None) -> bool:
 def _derived_screenshot_path(file_path: str, variant: str) -> str:
     base_dir = os.path.dirname(file_path)
     stem, _ext = os.path.splitext(os.path.basename(file_path))
+    if variant == "thumb":
+        return os.path.join(base_dir, "_derived", f"{stem}_thumb_w{SCREENSHOT_THUMB_WIDTH}_q{SCREENSHOT_THUMB_QUALITY}.jpg")
     return os.path.join(base_dir, "_derived", f"{stem}_{variant}.jpg")
 
 
@@ -77,11 +79,14 @@ def enrich_screenshot_urls(row: dict) -> dict:
 def _remove_screenshot_files(file_path: str) -> int:
     """删除原图及派生图，返回实际释放字节数"""
     freed_bytes = 0
-    for path in (
-        file_path,
-        _derived_screenshot_path(file_path, "thumb"),
-        _derived_screenshot_path(file_path, "preview"),
-    ):
+    paths = [file_path, _derived_screenshot_path(file_path, "thumb"), _derived_screenshot_path(file_path, "preview")]
+    derived_dir = os.path.join(os.path.dirname(file_path), "_derived")
+    stem, _ext = os.path.splitext(os.path.basename(file_path))
+    if os.path.isdir(derived_dir):
+        for name in os.listdir(derived_dir):
+            if name.startswith(f"{stem}_thumb") or name.startswith(f"{stem}_preview"):
+                paths.append(os.path.join(derived_dir, name))
+    for path in set(paths):
         try:
             if os.path.exists(path):
                 freed_bytes += os.path.getsize(path)
