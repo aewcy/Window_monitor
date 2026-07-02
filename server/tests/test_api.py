@@ -339,6 +339,20 @@ class TestScreenshot:
             assert resp.status_code == 200
             assert resp.headers["content-type"] == "image/jpeg"
 
+    def test_screenshot_thumbs_batch_retrievable(self, client):
+        _register_agent(client, "thumbs-batch-agent")
+        sid1, _ = _upload_screenshot(client, "thumbs-batch-agent")
+        sid2, _ = _upload_screenshot(
+            client,
+            "thumbs-batch-agent",
+            (datetime.now() + timedelta(seconds=3)).strftime("%Y-%m-%dT%H:%M:%S"),
+        )
+        resp = client.post("/api/screenshots/thumbs-batch", json={"ids": [sid1, sid2]})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["thumbs"]) == 2
+        assert all(item["image_base64"] for item in data["thumbs"])
+
     def test_screenshot_image_not_found_404(self, client):
         resp = client.get("/api/screenshots/image/999999")
         assert resp.status_code == 404

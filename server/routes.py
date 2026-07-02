@@ -3,6 +3,7 @@ FastAPI 路由定义
 """
 import hashlib
 import os
+import base64
 from collections import deque
 from datetime import datetime, timedelta
 from typing import Optional
@@ -473,6 +474,35 @@ async def screenshot_preview(screenshot_id: int):
         raise HTTPException(status_code=404, detail="截图文件不存在")
     path = ensure_screenshot_variant(row["file_path"], "preview")
     return FileResponse(path, media_type="image/jpeg")
+
+
+@router.post("/screenshots/thumbs-batch")
+async def screenshot_thumbs_batch(data: dict):
+    """批量返回网格缩略图，减少大量小图片请求的连接开销"""
+    ids = data.get("ids", [])
+    if not isinstance(ids, list) or not ids:
+        raise HTTPException(status_code=400, detail="缺少 ids")
+    ids = [int(sid) for sid in ids[:500]]
+    placeholders = ",".join(["?"] * len(ids))
+    db = get_db()
+    rows = db.execute(
+        f"SELECT id, file_path FROM screenshots WHERE id IN ({placeholders})",
+        ids,
+    ).fetchall()
+    by_id = {row["id"]: row for row in rows}
+    thumbs = []
+    for sid in ids:
+        row = by_id.get(sid)
+        if not row or not os.path.exists(row["file_path"]):
+            continue
+        path = ensure_screenshot_variant(row["file_path"], "thumb")
+        try:
+            with open(path, "rb") as f:
+                image_b64 = base64.b64encode(f.read()).decode("ascii")
+            thumbs.append({"id": sid, "image_base64": image_b64})
+        except OSError:
+            continue
+    return {"thumbs": thumbs}
 
 
 @router.delete("/screenshots/{screenshot_id}")

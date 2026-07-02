@@ -3,7 +3,7 @@ import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useScreenshotStore } from '../stores/screenshot'
 import { useAgentStore } from '../stores/agent'
 import { useConfirm } from '../composables/useConfirm'
-import { getScreenshotImage, getScreenshotThumb, deleteScreenshots, getAppEvents } from '../api'
+import { getScreenshotImage, getScreenshotThumb, getScreenshotThumbsBatch, deleteScreenshots, getAppEvents } from '../api'
 
 const ss = useScreenshotStore()
 const agent = useAgentStore()
@@ -25,6 +25,7 @@ const activityEvents = ref([])
 const activityLoading = ref(false)
 const activityLoadedKey = ref('')
 const anchorTimestamp = ref(null)
+const thumbDataUrls = ref(new Map())
 const gridScrollTop = ref(0)
 const gridViewportHeight = ref(0)
 const gridViewportWidth = ref(0)
@@ -39,12 +40,13 @@ const GRID_OVERSCAN_ROWS = 4
 const PREVIEW_PRELOAD_RADIUS = 3
 const ACTIVITY_LIMIT = 5000
 const ACTIVITY_ROW_HEIGHT = 30
-const THUMB_PREFETCH_CONCURRENCY = 12
+const THUMB_BATCH_SIZE = 250
+const THUMB_BATCH_CONCURRENCY = 3
 const preloadedPreviewImages = new Set()
 const preloadedThumbImages = new Set()
 const thumbPrefetchQueued = new Set()
 let thumbPrefetchQueue = []
-let activeThumbPrefetches = 0
+let activeThumbBatchLoads = 0
 let thumbPrefetchGeneration = 0
 
 const gridColumnCount = computed(() => {
@@ -165,19 +167,28 @@ function preloadScreenshot(id) {
 }
 
 function screenshotThumbSrc(item) {
-  return item?.thumb_url || getScreenshotThumb(item?.id)
+  return thumbDataUrls.value.get(item?.id) || item?.thumb_url || getScreenshotThumb(item?.id)
 }
 
 function resetThumbPrefetchQueue() {
   thumbPrefetchGeneration += 1
   thumbPrefetchQueue = []
   thumbPrefetchQueued.clear()
-  activeThumbPrefetches = 0
+  activeThumbBatchLoads = 0
+  preloadedThumbImages.clear()
+  thumbDataUrls.value = new Map()
 }
 
 function queueThumbnailPrefetch(item, highPriority = false) {
   const id = item?.id
-  if (!id || preloadedThumbImages.has(id) || thumbPrefetchQueued.has(id)) return
+  if (!id || preloadedThumbImages.has(id)) return
+  if (thumbPrefetchQueued.has(id)) {
+    if (highPriority) {
+      thumbPrefetchQueue = thumbPrefetchQueue.filter(queuedItem => queuedItem?.id !== id)
+      thumbPrefetchQueue.unshift(item)
+    }
+    return
+  }
   thumbPrefetchQueued.add(id)
   if (highPriority) thumbPrefetchQueue.unshift(item)
   else thumbPrefetchQueue.push(item)
@@ -185,25 +196,32 @@ function queueThumbnailPrefetch(item, highPriority = false) {
 }
 
 function runThumbnailPrefetchQueue() {
-  while (activeThumbPrefetches < THUMB_PREFETCH_CONCURRENCY && thumbPrefetchQueue.length) {
-    const item = thumbPrefetchQueue.shift()
-    const id = item?.id
-    if (!id || preloadedThumbImages.has(id)) continue
+  while (activeThumbBatchLoads < THUMB_BATCH_CONCURRENCY && thumbPrefetchQueue.length) {
+    const batch = []
+    while (batch.length < THUMB_BATCH_SIZE && thumbPrefetchQueue.length) {
+      const item = thumbPrefetchQueue.shift()
+      const id = item?.id
+      if (!id || preloadedThumbImages.has(id)) continue
+      batch.push(item)
+    }
+    if (!batch.length) continue
     const generation = thumbPrefetchGeneration
-    activeThumbPrefetches += 1
-    const img = new Image()
-    img.fetchPriority = 'low'
-    img.decoding = 'async'
-    const finish = () => {
-      activeThumbPrefetches = Math.max(0, activeThumbPrefetches - 1)
-      if (generation === thumbPrefetchGeneration) runThumbnailPrefetchQueue()
-    }
-    img.onload = () => {
-      preloadedThumbImages.add(id)
-      finish()
-    }
-    img.onerror = finish
-    img.src = screenshotThumbSrc(item)
+    activeThumbBatchLoads += 1
+    getScreenshotThumbsBatch(batch.map(item => item.id))
+      .then(data => {
+        if (generation !== thumbPrefetchGeneration) return
+        const next = new Map(thumbDataUrls.value)
+        for (const thumb of data.thumbs || []) {
+          preloadedThumbImages.add(thumb.id)
+          next.set(thumb.id, `data:image/jpeg;base64,${thumb.image_base64}`)
+        }
+        thumbDataUrls.value = next
+      })
+      .catch(() => {})
+      .finally(() => {
+        activeThumbBatchLoads = Math.max(0, activeThumbBatchLoads - 1)
+        if (generation === thumbPrefetchGeneration) runThumbnailPrefetchQueue()
+      })
   }
 }
 
