@@ -30,6 +30,8 @@ const GRID_MIN_WIDTH = 180
 const GRID_GAP = 8
 const GRID_PADDING_X = 24
 const GRID_OVERSCAN_ROWS = 4
+const PREVIEW_PRELOAD_RADIUS = 3
+const preloadedPreviewImages = new Set()
 
 const gridColumnCount = computed(() => {
   const width = Math.max(0, gridViewportWidth.value - GRID_PADDING_X)
@@ -45,6 +47,11 @@ const virtualRowHeight = computed(() => Math.max(120, virtualItemWidth.value * 1
 const totalVirtualRows = computed(() => Math.ceil(ss.gridItems.length / gridColumnCount.value))
 const totalVirtualHeight = computed(() => totalVirtualRows.value * virtualRowHeight.value)
 const virtualStartRow = computed(() => Math.max(0, Math.floor(gridScrollTop.value / virtualRowHeight.value) - GRID_OVERSCAN_ROWS))
+const activeStartRow = computed(() => Math.max(0, Math.floor(gridScrollTop.value / virtualRowHeight.value)))
+const activeEndRow = computed(() => {
+  const visibleRows = Math.ceil((gridViewportHeight.value || 1) / virtualRowHeight.value)
+  return Math.min(totalVirtualRows.value, activeStartRow.value + visibleRows + 1)
+})
 const virtualEndRow = computed(() => {
   const visibleRows = Math.ceil((gridViewportHeight.value || 1) / virtualRowHeight.value)
   return Math.min(totalVirtualRows.value, virtualStartRow.value + visibleRows + GRID_OVERSCAN_ROWS * 2)
@@ -106,11 +113,39 @@ function resetPreviewTransform() {
   previewDragStart = null
 }
 
+function isActiveViewportRow(rowIndex) {
+  return rowIndex >= activeStartRow.value && rowIndex < activeEndRow.value
+}
+
+function gridImagePriority(rowIndex) {
+  return isActiveViewportRow(rowIndex) ? 'high' : 'low'
+}
+
+function preloadScreenshot(id) {
+  if (!id || preloadedPreviewImages.has(id)) return
+  preloadedPreviewImages.add(id)
+  const img = new Image()
+  img.fetchPriority = 'high'
+  img.decoding = 'async'
+  img.src = getScreenshotImage(id)
+}
+
+function preloadPreviewNeighbors() {
+  const idx = ss.gridItems.findIndex(s => s.id === previewItem.value?.id)
+  if (idx < 0) return
+  preloadScreenshot(previewItem.value.id)
+  for (let offset = 1; offset <= PREVIEW_PRELOAD_RADIUS; offset++) {
+    preloadScreenshot(ss.gridItems[idx - offset]?.id)
+    preloadScreenshot(ss.gridItems[idx + offset]?.id)
+  }
+}
+
 // 双击截图 → 打开 overlay
 function onDblClick(s) {
   savedGridScrollTop.value = scrollEl.value?.scrollTop || 0
   previewItem.value = s
   resetPreviewTransform()
+  preloadPreviewNeighbors()
 }
 
 function closePreview() {
@@ -185,6 +220,7 @@ function previewPrev() {
   if (idx > 0) {
     previewItem.value = ss.gridItems[idx - 1]
     resetPreviewTransform()
+    preloadPreviewNeighbors()
   }
 }
 
@@ -221,6 +257,7 @@ async function advancePreviewNext() {
   if (idx < ss.gridItems.length - 1) {
     previewItem.value = ss.gridItems[idx + 1]
     resetPreviewTransform()
+    preloadPreviewNeighbors()
     return true
   }
   if (ss.gridExhausted) return false
@@ -231,6 +268,7 @@ async function advancePreviewNext() {
   if (currentIdx < ss.gridItems.length - 1) {
     previewItem.value = ss.gridItems[currentIdx + 1]
     resetPreviewTransform()
+    preloadPreviewNeighbors()
     return true
   }
   if (ss.gridExhausted) return false
@@ -240,6 +278,7 @@ async function advancePreviewNext() {
   if (ss.gridItems.length > nextIndex) {
     previewItem.value = ss.gridItems[nextIndex]
     resetPreviewTransform()
+    preloadPreviewNeighbors()
     return true
   }
   return false
@@ -327,6 +366,7 @@ watch(() => ss.gridMode, (v) => {
 })
 
 watch(() => ss.gridItems.length, () => nextTick(updateGridMetrics))
+watch(() => previewItem.value?.id, () => preloadPreviewNeighbors())
 
 onMounted(() => {
   window.addEventListener('keyup', onModifierKeyUp)
@@ -451,6 +491,9 @@ function scrollTo(date) {
           @pointercancel="stopPreviewDrag">
           <img
             :src="getScreenshotImage(previewItem.id)"
+            fetchpriority="high"
+            loading="eager"
+            decoding="async"
             draggable="false"
             :style="{ transform: `translate(${previewPanX}px, ${previewPanY}px) scale(${previewZoom})` }">
         </div>
@@ -472,7 +515,12 @@ function scrollTo(date) {
               <input type="checkbox" class="grid-check"
                 :checked="ss.gridSelected.has(s.id)" @pointerdown.stop @change="ss.toggleGridItem(s.id)">
               <button class="grid-delete" @pointerdown.stop @click.stop="deleteOne(s.id)">×</button>
-              <img :src="getScreenshotImage(s.id)" loading="lazy" draggable="false">
+              <img
+                :src="getScreenshotImage(s.id)"
+                :fetchpriority="gridImagePriority(row.rowIndex)"
+                loading="eager"
+                decoding="async"
+                draggable="false">
               <div class="grid-time">{{ (s.timestamp||'').replace('T',' ').substring(11,19) }}</div>
               <div class="grid-monitor" v-if="s.monitor_total > 1">屏{{ (s.monitor_index||0)+1 }}</div>
             </div>
