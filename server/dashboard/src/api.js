@@ -63,9 +63,11 @@ export const deleteScreenshotsRange = (agent, dateFrom, dateTo, monitor = null) 
   })
 
 // App Events
-export const getAppEvents = (agent, limit = 20, offset = 0, monitor = null) => {
+export const getAppEvents = (agent, limit = 20, offset = 0, monitor = null, dateFrom = null, dateTo = null) => {
   let url = `/app_events?agent=${encodeURIComponent(agent)}&limit=${limit}&offset=${offset}&with_screenshots=true`
   if (monitor !== null && monitor !== undefined) url += `&monitor=${monitor}`
+  if (dateFrom) url += `&date_from=${encodeURIComponent(dateFrom)}`
+  if (dateTo) url += `&date_to=${encodeURIComponent(dateTo)}`
   return request(url)
 }
 

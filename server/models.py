@@ -751,7 +751,9 @@ def get_app_events(agent_name: str, limit: int = 50) -> list[dict]:
 
 
 def get_app_events_with_screenshots(agent_name: str, limit: int = 50, offset: int = 0,
-                                    monitor_index: int = None) -> list[dict]:
+                                    monitor_index: int = None,
+                                    date_from: str = None,
+                                    date_to: str = None) -> list[dict]:
     """最近应用事件时间线，每条关联最近时间的截图
 
     匹配策略 (按优先级):
@@ -760,7 +762,17 @@ def get_app_events_with_screenshots(agent_name: str, limit: int = 50, offset: in
     3. 事前兜底 — 事件前最近的截图
     """
     db = get_db()
-    rows = db.execute("""
+    where_parts = ["ae.agent_name = ?"]
+    where_params = [agent_name]
+    if date_from:
+        where_parts.append("ae.timestamp >= ?")
+        where_params.append(date_from)
+    if date_to:
+        where_parts.append("ae.timestamp <= ?")
+        where_params.append(date_to)
+    where_sql = " AND ".join(where_parts)
+
+    rows = db.execute(f"""
         SELECT ae.*,
             COALESCE(
                 (SELECT s.id FROM screenshots s
@@ -799,7 +811,7 @@ def get_app_events_with_screenshots(agent_name: str, limit: int = 50, offset: in
                   ORDER BY s.timestamp DESC LIMIT 1)
             ) as screenshot_time
         FROM app_events ae
-        WHERE ae.agent_name = ?
+        WHERE {where_sql}
         ORDER BY ae.timestamp DESC
         LIMIT ? OFFSET ?
     """, (
@@ -809,7 +821,7 @@ def get_app_events_with_screenshots(agent_name: str, limit: int = 50, offset: in
         monitor_index, monitor_index,
         monitor_index, monitor_index,
         monitor_index, monitor_index,
-        agent_name, limit, offset,
+        *where_params, limit, offset,
     )).fetchall()
     return [dict(r) for r in rows]
 
