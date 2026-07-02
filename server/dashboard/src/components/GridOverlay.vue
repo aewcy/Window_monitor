@@ -9,8 +9,12 @@ const ss = useScreenshotStore()
 const agent = useAgentStore()
 const { confirm } = useConfirm()
 const scrollEl = ref(null)
+const previewStageEl = ref(null)
 const previewItem = ref(null)
 const previewZoom = ref(1)
+const previewPanX = ref(0)
+const previewPanY = ref(0)
+const previewDragging = ref(false)
 const savedGridScrollTop = ref(0)
 const modifierSelecting = ref(false)
 const previewLoadingNext = ref(false)
@@ -20,6 +24,7 @@ const gridViewportHeight = ref(0)
 const gridViewportWidth = ref(0)
 const sweptIds = new Set()
 let gridResizeObserver = null
+let previewDragStart = null
 
 const GRID_MIN_WIDTH = 180
 const GRID_GAP = 8
@@ -89,21 +94,29 @@ function observeGridBody() {
 
 function close() {
   previewItem.value = null
-  previewZoom.value = 1
+  resetPreviewTransform()
   ss.gridMode = false
+}
+
+function resetPreviewTransform() {
+  previewZoom.value = 1
+  previewPanX.value = 0
+  previewPanY.value = 0
+  previewDragging.value = false
+  previewDragStart = null
 }
 
 // 双击截图 → 打开 overlay
 function onDblClick(s) {
   savedGridScrollTop.value = scrollEl.value?.scrollTop || 0
   previewItem.value = s
-  previewZoom.value = 1
+  resetPreviewTransform()
 }
 
 function closePreview() {
   const targetId = previewItem.value?.id
   previewItem.value = null
-  previewZoom.value = 1
+  resetPreviewTransform()
   nextTick(() => {
     observeGridBody()
     if (targetId) scrollToGridItem(targetId, 'center')
@@ -169,7 +182,10 @@ function onPreviewKeyDown(event) {
 
 function previewPrev() {
   const idx = ss.gridItems.findIndex(s => s.id === previewItem.value?.id)
-  if (idx > 0) previewItem.value = ss.gridItems[idx - 1]
+  if (idx > 0) {
+    previewItem.value = ss.gridItems[idx - 1]
+    resetPreviewTransform()
+  }
 }
 
 async function changeGridMonitor(event) {
@@ -204,6 +220,7 @@ async function advancePreviewNext() {
   if (idx < 0) return false
   if (idx < ss.gridItems.length - 1) {
     previewItem.value = ss.gridItems[idx + 1]
+    resetPreviewTransform()
     return true
   }
   if (ss.gridExhausted) return false
@@ -213,6 +230,7 @@ async function advancePreviewNext() {
   if (currentIdx < 0) return false
   if (currentIdx < ss.gridItems.length - 1) {
     previewItem.value = ss.gridItems[currentIdx + 1]
+    resetPreviewTransform()
     return true
   }
   if (ss.gridExhausted) return false
@@ -221,6 +239,7 @@ async function advancePreviewNext() {
   await ss.loadGrid(true)
   if (ss.gridItems.length > nextIndex) {
     previewItem.value = ss.gridItems[nextIndex]
+    resetPreviewTransform()
     return true
   }
   return false
@@ -245,12 +264,51 @@ async function previewNext() {
 function onPreviewWheel(e) {
   if (e.ctrlKey || e.metaKey) {
     e.preventDefault()
-    const delta = e.deltaY > 0 ? -0.1 : 0.1
-    previewZoom.value = Math.min(3, Math.max(0.3, previewZoom.value + delta))
+    const oldZoom = previewZoom.value
+    const nextZoom = Math.min(3, Math.max(0.3, oldZoom + (e.deltaY > 0 ? -0.1 : 0.1)))
+    if (nextZoom === oldZoom) return
+
+    const rect = previewStageEl.value?.getBoundingClientRect()
+    if (rect) {
+      const pointerX = e.clientX - rect.left - rect.width / 2
+      const pointerY = e.clientY - rect.top - rect.height / 2
+      previewPanX.value = pointerX - ((pointerX - previewPanX.value) / oldZoom) * nextZoom
+      previewPanY.value = pointerY - ((pointerY - previewPanY.value) / oldZoom) * nextZoom
+    }
+    previewZoom.value = nextZoom
     return
   }
   if (e.deltaY > 0) previewNext()
   else if (e.deltaY < 0) previewPrev()
+}
+
+function onPreviewPointerDown(e) {
+  if (e.button !== 0) return
+  e.preventDefault()
+  previewDragging.value = true
+  previewDragStart = {
+    pointerId: e.pointerId,
+    x: e.clientX,
+    y: e.clientY,
+    panX: previewPanX.value,
+    panY: previewPanY.value,
+  }
+  e.currentTarget.setPointerCapture?.(e.pointerId)
+}
+
+function onPreviewPointerMove(e) {
+  if (!previewDragging.value || !previewDragStart) return
+  e.preventDefault()
+  previewPanX.value = previewDragStart.panX + e.clientX - previewDragStart.x
+  previewPanY.value = previewDragStart.panY + e.clientY - previewDragStart.y
+}
+
+function stopPreviewDrag(e) {
+  if (previewDragStart && e?.pointerId === previewDragStart.pointerId) {
+    e.currentTarget?.releasePointerCapture?.(e.pointerId)
+  }
+  previewDragging.value = false
+  previewDragStart = null
 }
 
 watch(() => ss.gridMode, (v) => {
@@ -286,6 +344,7 @@ onBeforeUnmount(() => {
   document.removeEventListener('keydown', onPreviewKeyDown, true)
   gridResizeObserver?.disconnect()
   stopModifierSelect()
+  stopPreviewDrag()
 })
 
 function onScroll(e) {
@@ -383,8 +442,17 @@ function scrollTo(date) {
             <button class="preview-btn" @click="closePreview">返回网格</button>
           </div>
         </div>
-        <div class="preview-stage">
-          <img :src="getScreenshotImage(previewItem.id)" :style="{ transform: `scale(${previewZoom})` }">
+        <div class="preview-stage"
+          ref="previewStageEl"
+          :class="{ dragging: previewDragging }"
+          @pointerdown="onPreviewPointerDown"
+          @pointermove="onPreviewPointerMove"
+          @pointerup="stopPreviewDrag"
+          @pointercancel="stopPreviewDrag">
+          <img
+            :src="getScreenshotImage(previewItem.id)"
+            draggable="false"
+            :style="{ transform: `translate(${previewPanX}px, ${previewPanY}px) scale(${previewZoom})` }">
         </div>
       </div>
       <div v-else class="grid-body" @scroll="onScroll" ref="scrollEl">
@@ -506,8 +574,16 @@ function scrollTo(date) {
   background: var(--surface); color: var(--text-secondary); cursor: pointer; transition: all .15s;
 }
 .preview-btn:hover { background: var(--surface-hover); color: var(--text); }
-.preview-stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-.preview-stage img { max-width: 100%; max-height: 100%; object-fit: contain; transform-origin: center center; transition: transform .15s; }
+.preview-stage {
+  flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden;
+  cursor: grab; user-select: none; touch-action: none;
+}
+.preview-stage.dragging { cursor: grabbing; }
+.preview-stage img {
+  max-width: 100%; max-height: 100%; object-fit: contain; transform-origin: center center;
+  transition: transform .12s; pointer-events: none;
+}
+.preview-stage.dragging img { transition: none; }
 .grid-date-label {
   display: flex; align-items: center; gap: 8px; padding: 12px 12px 4px;
   position: sticky; top: 0; z-index: 2; background: var(--ground);
