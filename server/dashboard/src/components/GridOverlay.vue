@@ -3,7 +3,7 @@ import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useScreenshotStore } from '../stores/screenshot'
 import { useAgentStore } from '../stores/agent'
 import { useConfirm } from '../composables/useConfirm'
-import { getScreenshotImage, deleteScreenshots, getAppEvents } from '../api'
+import { getScreenshotThumb, getScreenshotPreview, deleteScreenshots, getAppEvents } from '../api'
 
 const ss = useScreenshotStore()
 const agent = useAgentStore()
@@ -154,7 +154,7 @@ function preloadScreenshot(id) {
   const img = new Image()
   img.fetchPriority = 'high'
   img.decoding = 'async'
-  img.src = getScreenshotImage(id)
+  img.src = getScreenshotPreview(id)
 }
 
 function preloadPreviewNeighbors() {
@@ -653,7 +653,7 @@ function scrollTo(date) {
           @pointerup="stopPreviewDrag"
           @pointercancel="stopPreviewDrag">
           <img
-            :src="getScreenshotImage(previewItem.id)"
+            :src="getScreenshotPreview(previewItem.id)"
             fetchpriority="high"
             loading="eager"
             decoding="async"
@@ -679,7 +679,7 @@ function scrollTo(date) {
                 :checked="ss.gridSelected.has(s.id)" @pointerdown.stop @change="ss.toggleGridItem(s.id)">
               <button class="grid-delete" @pointerdown.stop @click.stop="deleteOne(s.id)">×</button>
               <img
-                :src="getScreenshotImage(s.id)"
+                :src="getScreenshotThumb(s.id)"
                 :fetchpriority="gridImagePriority(row.rowIndex)"
                 loading="eager"
                 decoding="async"

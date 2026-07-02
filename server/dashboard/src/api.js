@@ -49,6 +49,8 @@ export const getScreenshots = (agent, limit = 50, offset = 0, monitor = null, da
   return request(url)
 }
 export const getScreenshotImage = (id) => `/api/screenshots/image/${id}`
+export const getScreenshotThumb = (id) => `/api/screenshots/thumb/${id}`
+export const getScreenshotPreview = (id) => `/api/screenshots/preview/${id}`
 export const deleteScreenshots = (ids) =>
   request('/screenshots/delete-batch', {
     method: 'POST',

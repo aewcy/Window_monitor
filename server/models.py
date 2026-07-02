@@ -13,6 +13,10 @@ from config import DB_PATH, SCREENSHOT_DIR
 # 线程本地存储，每个线程使用自己的连接
 _local = threading.local()
 AGENT_ONLINE_TIMEOUT_SECONDS = 60
+SCREENSHOT_THUMB_WIDTH = 360
+SCREENSHOT_THUMB_QUALITY = 55
+SCREENSHOT_PREVIEW_WIDTH = 1280
+SCREENSHOT_PREVIEW_QUALITY = 65
 
 
 def _parse_db_datetime(value: str) -> datetime | None:
@@ -37,6 +41,65 @@ def _is_agent_online(row: dict, now: datetime | None = None) -> bool:
         return False
     now = now or datetime.now()
     return now - last_seen <= timedelta(seconds=AGENT_ONLINE_TIMEOUT_SECONDS)
+
+
+def _derived_screenshot_path(file_path: str, variant: str) -> str:
+    base_dir = os.path.dirname(file_path)
+    stem, _ext = os.path.splitext(os.path.basename(file_path))
+    return os.path.join(base_dir, "_derived", f"{stem}_{variant}.jpg")
+
+
+def _remove_screenshot_files(file_path: str) -> int:
+    """删除原图及派生图，返回实际释放字节数"""
+    freed_bytes = 0
+    for path in (
+        file_path,
+        _derived_screenshot_path(file_path, "thumb"),
+        _derived_screenshot_path(file_path, "preview"),
+    ):
+        try:
+            if os.path.exists(path):
+                freed_bytes += os.path.getsize(path)
+                os.remove(path)
+        except OSError:
+            pass
+    return freed_bytes
+
+
+def ensure_screenshot_variant(file_path: str, variant: str) -> str:
+    """确保缩略图/预览图存在；生成失败时回退原图"""
+    if variant not in ("thumb", "preview"):
+        return file_path
+    if not os.path.exists(file_path):
+        return file_path
+
+    derived_path = _derived_screenshot_path(file_path, variant)
+    if os.path.exists(derived_path):
+        return derived_path
+
+    width = SCREENSHOT_THUMB_WIDTH if variant == "thumb" else SCREENSHOT_PREVIEW_WIDTH
+    quality = SCREENSHOT_THUMB_QUALITY if variant == "thumb" else SCREENSHOT_PREVIEW_QUALITY
+    try:
+        from PIL import Image
+
+        os.makedirs(os.path.dirname(derived_path), exist_ok=True)
+        with Image.open(file_path) as img:
+            img = img.convert("RGB")
+            if img.width > width:
+                ratio = width / img.width
+                height = max(1, int(img.height * ratio))
+                img = img.resize((width, height), Image.Resampling.LANCZOS)
+            img.save(derived_path, "JPEG", quality=quality, optimize=True, progressive=True)
+        return derived_path
+    except Exception as e:
+        print(f"[DB] 生成截图{variant}失败: {e}")
+        return file_path
+
+
+def generate_screenshot_variants(file_path: str) -> None:
+    """生成网格缩略图和预览图；失败不影响原图入库"""
+    ensure_screenshot_variant(file_path, "thumb")
+    ensure_screenshot_variant(file_path, "preview")
 
 
 def get_db() -> sqlite3.Connection:
@@ -506,6 +569,7 @@ def save_screenshot(agent_name: str, timestamp: str, image_b64: str,
             f.write(image_data)
 
         file_size = len(image_data)
+        generate_screenshot_variants(file_path)
 
         # 写入数据库索引
         cursor = db.execute(
@@ -558,12 +622,7 @@ def delete_screenshot(screenshot_id: int) -> bool:
     row = db.execute("SELECT file_path FROM screenshots WHERE id = ?", (screenshot_id,)).fetchone()
     if not row:
         return False
-    # 删除文件
-    try:
-        if os.path.exists(row["file_path"]):
-            os.remove(row["file_path"])
-    except OSError:
-        pass
+    _remove_screenshot_files(row["file_path"])
     # 删除索引
     db.execute("DELETE FROM screenshots WHERE id = ?", (screenshot_id,))
     db.commit()
@@ -598,14 +657,10 @@ def delete_screenshots_range(agent_name: str, date_from: str, date_to: str,
     deleted_count = 0
     freed_bytes = 0
     for row in rows:
-        try:
-            if os.path.exists(row["file_path"]):
-                os.remove(row["file_path"])
-        except OSError:
-            pass
+        actual_freed = _remove_screenshot_files(row["file_path"])
         db.execute("DELETE FROM screenshots WHERE id = ?", (row["id"],))
         deleted_count += 1
-        freed_bytes += row["file_size"] or 0
+        freed_bytes += actual_freed or row["file_size"] or 0
 
     db.commit()
     return {"deleted_count": deleted_count, "freed_bytes": freed_bytes}
@@ -1059,14 +1114,10 @@ def cleanup_old_screenshots(older_than_hours: int, agent_name: str = None) -> di
     deleted_count = 0
     freed_bytes = 0
     for row in rows:
-        try:
-            if os.path.exists(row["file_path"]):
-                os.remove(row["file_path"])
-        except OSError:
-            pass
+        actual_freed = _remove_screenshot_files(row["file_path"])
         db.execute("DELETE FROM screenshots WHERE id = ?", (row["id"],))
         deleted_count += 1
-        freed_bytes += row["file_size"] or 0
+        freed_bytes += actual_freed or row["file_size"] or 0
 
     db.commit()
 

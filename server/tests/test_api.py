@@ -331,6 +331,14 @@ class TestScreenshot:
         assert resp.status_code == 200
         assert resp.headers["content-type"] == "image/jpeg"
 
+    def test_screenshot_derived_images_retrievable(self, client):
+        _register_agent(client, "derived-img-agent")
+        sid, _ = _upload_screenshot(client, "derived-img-agent")
+        for variant in ("thumb", "preview"):
+            resp = client.get(f"/api/screenshots/{variant}/{sid}")
+            assert resp.status_code == 200
+            assert resp.headers["content-type"] == "image/jpeg"
+
     def test_screenshot_image_not_found_404(self, client):
         resp = client.get("/api/screenshots/image/999999")
         assert resp.status_code == 404

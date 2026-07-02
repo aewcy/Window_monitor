@@ -14,6 +14,7 @@ from models import (
     init_db, upsert_agent, get_agents, delete_agent, rename_agent, get_db,
     save_screenshot, get_screenshots, get_latest_screenshot,
     get_screenshot_dates, get_screenshot_hours,
+    ensure_screenshot_variant,
     delete_screenshot, delete_screenshots_batch, delete_screenshots_range,
     save_app_event, get_app_usage_summary,
     save_browser_history, get_browser_history,
@@ -446,6 +447,32 @@ async def screenshot_image(screenshot_id: int):
     if not row or not os.path.exists(row["file_path"]):
         raise HTTPException(status_code=404, detail="截图文件不存在")
     return FileResponse(row["file_path"], media_type="image/jpeg")
+
+
+@router.get("/screenshots/thumb/{screenshot_id}")
+async def screenshot_thumb(screenshot_id: int):
+    """返回网格缩略图，旧数据缺失时自动生成"""
+    db = get_db()
+    row = db.execute(
+        "SELECT file_path FROM screenshots WHERE id = ?", (screenshot_id,)
+    ).fetchone()
+    if not row or not os.path.exists(row["file_path"]):
+        raise HTTPException(status_code=404, detail="截图文件不存在")
+    path = ensure_screenshot_variant(row["file_path"], "thumb")
+    return FileResponse(path, media_type="image/jpeg")
+
+
+@router.get("/screenshots/preview/{screenshot_id}")
+async def screenshot_preview(screenshot_id: int):
+    """返回大图预览图，旧数据缺失时自动生成"""
+    db = get_db()
+    row = db.execute(
+        "SELECT file_path FROM screenshots WHERE id = ?", (screenshot_id,)
+    ).fetchone()
+    if not row or not os.path.exists(row["file_path"]):
+        raise HTTPException(status_code=404, detail="截图文件不存在")
+    path = ensure_screenshot_variant(row["file_path"], "preview")
+    return FileResponse(path, media_type="image/jpeg")
 
 
 @router.delete("/screenshots/{screenshot_id}")
