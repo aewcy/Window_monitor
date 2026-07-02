@@ -3,7 +3,7 @@ import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useScreenshotStore } from '../stores/screenshot'
 import { useAgentStore } from '../stores/agent'
 import { useConfirm } from '../composables/useConfirm'
-import { getScreenshotThumb, getScreenshotPreview, deleteScreenshots, getAppEvents } from '../api'
+import { getScreenshotImage, getScreenshotThumb, deleteScreenshots, getAppEvents } from '../api'
 
 const ss = useScreenshotStore()
 const agent = useAgentStore()
@@ -39,7 +39,13 @@ const GRID_OVERSCAN_ROWS = 4
 const PREVIEW_PRELOAD_RADIUS = 3
 const ACTIVITY_LIMIT = 5000
 const ACTIVITY_ROW_HEIGHT = 30
+const THUMB_PREFETCH_CONCURRENCY = 12
 const preloadedPreviewImages = new Set()
+const preloadedThumbImages = new Set()
+const thumbPrefetchQueued = new Set()
+let thumbPrefetchQueue = []
+let activeThumbPrefetches = 0
+let thumbPrefetchGeneration = 0
 
 const gridColumnCount = computed(() => {
   const width = Math.max(0, gridViewportWidth.value - GRID_PADDING_X)
@@ -128,6 +134,7 @@ function observeGridBody() {
 function close() {
   previewItem.value = null
   resetPreviewTransform()
+  resetThumbPrefetchQueue()
   gridView.value = 'screenshots'
   ss.gridMode = false
 }
@@ -154,7 +161,62 @@ function preloadScreenshot(id) {
   const img = new Image()
   img.fetchPriority = 'high'
   img.decoding = 'async'
-  img.src = getScreenshotPreview(id)
+  img.src = getScreenshotImage(id)
+}
+
+function screenshotThumbSrc(item) {
+  return item?.thumb_url || getScreenshotThumb(item?.id)
+}
+
+function resetThumbPrefetchQueue() {
+  thumbPrefetchGeneration += 1
+  thumbPrefetchQueue = []
+  thumbPrefetchQueued.clear()
+  activeThumbPrefetches = 0
+}
+
+function queueThumbnailPrefetch(item, highPriority = false) {
+  const id = item?.id
+  if (!id || preloadedThumbImages.has(id) || thumbPrefetchQueued.has(id)) return
+  thumbPrefetchQueued.add(id)
+  if (highPriority) thumbPrefetchQueue.unshift(item)
+  else thumbPrefetchQueue.push(item)
+  runThumbnailPrefetchQueue()
+}
+
+function runThumbnailPrefetchQueue() {
+  while (activeThumbPrefetches < THUMB_PREFETCH_CONCURRENCY && thumbPrefetchQueue.length) {
+    const item = thumbPrefetchQueue.shift()
+    const id = item?.id
+    if (!id || preloadedThumbImages.has(id)) continue
+    const generation = thumbPrefetchGeneration
+    activeThumbPrefetches += 1
+    const img = new Image()
+    img.fetchPriority = 'low'
+    img.decoding = 'async'
+    const finish = () => {
+      activeThumbPrefetches = Math.max(0, activeThumbPrefetches - 1)
+      if (generation === thumbPrefetchGeneration) runThumbnailPrefetchQueue()
+    }
+    img.onload = () => {
+      preloadedThumbImages.add(id)
+      finish()
+    }
+    img.onerror = finish
+    img.src = screenshotThumbSrc(item)
+  }
+}
+
+function prefetchVisibleThumbnails() {
+  for (const row of visibleRows.value) {
+    const highPriority = isActiveViewportRow(row.rowIndex)
+    for (const item of row.items) queueThumbnailPrefetch(item, highPriority)
+  }
+}
+
+function prefetchAllThumbnails() {
+  prefetchVisibleThumbnails()
+  for (const item of ss.gridItems) queueThumbnailPrefetch(item, false)
 }
 
 function preloadPreviewNeighbors() {
@@ -516,6 +578,7 @@ watch(() => ss.gridMode, (v) => {
     gridView.value = 'screenshots'
     activityEvents.value = []
     activityLoadedKey.value = ''
+    resetThumbPrefetchQueue()
     // 关闭网格时清除预加载数据，下次打开重新加载
     ss.resetGrid({ resetQuery: true })
   }
@@ -524,7 +587,10 @@ watch(() => ss.gridMode, (v) => {
 
 watch(() => ss.gridItems.length, () => {
   activityLoadedKey.value = ''
-  nextTick(updateGridMetrics)
+  nextTick(() => {
+    updateGridMetrics()
+    prefetchAllThumbnails()
+  })
 })
 watch(() => previewItem.value?.id, () => preloadPreviewNeighbors())
 
@@ -550,6 +616,7 @@ onBeforeUnmount(() => {
 function onScroll(e) {
   const el = e.target
   updateGridMetrics()
+  prefetchVisibleThumbnails()
   if (ss.gridLoading || ss.gridExhausted) return
   // 距底部 200px 时预加载，确保滚轮滚动流畅
   if (el.scrollTop + el.clientHeight >= el.scrollHeight - 200) {
@@ -653,7 +720,7 @@ function scrollTo(date) {
           @pointerup="stopPreviewDrag"
           @pointercancel="stopPreviewDrag">
           <img
-            :src="getScreenshotPreview(previewItem.id)"
+            :src="getScreenshotImage(previewItem.id)"
             fetchpriority="high"
             loading="eager"
             decoding="async"
@@ -679,7 +746,7 @@ function scrollTo(date) {
                 :checked="ss.gridSelected.has(s.id)" @pointerdown.stop @change="ss.toggleGridItem(s.id)">
               <button class="grid-delete" @pointerdown.stop @click.stop="deleteOne(s.id)">×</button>
               <img
-                :src="getScreenshotThumb(s.id)"
+                :src="screenshotThumbSrc(s)"
                 :fetchpriority="gridImagePriority(row.rowIndex)"
                 loading="eager"
                 decoding="async"

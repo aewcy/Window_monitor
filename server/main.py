@@ -125,6 +125,10 @@ STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(STATIC_DIR):
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
+# 截图派生图静态直出；原图查看仍优先走 API id 路由。
+if os.path.exists(SCREENSHOT_DIR):
+    app.mount("/media/screenshots", StaticFiles(directory=SCREENSHOT_DIR), name="screenshots-media")
+
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard():

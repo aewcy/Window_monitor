@@ -6,6 +6,7 @@ import os
 import sqlite3
 import threading
 from datetime import datetime, timedelta
+from urllib.parse import quote
 
 from config import DB_PATH, SCREENSHOT_DIR
 
@@ -47,6 +48,30 @@ def _derived_screenshot_path(file_path: str, variant: str) -> str:
     base_dir = os.path.dirname(file_path)
     stem, _ext = os.path.splitext(os.path.basename(file_path))
     return os.path.join(base_dir, "_derived", f"{stem}_{variant}.jpg")
+
+
+def _media_url_for_path(file_path: str) -> str | None:
+    try:
+        rel_path = os.path.relpath(file_path, SCREENSHOT_DIR)
+    except ValueError:
+        return None
+    if rel_path.startswith("..") or os.path.isabs(rel_path):
+        return None
+    parts = rel_path.replace("\\", "/").split("/")
+    return "/media/screenshots/" + "/".join(quote(part) for part in parts)
+
+
+def screenshot_thumb_url(screenshot_id: int, file_path: str) -> str:
+    thumb_path = _derived_screenshot_path(file_path, "thumb")
+    if os.path.exists(thumb_path):
+        return _media_url_for_path(thumb_path) or f"/api/screenshots/thumb/{screenshot_id}"
+    return f"/api/screenshots/thumb/{screenshot_id}"
+
+
+def enrich_screenshot_urls(row: dict) -> dict:
+    row["thumb_url"] = screenshot_thumb_url(row["id"], row["file_path"])
+    row["image_url"] = f"/api/screenshots/image/{row['id']}"
+    return row
 
 
 def _remove_screenshot_files(file_path: str) -> int:
@@ -97,9 +122,8 @@ def ensure_screenshot_variant(file_path: str, variant: str) -> str:
 
 
 def generate_screenshot_variants(file_path: str) -> None:
-    """生成网格缩略图和预览图；失败不影响原图入库"""
+    """生成网格缩略图；失败不影响原图入库"""
     ensure_screenshot_variant(file_path, "thumb")
-    ensure_screenshot_variant(file_path, "preview")
 
 
 def get_db() -> sqlite3.Connection:
@@ -613,7 +637,7 @@ def get_screenshots(agent_name: str = None, limit: int = 50, offset: int = 0,
     params.extend([limit, offset])
 
     rows = db.execute(sql, params).fetchall()
-    return [dict(r) for r in rows]
+    return [enrich_screenshot_urls(dict(r)) for r in rows]
 
 
 def delete_screenshot(screenshot_id: int) -> bool:
@@ -679,7 +703,7 @@ def get_latest_screenshot(agent_name: str, monitor_index: int = None) -> dict | 
             "SELECT * FROM screenshots WHERE agent_name = ? ORDER BY timestamp DESC LIMIT 1",
             (agent_name,)
         ).fetchone()
-    return dict(row) if row else None
+    return enrich_screenshot_urls(dict(row)) if row else None
 
 
 def get_screenshot_dates(agent_name: str, date_from: str = "", date_to: str = "") -> list[dict]:
