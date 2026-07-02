@@ -311,11 +311,21 @@ function onActivityScroll() {
 
 function onActivityClick(event) {
   anchorTimestamp.value = event.screenshot_time || event.timestamp
+  if (event.screenshot_id) {
+    const existingItem = ss.gridItems.find(item => item.id === event.screenshot_id)
+    previewItem.value = existingItem || {
+      id: event.screenshot_id,
+      timestamp: event.screenshot_time || event.timestamp,
+      monitor_total: agent.monitorTotal || 1,
+      monitor_index: ss.gridQuery.monitor ?? 0,
+    }
+    resetPreviewTransform()
+    preloadPreviewNeighbors()
+    return
+  }
+
   gridView.value = 'screenshots'
-  nextTick(() => {
-    if (event.screenshot_id) scrollToGridItem(event.screenshot_id, 'center')
-    else scrollToGridTime(anchorTimestamp.value)
-  })
+  nextTick(() => scrollToGridTime(anchorTimestamp.value))
 }
 
 function stopModifierSelect() {
