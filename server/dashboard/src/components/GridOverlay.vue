@@ -32,6 +32,7 @@ const gridViewportWidth = ref(0)
 const sweptIds = new Set()
 let gridResizeObserver = null
 let previewDragStart = null
+let gridClickTimer = null
 
 const GRID_MIN_WIDTH = 180
 const GRID_GAP = 8
@@ -247,12 +248,40 @@ function preloadPreviewNeighbors() {
   }
 }
 
+function clearGridClickTimer() {
+  if (!gridClickTimer) return
+  window.clearTimeout(gridClickTimer)
+  gridClickTimer = null
+}
+
+function onGridItemClick(event, id) {
+  if (event.button !== 0 || event.defaultPrevented) return
+  if (isModifierSelect(event)) return
+  if (event.target?.closest?.('.grid-check, .grid-delete')) return
+  clearGridClickTimer()
+  gridClickTimer = window.setTimeout(() => {
+    ss.toggleGridItem(id)
+    gridClickTimer = null
+  }, 160)
+}
+
 // 双击截图 → 打开 overlay
 function onDblClick(s) {
+  clearGridClickTimer()
   savedGridScrollTop.value = scrollEl.value?.scrollTop || 0
   previewItem.value = s
   resetPreviewTransform()
   preloadPreviewNeighbors()
+}
+
+function togglePreviewSelection() {
+  if (!previewItem.value?.id) return
+  ss.toggleGridItem(previewItem.value.id)
+}
+
+function selectOnlyPreviewItem() {
+  if (!previewItem.value?.id) return
+  ss.selectOnlyGridItem(previewItem.value.id)
 }
 
 function closePreview() {
@@ -627,6 +656,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('blur', stopModifierSelect)
   document.removeEventListener('keydown', onPreviewKeyDown, true)
   gridResizeObserver?.disconnect()
+  clearGridClickTimer()
   stopModifierSelect()
   stopPreviewDrag()
 })
@@ -725,6 +755,13 @@ function scrollTo(date) {
           <span class="preview-title">{{ (previewItem.timestamp||'').replace('T',' ') }}</span>
           <div class="preview-actions">
             <span class="zoom-label" v-if="previewZoom !== 1">{{ Math.round(previewZoom * 100) }}%</span>
+            <button
+              class="preview-btn select-current"
+              :class="{ active: ss.gridSelected.has(previewItem.id) }"
+              @click="togglePreviewSelection">
+              {{ ss.gridSelected.has(previewItem.id) ? '取消选中' : '选中此图' }}
+            </button>
+            <button class="preview-btn" @click="selectOnlyPreviewItem">只选此图</button>
             <button class="preview-btn" @click="previewPrev">上一张</button>
             <button class="preview-btn" @click="previewNext">下一张</button>
             <button class="preview-btn" @click="closePreview">返回网格</button>
@@ -757,11 +794,12 @@ function scrollTo(date) {
             <div v-for="s in row.items" :key="s.id"
               class="grid-item" :class="{ selected: ss.gridSelected.has(s.id) }"
               :data-grid-id="s.id"
+              @click="onGridItemClick($event, s.id)"
               @pointerenter="selectWithModifiers($event, s.id)"
               @pointermove="selectWithModifiers($event, s.id)"
               @dblclick="onDblClick(s)">
               <input type="checkbox" class="grid-check"
-                :checked="ss.gridSelected.has(s.id)" @pointerdown.stop @change="ss.toggleGridItem(s.id)">
+                :checked="ss.gridSelected.has(s.id)" @pointerdown.stop @click.stop @change.stop="ss.toggleGridItem(s.id)">
               <button class="grid-delete" @pointerdown.stop @click.stop="deleteOne(s.id)">×</button>
               <img
                 :src="screenshotThumbSrc(s)"
@@ -935,6 +973,11 @@ function scrollTo(date) {
   background: var(--surface); color: var(--text-secondary); cursor: pointer; transition: all .15s;
 }
 .preview-btn:hover { background: var(--surface-hover); color: var(--text); }
+.preview-btn.select-current.active {
+  border-color: rgba(34,197,94,.45);
+  background: rgba(34,197,94,.12);
+  color: var(--green);
+}
 .preview-stage {
   flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden;
   cursor: grab; user-select: none; touch-action: none;
