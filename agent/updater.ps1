@@ -37,6 +37,16 @@ $StatePath = Join-Path $InstallDir "update-state.json"
 $LogPath = Join-Path $InstallDir "update.log"
 $LauncherPath = Join-Path $InstallDir "run-hidden.vbs"
 
+function Test-Elevated {
+    try {
+        $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+        $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+        return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    } catch {
+        return $false
+    }
+}
+
 function Write-UpdateLog {
     param([string]$Message)
     $line = "[{0}] {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Message
@@ -147,6 +157,10 @@ function Start-Agent {
 }
 
 try {
+    if (-not (Test-Elevated)) {
+        throw "Updater must run elevated or as SYSTEM"
+    }
+
     Write-UpdateState "installing" "Installing update"
     Write-UpdateLog "Updating to $TargetVersion"
 

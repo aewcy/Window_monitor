@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$InstallDir = (Join-Path $env:ProgramData "GameFrameRateViewer")
 )
 
@@ -95,7 +95,7 @@ $serverPort = Get-ConfigValue $primary $fallback "server_port" "8899"
 $serverUrl = Get-ConfigValue $primary $fallback "server_url" "http://${serverHost}:${serverPort}"
 $installId = Get-ConfigValue $primary $fallback "install_id" ""
 $machineId = Get-ConfigValue $primary $fallback "machine_id" ""
-$updaterVersion = Get-ConfigValue $primary $fallback "updater_version" "0.58.2"
+$updaterVersion = Get-ConfigValue $primary $fallback "updater_version" "0.58.3"
 
 try {
     if ([string]::IsNullOrWhiteSpace($installId) -or [string]::IsNullOrWhiteSpace($machineId)) {
@@ -106,8 +106,8 @@ try {
         throw "updater.ps1 not found: $UpdaterPath"
     }
 
-    $nextUrl = "$serverUrl/api/updater/jobs/next?install_id=$([uri]::EscapeDataString($installId))&machine_id=$([uri]::EscapeDataString($machineId))&updater_version=$([uri]::EscapeDataString($updaterVersion))"
-    $next = Invoke-JsonApi -Method "GET" -Url $nextUrl
+    $nextUrl = '{0}/api/updater/jobs/next?install_id={1}&machine_id={2}&updater_version={3}' -f $serverUrl, [uri]::EscapeDataString($installId), [uri]::EscapeDataString($machineId), [uri]::EscapeDataString($updaterVersion)
+    $next = Invoke-JsonApi -Method 'GET' -Url $nextUrl
     if (-not $next.job) {
         exit 0
     }
@@ -119,50 +119,50 @@ try {
     $expectedSha = ([string]$version.sha256).ToUpperInvariant()
     $packageUrl = [string]$version.package_exe_url
     if (-not $packageUrl.StartsWith("http")) {
-        $packageUrl = "$serverUrl$packageUrl"
+        $packageUrl = '{0}{1}' -f $serverUrl, $packageUrl
     }
 
     New-Item -ItemType Directory -Force -Path $DownloadDir | Out-Null
-    $targetPath = Join-Path $DownloadDir "GameFrameRateViewer-$targetVersion.exe"
-    $tmpPath = "$targetPath.tmp"
+    $targetPath = Join-Path $DownloadDir ('GameFrameRateViewer-{0}.exe' -f $targetVersion)
+    $tmpPath = '{0}.tmp' -f $targetPath
     $totalBytes = [int64]($version.size_bytes)
 
     if ((Test-Path $targetPath) -and (Get-FileSha256 $targetPath) -eq $expectedSha) {
-        Report-Job $serverUrl $jobId "downloaded" "已复用本地缓存" "" $totalBytes $totalBytes
+        Report-Job -ServerUrl $serverUrl -JobId $jobId -Status 'downloaded' -Message '已复用本地缓存' -ProgressBytes $totalBytes -TotalBytes $totalBytes
     } else {
-        Report-Job $serverUrl $jobId "downloading" "开始下载更新包" "" 0 $totalBytes
+        Report-Job -ServerUrl $serverUrl -JobId $jobId -Status 'downloading' -Message '开始下载更新包' -ProgressBytes 0 -TotalBytes $totalBytes
         Remove-Item -LiteralPath $tmpPath -Force -ErrorAction SilentlyContinue
         Invoke-WebRequest -Uri $packageUrl -OutFile $tmpPath -UseBasicParsing
         $actualSha = Get-FileSha256 $tmpPath
         if ($expectedSha -and $actualSha -ne $expectedSha) {
             Remove-Item -LiteralPath $tmpPath -Force -ErrorAction SilentlyContinue
-            throw "sha256 mismatch $actualSha != $expectedSha"
+            throw ('sha256 mismatch {0} != {1}' -f $actualSha, $expectedSha)
         }
         Move-Item -LiteralPath $tmpPath -Destination $targetPath -Force
         $downloadedBytes = (Get-Item $targetPath).Length
-        Report-Job $serverUrl $jobId "downloaded" "下载完成并校验通过" "" $downloadedBytes $totalBytes
+        Report-Job -ServerUrl $serverUrl -JobId $jobId -Status 'downloaded' -Message '下载完成并校验通过' -ProgressBytes $downloadedBytes -TotalBytes $totalBytes
     }
 
-    Report-Job $serverUrl $jobId "installing" "调用 updater 安装" "" -1 $totalBytes
+    Report-Job -ServerUrl $serverUrl -JobId $jobId -Status 'installing' -Message '调用 updater 安装' -TotalBytes $totalBytes
     $args = @(
-        "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-        "-File", "`"$UpdaterPath`"",
-        "-InstallDir", "`"$InstallDir`"",
-        "-NewExe", "`"$targetPath`"",
-        "-TargetVersion", "`"$targetVersion`"",
-        "-JobId", "`"$jobId`"",
-        "-InstallId", "`"$installId`"",
-        "-ServerUrl", "`"$serverUrl`""
+        '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+        '-File', $UpdaterPath,
+        '-InstallDir', $InstallDir,
+        '-NewExe', $targetPath,
+        '-TargetVersion', $targetVersion,
+        '-JobId', $jobId,
+        '-InstallId', $installId,
+        '-ServerUrl', $serverUrl
     )
-    $proc = Start-Process -FilePath "powershell.exe" -ArgumentList ($args -join " ") -WindowStyle Hidden -PassThru -Wait
+    $proc = Start-Process -FilePath 'powershell.exe' -ArgumentList $args -WindowStyle Hidden -PassThru -Wait
     if ($proc.ExitCode -ne 0) {
-        throw "updater exited $($proc.ExitCode)"
+        throw ('updater exited {0}' -f $proc.ExitCode)
     }
 } catch {
     $message = $_.Exception.Message
-    Write-RunnerLog "Failed: $message"
+    Write-RunnerLog ('Failed: {0}' -f $message)
     if ($jobId) {
-        Report-Job -ServerUrl $serverUrl -JobId $jobId -Status "failed" -ErrorMessage $message
+        Report-Job -ServerUrl $serverUrl -JobId $jobId -Status 'failed' -ErrorMessage $message
     }
     exit 1
 }
