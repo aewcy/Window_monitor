@@ -11,8 +11,8 @@ cd server
 docker compose up -d
 ```
 
-- 监控面板: `http://<服务器IP>:8899/`
-- API 文档: `http://<服务器IP>:8899/docs`
+- 监控面板: `http://<服务器IP>:14325/`
+- API 文档: `http://<服务器IP>:14325/docs`
 
 数据持久化在 `./data/` 目录（容器重建不丢失）。
 
@@ -39,7 +39,7 @@ python main.py
 | 参数 | 环境变量 | 默认值 | 说明 |
 |------|----------|--------|------|
 | `HOST` | `SERVER_HOST` | `0.0.0.0` | 监听地址 |
-| `PORT` | `SERVER_PORT` | `8899` | 监听端口 |
+| `PORT` | `SERVER_PORT` | `8899` | 容器内监听端口，宿主机可额外映射 `14325` 给 Web 访问 |
 | `DATA_DIR` | `DATA_DIR` | `data` | 数据目录 (DB + 截图) |
 | `CORS_ORIGINS` | `CORS_ORIGINS` | `["*"]` | CORS 允许源 |
 

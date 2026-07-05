@@ -40,7 +40,7 @@ MONITOR_SERVER_HOST=<IP> python main.py
 | 参数 | 环境变量 | 默认值 | 说明 |
 |------|----------|--------|------|
 | `SERVER_HOST` | `MONITOR_SERVER_HOST` | `108.187.15.71` | 服务端地址 |
-| `SERVER_PORT` | `MONITOR_SERVER_PORT` | `8899` | 服务端端口 |
+| `SERVER_PORT` | `MONITOR_SERVER_PORT` | `8899` | Agent 默认上报端口 |
 | `AGENT_NAME` | `AGENT_NAME` | `试验机-01` | 机器标识 |
 | `SCREENSHOT_INTERVAL` | `SCREENSHOT_INTERVAL` | `30` | 截图间隔(秒) — 运行时会自适应调整 |
 | `APP_TRACK_INTERVAL` | `APP_TRACK_INTERVAL` | `5` | 窗口检测间隔(秒) |

@@ -15,7 +15,7 @@
 ## 2. 架构
 
 ```
-被控机浏览器 ──→ http://server:8899/download
+被控机浏览器 ──→ http://server:14325/download
                     │
                     ├─ 1. 加载下载页 (独立 HTML，不走 Vue SPA)
                     ├─ 2. JS 自动检测本机 Agent 状态
@@ -51,7 +51,7 @@
 
 ### 页面路径
 
-`http://server:8899/download` — 独立 HTML 页面，不走 Vue SPA 构建。
+`http://server:14325/download` — 独立 HTML 页面，不走 Vue SPA 构建。
 
 ### UI 布局
 
@@ -219,7 +219,7 @@ ALTER TABLE agents ADD COLUMN ip TEXT DEFAULT '';
 1. 在开发机运行 `agent/build.bat` → 产出 `agent/dist/monitor-agent.exe`
 2. 复制 .exe 到 `server/static/agent/monitor-agent.exe`
 3. 重启 Server（或首次启动时自动创建目录）
-4. 告诉被控机用户：「打开 http://server:8899/download 下载安装」
+4. 告诉被控机用户：「打开 http://server:14325/download 下载安装」
 
 ## 8. 边界情况
 

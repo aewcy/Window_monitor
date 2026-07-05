@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - 所有中文注释和 UI 文本
-- Server 端口 `8899`，数据目录 `server/data/`
+- Server 端口 `14325`，数据目录 `server/data/`
 - Agent 注册计划任务名: `MonitorAgent`
 - .exe 托管路径: `server/static/agent/monitor-agent.exe`
 - 不改动 Vue Dashboard 代码
@@ -201,9 +201,9 @@ async def download_agent():
 ```bash
 cd server && python main.py
 # 另一个终端:
-curl -X POST http://localhost:8899/api/agent/detect
+curl -X POST http://localhost:14325/api/agent/detect
 # Expected: {"found": false}
-curl -I http://localhost:8899/api/agent/download
+curl -I http://localhost:14325/api/agent/download
 # Expected: 404 (因为 .exe 还没放到 static/agent/ 目录)
 ```
 
@@ -531,7 +531,7 @@ async def download_page():
 cd server && python main.py
 ```
 
-打开浏览器访问 `http://localhost:8899/download`：
+打开浏览器访问 `http://localhost:14325/download`：
 - 页面应显示加载动画，然后显示「下载」按钮（因为没有 Agent 运行）
 - 点击下载按钮应返回 404（.exe 还没放到 static 目录）
 
@@ -788,7 +788,7 @@ Expected: Agent 输出 `本机 IP: x.x.x.x`，心跳正常。
 
 - [ ] **Step 4: 浏览器访问下载页**
 
-打开 `http://localhost:8899/download`：
+打开 `http://localhost:14325/download`：
 - 页面显示加载动画
 - 自动检测到 Agent 在线
 - 显示「✅ Agent 已安装并运行中」+ 机器名
@@ -816,4 +816,4 @@ git commit -m "feat: Agent 下载页功能完成 — 端到端验证通过"
 1. 开发机运行 `agent/build.bat` → 产出 `agent/dist/monitor-agent.exe`
 2. 复制 .exe 到 `server/static/agent/monitor-agent.exe`
 3. 重启 Server
-4. 告诉被控机用户：「打开 http://server:8899/download 下载安装」
+4. 告诉被控机用户：「打开 http://server:14325/download 下载安装」

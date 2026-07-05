@@ -20,7 +20,7 @@
 ## 1. 技术栈
 
 - **框架：** Vue 3 (Composition API)
-- **构建：** Vite，base 为 `/static/dist/`，`/api` 代理到 `:8899`
+- **构建：** Vite，base 为 `/static/dist/`，本地开发 `/api` 代理到 `:8899`；线上 Web 对外访问端口为 `14325`
 - **状态管理：** Pinia
 - **样式：** CSS 变量设计令牌（`tokens.css`），Raycast 风格深色主题
 - **输出：** 构建产物输出到 `server/static/dist/`

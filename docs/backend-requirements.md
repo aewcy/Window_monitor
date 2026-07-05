@@ -21,7 +21,7 @@
 
 服务端基于 **FastAPI** 框架，使用 **SQLite** 存储结构化数据，文件系统存储截图图片。
 
-- 监听地址：`0.0.0.0:8899`（可配置）
+- 监听地址：`0.0.0.0:8899`（可配置），Web 对外可通过 Docker 映射到宿主机 `14325`
 - 数据库路径：`{DATA_DIR}/monitor.db`（WAL 模式，外键约束开启）
 - 截图存储路径：`{DATA_DIR}/screenshots/{agent_name}/{date}/{timestamp}_m{monitor}.jpg`
 - 线程安全：使用 `threading.local()` 线程本地连接

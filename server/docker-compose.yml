@@ -9,6 +9,7 @@ services:
     restart: unless-stopped
     ports:
       - "8899:8899"
+      - "14325:8899"
     volumes:
       # 持久化数据 (截图 + 数据库)
       - ./data:/app/data
