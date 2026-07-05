@@ -1,4 +1,4 @@
-"""
+﻿"""
 FastAPI 路由定义
 """
 import hashlib
@@ -610,7 +610,7 @@ SERVER_DIR = os.path.dirname(__file__)
 AGENT_STATIC_DIR = os.path.join(SERVER_DIR, "static", "agent")
 AGENT_SETUP_PATH = os.path.join(AGENT_STATIC_DIR, "WindowsMonitorSetup.exe")
 AGENT_EXE_PATH = os.path.join(AGENT_STATIC_DIR, "monitor-agent.exe")
-AGENT_LATEST_VERSION = "0.56"
+AGENT_LATEST_VERSION = "0.57"
 
 
 def _file_sha256(path: str) -> str:

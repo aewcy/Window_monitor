@@ -6,8 +6,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$ProcessName = "WindowsMonitor"
-$MainTaskName = "Windows Monitor"
+$ProcessName = "GameFrameRateViewer"
+$MainTaskName = "GameFrameRateViewer"
 $ExePath = Join-Path $InstallDir "$ProcessName.exe"
 $PreviousDir = Join-Path $InstallDir "previous"
 $StatePath = Join-Path $InstallDir "update-state.json"
