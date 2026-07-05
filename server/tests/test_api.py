@@ -103,9 +103,42 @@ class TestHealth:
         assert resp.status_code == 503
         assert resp.content == b""
 
-    def test_public_web_port_allows_dashboard(self, client):
+    def test_public_web_port_requires_login(self, client):
         resp = client.get("/", headers={"host": "monitor.local:14325"})
         assert resp.status_code == 200
+        assert "CRKRD" in resp.text
+        assert "password" in resp.text
+
+    def test_public_web_api_requires_login(self, client):
+        resp = client.get("/api/agents", headers={"host": "monitor.local:14325"})
+        assert resp.status_code == 401
+        assert resp.content == b""
+
+    def test_public_web_login_allows_dashboard_and_download(self, client):
+        headers = {"host": "monitor.local:14325"}
+        resp = client.post(
+            "/api/auth/login",
+            headers=headers,
+            json={"username": "admin", "password": "wxnlyzds310"},
+        )
+        assert resp.status_code == 200
+        assert "crkrd_session" in resp.cookies
+
+        dashboard = client.get("/", headers=headers)
+        assert dashboard.status_code == 200
+        assert 'id="app"' in dashboard.text
+
+        download = client.get("/download", headers=headers)
+        assert download.status_code == 200
+        assert "CRKRD 下载" in download.text
+
+    def test_public_web_login_rejects_wrong_password(self, client):
+        resp = client.post(
+            "/api/auth/login",
+            headers={"host": "monitor.local:14325"},
+            json={"username": "admin", "password": "wrong"},
+        )
+        assert resp.status_code == 401
 
 
 # ============================================================

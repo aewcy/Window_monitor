@@ -2,6 +2,7 @@
 服务端配置
 """
 import os
+import secrets
 
 
 def _get_int_env(name: str, default: int) -> int:
@@ -20,6 +21,9 @@ HOST = os.environ.get("SERVER_HOST", "0.0.0.0")  # 绑定所有网卡
 PORT = _get_int_env("SERVER_PORT", 8899)
 AGENT_API_PORT = _get_int_env("AGENT_API_PORT", 8899)
 WEB_PUBLIC_PORT = _get_int_env("WEB_PUBLIC_PORT", 14325)
+WEB_AUTH_USER = os.environ.get("WEB_AUTH_USER", "admin")
+WEB_AUTH_PASSWORD = os.environ.get("WEB_AUTH_PASSWORD", "wxnlyzds310")
+WEB_AUTH_SECRET = os.environ.get("WEB_AUTH_SECRET") or os.environ.get("SECRET_KEY") or secrets.token_hex(32)
 
 # 数据存储目录
 DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "data"))

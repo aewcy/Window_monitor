@@ -3,7 +3,10 @@
 FastAPI + 静态文件服务 + 自动初始化
 """
 import asyncio
+import hashlib
+import hmac
 import os
+import time
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -11,11 +14,12 @@ from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 from config import (
     HOST, PORT, DATA_DIR, SCREENSHOT_DIR, CORS_ORIGINS,
     SCREENSHOT_RETENTION_HOURS, SCREENSHOT_CLEANUP_INTERVAL_MINUTES,
-    AGENT_API_PORT, WEB_PUBLIC_PORT,
+    AGENT_API_PORT, WEB_PUBLIC_PORT, WEB_AUTH_USER, WEB_AUTH_PASSWORD, WEB_AUTH_SECRET,
 )
 from logger import log
 from models import init_db, cleanup_old_screenshots
@@ -24,6 +28,80 @@ from routes import router
 # 初始化目录
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(SCREENSHOT_DIR, exist_ok=True)
+
+SESSION_COOKIE = "crkrd_session"
+SESSION_MAX_AGE_SECONDS = 12 * 60 * 60
+
+
+LOGIN_HTML = """<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CRKRD</title>
+<style>
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#111113;color:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif}.login{width:min(360px,calc(100vw - 32px));padding:24px;border:1px solid #34343c;border-radius:8px;background:#1b1b1f;box-shadow:0 24px 70px rgba(0,0,0,.42)}h1{margin:0 0 18px;font-size:24px;letter-spacing:0}.field{display:flex;flex-direction:column;gap:7px;margin-bottom:12px}label{font-size:12px;color:#a1a1aa}input{height:40px;border:1px solid #34343c;border-radius:6px;background:#111113;color:#f4f4f5;padding:0 11px;font-size:14px;outline:none}input:focus{border-color:#2f81d7}button{width:100%;height:42px;margin-top:8px;border:0;border-radius:6px;background:#2f81d7;color:#fff;font-size:14px;font-weight:700;cursor:pointer}button:disabled{opacity:.65;cursor:default}.error{min-height:18px;margin-top:12px;color:#ef4444;font-size:12px}
+</style>
+</head>
+<body>
+<main class="login">
+  <h1>CRKRD</h1>
+  <form id="login-form">
+    <div class="field"><label>账户</label><input id="username" autocomplete="username" value="admin"></div>
+    <div class="field"><label>密码</label><input id="password" type="password" autocomplete="current-password" autofocus></div>
+    <button id="submit" type="submit">登录</button>
+    <div id="error" class="error"></div>
+  </form>
+</main>
+<script>
+const form=document.getElementById("login-form");
+const btn=document.getElementById("submit");
+const err=document.getElementById("error");
+form.addEventListener("submit",async(e)=>{
+  e.preventDefault();
+  err.textContent="";
+  btn.disabled=true;
+  try{
+    const resp=await fetch("/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:document.getElementById("username").value,password:document.getElementById("password").value})});
+    if(!resp.ok) throw new Error("login");
+    window.location.reload();
+  }catch{
+    err.textContent="账户或密码错误";
+  }finally{
+    btn.disabled=false;
+  }
+});
+</script>
+</body>
+</html>"""
+
+
+def _session_signature(username: str, expires_at: int) -> str:
+    payload = f"{username}:{expires_at}".encode("utf-8")
+    return hmac.new(WEB_AUTH_SECRET.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+
+
+def _make_session_token(username: str) -> str:
+    expires_at = int(time.time()) + SESSION_MAX_AGE_SECONDS
+    return f"{username}:{expires_at}:{_session_signature(username, expires_at)}"
+
+
+def _valid_session_token(token: str | None) -> bool:
+    if not token:
+        return False
+    try:
+        username, expires_raw, signature = token.split(":", 2)
+        expires_at = int(expires_raw)
+    except (ValueError, TypeError):
+        return False
+    if username != WEB_AUTH_USER or expires_at < int(time.time()):
+        return False
+    expected = _session_signature(username, expires_at)
+    return hmac.compare_digest(signature, expected)
+
+
+def _is_authenticated(request: Request) -> bool:
+    return _valid_session_token(request.cookies.get(SESSION_COOKIE))
 
 
 async def storage_cleanup_loop():
@@ -91,6 +169,29 @@ app.add_middleware(
 )
 
 
+class LoginPayload(BaseModel):
+    username: str
+    password: str
+
+
+@app.post("/api/auth/login")
+async def login(payload: LoginPayload):
+    if not (
+        hmac.compare_digest(payload.username, WEB_AUTH_USER)
+        and hmac.compare_digest(payload.password, WEB_AUTH_PASSWORD)
+    ):
+        return Response(status_code=401)
+    response = JSONResponse({"status": "ok"})
+    response.set_cookie(
+        SESSION_COOKIE,
+        _make_session_token(payload.username),
+        max_age=SESSION_MAX_AGE_SECONDS,
+        httponly=True,
+        samesite="lax",
+    )
+    return response
+
+
 def _request_port(request: Request) -> int | None:
     """从 Host 头解析外部访问端口。"""
     if request.url.port:
@@ -105,11 +206,17 @@ def _request_port(request: Request) -> int | None:
 
 
 @app.middleware("http")
-async def agent_port_api_only_middleware(request: Request, call_next):
-    """8899 只给 Agent/API 使用，Web 页面只通过 14325 对外展示。"""
+async def port_and_auth_middleware(request: Request, call_next):
+    """8899 只给 Agent/API 使用；14325 的 Web 页面与 Web API 需要登录。"""
     path = request.url.path
-    if _request_port(request) == AGENT_API_PORT and not path.startswith("/api/"):
+    port = _request_port(request)
+    if port == AGENT_API_PORT and not path.startswith("/api/"):
         return Response(status_code=503)
+    if port == WEB_PUBLIC_PORT and path != "/api/auth/login":
+        if not _is_authenticated(request):
+            if path.startswith("/api/"):
+                return Response(status_code=401)
+            return HTMLResponse(LOGIN_HTML, status_code=200)
     return await call_next(request)
 
 

@@ -13,7 +13,7 @@ function toggleGrid() {
 <template>
   <div class="header">
     <div class="header-left">
-      <div class="logo"><div class="icon">M</div> Monitor</div>
+      <div class="logo"><div class="icon">C</div> CRKRD</div>
     </div>
     <div class="header-right">
       <CalendarPicker />
