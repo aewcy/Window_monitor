@@ -777,23 +777,30 @@ class TestAgentUpdate:
         resp = client.get("/api/agent/version")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["version"] == "0.57.3"
+        assert data["version"] == "0.58.1"
         assert data["exe_url"] == "/api/agent/exe"
         assert data["sha256"]
         assert data["size_bytes"] > 0
 
     def test_allow_agent_update_then_check(self, client):
-        client.post("/api/heartbeat", json={"agent_name": "update-agent", "agent_version": "0.50"})
+        client.post("/api/heartbeat", json={
+            "agent_name": "update-agent",
+            "agent_version": "0.50",
+            "machine_id": "machine-update",
+            "install_id": "install-update",
+        })
 
         allow = client.post("/api/agents/update-agent/update/allow", json={})
         assert allow.status_code == 200
-        assert allow.json()["version"] == "0.57.3"
+        assert allow.json()["version"] == "0.58.1"
+        assert allow.json()["job"]["status"] == "pending"
 
         check = client.get("/api/agent/update/check?agent=update-agent&version=0.50")
         assert check.status_code == 200
         data = check.json()
         assert data["update_available"] is True
         assert data["allowed"] is True
+        assert data["job"]["target_version"] == "0.58.1"
 
     def test_pause_agent_update(self, client):
         client.post("/api/heartbeat", json={"agent_name": "pause-agent", "agent_version": "0.50"})
@@ -814,7 +821,7 @@ class TestAgentUpdate:
             "agent_name": "retry-agent",
             "agent_version": "0.50",
             "update_status": "failed",
-            "update_target_version": "0.57.3",
+            "update_target_version": "0.58.1",
             "update_error": "network reset",
         })
         assert failed.status_code == 200
@@ -823,7 +830,74 @@ class TestAgentUpdate:
         assert check.status_code == 200
         data = check.json()
         assert data["allowed"] is True
-        assert data["allowed_version"] == "0.57.3"
+        assert data["allowed_version"] == "0.58.1"
+
+    def test_updater_claims_job_and_reports_progress(self, client):
+        client.post("/api/heartbeat", json={
+            "agent_name": "job-agent",
+            "agent_version": "0.50",
+            "machine_id": "machine-job",
+            "install_id": "install-job",
+        })
+        allow = client.post("/api/agents/job-agent/update/allow", json={})
+        job_id = allow.json()["job"]["job_id"]
+
+        claimed = client.get(
+            "/api/updater/jobs/next?install_id=install-job&machine_id=machine-job&updater_version=0.58.1"
+        )
+        assert claimed.status_code == 200
+        data = claimed.json()
+        assert data["job"]["job_id"] == job_id
+        assert data["job"]["status"] == "claimed"
+        assert data["version"]["package_exe_url"].endswith("/api/agent/packages/0.58.1/exe")
+
+        progress = client.post(f"/api/updater/jobs/{job_id}/heartbeat", json={
+            "status": "downloading",
+            "progress_bytes": 1024,
+            "total_bytes": 2048,
+            "message": "下载中",
+        })
+        assert progress.status_code == 200
+        assert progress.json()["job"]["status"] == "downloading"
+        assert progress.json()["job"]["progress_bytes"] == 1024
+        client.post(f"/api/updater/jobs/{job_id}/finish", json={"status": "failed", "error": "test done"})
+
+    def test_agent_heartbeat_verifies_update_job(self, client):
+        client.post("/api/heartbeat", json={
+            "agent_name": "verify-agent",
+            "agent_version": "0.50",
+            "machine_id": "machine-verify",
+            "install_id": "install-verify",
+        })
+        job_id = client.post("/api/agents/verify-agent/update/allow", json={}).json()["job"]["job_id"]
+        client.get("/api/updater/jobs/next?install_id=install-verify&machine_id=machine-verify&updater_version=0.58.1")
+        client.post(f"/api/updater/jobs/{job_id}/heartbeat", json={"status": "verifying", "message": "等待心跳"})
+
+        hb = client.post("/api/heartbeat", json={
+            "agent_name": "verify-agent",
+            "agent_version": "0.58.1",
+            "machine_id": "machine-verify",
+            "install_id": "install-verify",
+            "update_job_id": job_id,
+        })
+        assert hb.status_code == 200
+
+        latest = client.get("/api/agents/verify-agent/update/jobs/latest")
+        assert latest.status_code == 200
+        assert latest.json()["job"]["status"] == "verified"
+
+    def test_offline_pending_does_not_block_online_active_job(self, client):
+        client.post("/api/heartbeat", json={"agent_name": "offline-target", "agent_version": "0.50", "machine_id": "machine-offline"})
+        # 让在线状态自然变成旧记录语义：直接把状态置为 offline，模拟离线机器。
+        client.post("/api/status", json={"agent_name": "offline-target", "status": "offline", "message": "offline"})
+        offline_job = client.post("/api/agents/offline-target/update/allow", json={})
+        assert offline_job.status_code == 200
+        assert offline_job.json()["job"]["status"] == "pending"
+
+        client.post("/api/heartbeat", json={"agent_name": "online-target", "agent_version": "0.50", "machine_id": "machine-online"})
+        online_job = client.post("/api/agents/online-target/update/allow", json={})
+        assert online_job.status_code == 200
+        assert online_job.json()["job"]["status"] == "pending"
 
 
 # ============================================================

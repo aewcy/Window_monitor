@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useAgentStore } from '../stores/agent'
 import { allowAgentUpdate, getAgentVersion, pauseAgentUpdate, renameAgent, sendAgentCommand } from '../api'
 
@@ -14,6 +14,27 @@ const renaming = ref({ show: false, agent: null, name: '' })
 // 删除确认状态
 const deleting = ref({ show: false, agent: null })
 const latestVersion = ref('')
+
+const activeUpdateStatuses = new Set([
+  'claimed',
+  'downloading',
+  'downloaded',
+  'installing',
+  'restarting',
+  'waiting_login',
+  'verifying',
+])
+const terminalUpdateStatuses = new Set([
+  'verified',
+  'failed',
+  'rolled_back_verified',
+  'rolled_back_unverified',
+  'stale',
+  'canceled',
+])
+const activeUpdateAgent = computed(() =>
+  agent.agents.find(a => activeUpdateStatuses.has(a?.update_job?.status || a?.update_status))
+)
 
 function onContext(e, a) {
   e.preventDefault()
@@ -95,27 +116,41 @@ function updateLabel(a) {
 }
 
 function updateState(a) {
-  const target = a?.update_target_version || a?.update_allowed_version || latestVersion.value
+  const job = a?.update_job || null
+  const status = job?.status || a?.update_status || ''
+  const target = job?.target_version || a?.update_target_version || a?.update_allowed_version || latestVersion.value
   const targetText = target ? ` v${target}` : ''
-  if (a?.status !== 'online' && (a?.update_status === 'downloading' || a?.update_status === 'installing')) {
+  if (a?.status !== 'online' && activeUpdateStatuses.has(status) && status !== 'waiting_login') {
     return `离线，更新中断${targetText}`
   }
-  if (a?.status !== 'online' && a?.update_allowed_version) return `离线，等待上线 v${a.update_allowed_version}`
-  if (a?.update_status === 'downloading') return `下载中${targetText}`
-  if (a?.update_status === 'installing') return `安装中${targetText}`
-  if (a?.update_status === 'updated') return `已更新${targetText}`
-  if (a?.update_status === 'failed' && a?.update_allowed_version) return `更新失败，待重试${targetText}`
-  if (a?.update_status === 'failed') return `更新失败${targetText}`
-  if (a?.update_status === 'rolled_back') return `已回滚${targetText}`
+  if (status === 'pending') return a?.status === 'online' ? `等待拉取${targetText}` : `离线，等待上线${targetText}`
+  if (status === 'claimed') return `已领取${targetText}`
+  if (status === 'downloading') return `下载中${targetText}`
+  if (status === 'downloaded') return `下载完成${targetText}`
+  if (status === 'installing') return `安装中${targetText}`
+  if (status === 'restarting') return `重启中${targetText}`
+  if (status === 'waiting_login') return `等待登录验证${targetText}`
+  if (status === 'verifying') return `验证中${targetText}`
+  if (status === 'verified') return `已验证${targetText}`
+  if (status === 'updated') return `文件已替换，待验证${targetText}`
+  if (status === 'failed' && a?.update_allowed_version) return `更新失败，待重试${targetText}`
+  if (status === 'failed') return `更新失败${targetText}`
+  if (status === 'rolled_back_verified') return `已回滚验证${targetText}`
+  if (status === 'rolled_back_unverified') return `已回滚待确认${targetText}`
+  if (status === 'rolled_back') return `旧回滚状态${targetText}`
+  if (status === 'stale') return `更新卡住${targetText}`
+  if (status === 'canceled') return `已取消${targetText}`
   if (a?.update_allowed_version) return `等待拉取 v${a.update_allowed_version}`
   return ''
 }
 
 function updateStateClass(a) {
-  if (a?.status !== 'online' && (a?.update_status === 'downloading' || a?.update_status === 'installing')) return 'danger'
-  if (a?.update_status === 'failed' || a?.update_status === 'rolled_back') return 'danger'
-  if (a?.update_status === 'downloading' || a?.update_status === 'installing') return 'active'
-  if (a?.update_allowed_version) return 'pending'
+  const status = a?.update_job?.status || a?.update_status || ''
+  if (a?.status !== 'online' && activeUpdateStatuses.has(status) && status !== 'waiting_login') return 'danger'
+  if (status === 'failed' || status === 'stale' || status === 'rolled_back_unverified' || status === 'rolled_back') return 'danger'
+  if (activeUpdateStatuses.has(status)) return 'active'
+  if (status === 'pending' || a?.update_allowed_version) return 'pending'
+  if (terminalUpdateStatuses.has(status)) return status === 'verified' || status === 'rolled_back_verified' ? 'ok' : 'danger'
   return ''
 }
 
@@ -138,7 +173,11 @@ function updateTitle(a) {
   ]
   if (a?.update_target_version) lines.push(`目标版本: v${a.update_target_version}`)
   if (a?.update_allowed_version) lines.push(`允许更新: v${a.update_allowed_version}`)
+  if (a?.update_job?.job_id) lines.push(`更新任务: ${a.update_job.job_id}`)
   if (a?.update_status) lines.push(`更新状态: ${a.update_status}`)
+  if (a?.update_progress_bytes || a?.update_total_bytes) {
+    lines.push(`下载进度: ${Math.round((a.update_progress_bytes || 0) / 1024 / 1024)} / ${Math.round((a.update_total_bytes || 0) / 1024 / 1024)} MB`)
+  }
   if (a?.update_checked_at) lines.push(`最近检查: ${a.update_checked_at}`)
   lines.push(`运行控制: ${isCapturePaused(a) ? '已暂停采集' : '采集中'}`)
   const error = readableUpdateError(a?.update_error)
@@ -216,9 +255,9 @@ onUnmounted(() => {
         <span class="ctx-icon">✏️</span>
         <span>改名</span>
       </div>
-      <div class="ctx-item" :class="{ disabled: ctxMenu.agent?.status !== 'online' }" @click="ctxMenu.agent?.status === 'online' && allowUpdate()">
+      <div class="ctx-item" :class="{ disabled: activeUpdateAgent && activeUpdateAgent.name !== ctxMenu.agent?.name }" @click="!(activeUpdateAgent && activeUpdateAgent.name !== ctxMenu.agent?.name) && allowUpdate()">
         <span class="ctx-icon">⬆️</span>
-        <span>允许更新到 v{{ latestVersion || 'latest' }}</span>
+        <span>{{ activeUpdateAgent && activeUpdateAgent.name !== ctxMenu.agent?.name ? '已有机器正在更新' : `允许更新到 v${latestVersion || 'latest'}` }}</span>
       </div>
       <div class="ctx-item" @click="pauseUpdate">
         <span class="ctx-icon">⏸️</span>
@@ -317,6 +356,11 @@ onUnmounted(() => {
   color: #fca5a5;
   border-color: rgba(252,165,165,.35);
   background: rgba(252,165,165,.08);
+}
+.update-badge.ok {
+  color: #86efac;
+  border-color: rgba(134,239,172,.35);
+  background: rgba(134,239,172,.08);
 }
 </style>
 

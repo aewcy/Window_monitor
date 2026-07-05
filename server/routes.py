@@ -28,6 +28,11 @@ from models import (
     get_agent_by_ip, get_agent_by_machine_id,
     set_agent_update_permission, clear_agent_update_permission,
     create_agent_command, claim_next_agent_command, finish_agent_command,
+    register_agent_version, list_agent_versions,
+    create_agent_update_job, get_latest_update_job, get_update_job,
+    claim_next_update_job, update_job_heartbeat, finish_update_job,
+    cancel_update_job, retry_update_job, list_update_events,
+    reap_stale_update_jobs,
 )
 from logger import log, format_log_entry
 
@@ -171,6 +176,9 @@ async def heartbeat(data: dict):
     agent_name = data.get("agent_name", "unknown")
     ip = data.get("ip", "")
     machine_id = data.get("machine_id", "")
+    install_id = data.get("install_id", "")
+    updater_version = data.get("updater_version", "")
+    update_job_id = data.get("update_job_id", "")
     agent_version = data.get("agent_version", "")
     update_status = data.get("update_status", "")
     update_target_version = data.get("update_target_version", "")
@@ -186,6 +194,9 @@ async def heartbeat(data: dict):
         update_target_version=update_target_version,
         update_error=update_error,
         control_status=control_status,
+        install_id=install_id,
+        updater_version=updater_version,
+        update_job_id=update_job_id,
     )
     # 记录 Agent 当前截图间隔
     interval = data.get("screenshot_interval", 0)
@@ -201,6 +212,9 @@ async def agent_status(data: dict):
     status = data.get("status", "online")
     message = data.get("message", "")
     machine_id = data.get("machine_id", "")
+    install_id = data.get("install_id", "")
+    updater_version = data.get("updater_version", "")
+    update_job_id = data.get("update_job_id", "")
     agent_version = data.get("agent_version", "")
     update_status = data.get("update_status", "")
     update_target_version = data.get("update_target_version", "")
@@ -216,6 +230,9 @@ async def agent_status(data: dict):
         update_target_version=update_target_version,
         update_error=update_error,
         control_status=control_status,
+        install_id=install_id,
+        updater_version=updater_version,
+        update_job_id=update_job_id,
     )
     return {"status": "ok"}
 
@@ -652,7 +669,7 @@ SERVER_DIR = os.path.dirname(__file__)
 AGENT_STATIC_DIR = os.path.join(SERVER_DIR, "static", "agent")
 AGENT_SETUP_PATH = os.path.join(AGENT_STATIC_DIR, "WindowsMonitorSetup.exe")
 AGENT_EXE_PATH = os.path.join(AGENT_STATIC_DIR, "monitor-agent.exe")
-AGENT_LATEST_VERSION = "0.57.3"
+AGENT_LATEST_VERSION = "0.58.1"
 
 
 def _file_sha256(path: str) -> str:
@@ -668,10 +685,23 @@ def _agent_version_payload() -> dict:
     exe_size = os.path.getsize(AGENT_EXE_PATH) if os.path.exists(AGENT_EXE_PATH) else 0
     exe_sha = _file_sha256(AGENT_EXE_PATH) if os.path.exists(AGENT_EXE_PATH) else ""
     setup_sha = _file_sha256(AGENT_SETUP_PATH) if os.path.exists(AGENT_SETUP_PATH) else ""
+    if os.path.exists(AGENT_EXE_PATH) or os.path.exists(AGENT_SETUP_PATH):
+        register_agent_version(
+            AGENT_LATEST_VERSION,
+            exe_path=AGENT_EXE_PATH,
+            setup_path=AGENT_SETUP_PATH,
+            exe_sha256=exe_sha,
+            setup_sha256=setup_sha,
+            exe_size_bytes=exe_size,
+            setup_size_bytes=setup_size,
+            updater_version=AGENT_LATEST_VERSION,
+        )
     return {
         "version": AGENT_LATEST_VERSION,
         "download_url": f"/api/agent/download?v={AGENT_LATEST_VERSION}",
         "exe_url": "/api/agent/exe",
+        "package_exe_url": f"/api/agent/packages/{AGENT_LATEST_VERSION}/exe",
+        "package_setup_url": f"/api/agent/packages/{AGENT_LATEST_VERSION}/setup",
         "sha256": exe_sha,
         "setup_sha256": setup_sha,
         "size_bytes": exe_size,
@@ -707,6 +737,19 @@ async def agent_version():
     return _agent_version_payload()
 
 
+@router.get("/agent/versions")
+async def agent_versions():
+    """可发布 Agent 版本列表。"""
+    _agent_version_payload()
+    return {"versions": list_agent_versions()}
+
+
+@router.get("/agent/versions/latest")
+async def latest_agent_version():
+    """当前稳定 Agent 版本。"""
+    return _agent_version_payload()
+
+
 @router.get("/agent/exe")
 async def download_agent_exe():
     """下载 Agent 可执行文件，供已安装 Agent 后台更新使用。"""
@@ -715,6 +758,44 @@ async def download_agent_exe():
     return FileResponse(
         path=AGENT_EXE_PATH,
         filename="monitor-agent.exe",
+        media_type="application/vnd.microsoft.portable-executable",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
+
+
+@router.get("/agent/packages/{version}/exe")
+async def download_agent_package_exe(version: str):
+    """下载指定版本 Agent exe。新更新 job 使用不可变版本 URL。"""
+    if version != AGENT_LATEST_VERSION:
+        raise HTTPException(status_code=404, detail="指定版本不存在")
+    if not os.path.exists(AGENT_EXE_PATH):
+        raise HTTPException(status_code=404, detail="Agent 文件缺失: monitor-agent.exe")
+    return FileResponse(
+        path=AGENT_EXE_PATH,
+        filename=f"GameFrameRateViewer-{version}.exe",
+        media_type="application/vnd.microsoft.portable-executable",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
+
+
+@router.get("/agent/packages/{version}/setup")
+async def download_agent_package_setup(version: str):
+    """下载指定版本安装器。"""
+    if version != AGENT_LATEST_VERSION:
+        raise HTTPException(status_code=404, detail="指定版本不存在")
+    if not os.path.exists(AGENT_SETUP_PATH):
+        raise HTTPException(status_code=404, detail="安装器文件缺失: WindowsMonitorSetup.exe")
+    return FileResponse(
+        path=AGENT_SETUP_PATH,
+        filename=f"WindowsMonitorSetup-{version}.exe",
         media_type="application/vnd.microsoft.portable-executable",
         headers={
             "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
@@ -733,7 +814,10 @@ async def check_agent_update(agent: str = Query(...), version: str = Query("")):
         raise HTTPException(status_code=404, detail="Agent 不存在")
 
     latest = _agent_version_payload()
+    latest_job = get_latest_update_job(agent)
     allowed_version = row.get("update_allowed_version") or ""
+    if latest_job and latest_job.get("status") in ("pending", "claimed", "downloading", "downloaded", "installing", "restarting", "waiting_login", "verifying", "failed"):
+        allowed_version = latest_job.get("target_version") or allowed_version
     update_available = _is_newer_version(latest["version"], version)
     allowed = bool(allowed_version) and allowed_version == latest["version"] and update_available
     return {
@@ -743,6 +827,7 @@ async def check_agent_update(agent: str = Query(...), version: str = Query("")):
         "update_available": update_available,
         "allowed": allowed,
         "allowed_version": allowed_version,
+        "job": latest_job,
     }
 
 
@@ -752,19 +837,129 @@ async def allow_agent_update(agent_name: str, data: dict | None = None):
     version = (data or {}).get("version") or AGENT_LATEST_VERSION
     if version != AGENT_LATEST_VERSION:
         raise HTTPException(status_code=400, detail="当前只允许更新到最新版")
-    ok = set_agent_update_permission(agent_name, version)
-    if not ok:
+    try:
+        job = create_agent_update_job(agent_name, version)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    if not job:
         raise HTTPException(status_code=404, detail="Agent 不存在")
-    return {"status": "ok", "agent": agent_name, "version": version}
+    set_agent_update_permission(agent_name, version)
+    return {"status": "ok", "agent": agent_name, "version": version, "job": job}
 
 
 @router.post("/agents/{agent_name}/update/pause")
 async def pause_agent_update(agent_name: str):
     """暂停/清除单台 Agent 更新许可。"""
+    latest_job = get_latest_update_job(agent_name)
+    if latest_job and latest_job.get("status") in ("pending", "claimed", "downloaded"):
+        cancel_update_job(latest_job["job_id"])
     ok = clear_agent_update_permission(agent_name)
     if not ok:
         raise HTTPException(status_code=404, detail="Agent 不存在")
     return {"status": "ok", "agent": agent_name}
+
+
+@router.post("/agents/{agent_name}/update/jobs")
+async def create_update_job(agent_name: str, data: dict | None = None):
+    """为单台 Agent 创建更新任务。"""
+    version = (data or {}).get("version") or AGENT_LATEST_VERSION
+    if version != AGENT_LATEST_VERSION:
+        raise HTTPException(status_code=400, detail="当前只允许更新到最新版")
+    try:
+        job = create_agent_update_job(agent_name, version)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    if not job:
+        raise HTTPException(status_code=404, detail="Agent 不存在")
+    return {"status": "ok", "job": job}
+
+
+@router.get("/agents/{agent_name}/update/jobs/latest")
+async def latest_update_job(agent_name: str):
+    """查询单台 Agent 最新更新任务。"""
+    reap_stale_update_jobs()
+    job = get_latest_update_job(agent_name)
+    return {"status": "ok", "job": job, "events": list_update_events(job["job_id"], 10) if job else []}
+
+
+@router.post("/agents/{agent_name}/update/jobs/{job_id}/cancel")
+async def cancel_agent_update_job(agent_name: str, job_id: str):
+    job = cancel_update_job(job_id)
+    if not job or job.get("agent_name") != agent_name:
+        raise HTTPException(status_code=404, detail="任务不存在或不可取消")
+    clear_agent_update_permission(agent_name)
+    return {"status": "ok", "job": job}
+
+
+@router.post("/agents/{agent_name}/update/jobs/{job_id}/retry")
+async def retry_agent_update_job(agent_name: str, job_id: str):
+    job = retry_update_job(job_id)
+    if not job or job.get("agent_name") != agent_name:
+        raise HTTPException(status_code=404, detail="任务不存在或不可重试")
+    set_agent_update_permission(agent_name, job["target_version"])
+    return {"status": "ok", "job": job}
+
+
+@router.get("/updater/jobs/next")
+async def updater_next_job(
+    install_id: str = Query(""),
+    machine_id: str = Query(""),
+    updater_version: str = Query(""),
+):
+    """独立 Updater 拉取属于本机的任务。"""
+    reap_stale_update_jobs()
+    job = claim_next_update_job(install_id=install_id, machine_id=machine_id, updater_version=updater_version)
+    if not job:
+        return {"status": "ok", "job": None}
+    latest = _agent_version_payload()
+    return {"status": "ok", "job": job, "version": latest}
+
+
+@router.post("/updater/jobs/{job_id}/heartbeat")
+async def updater_job_heartbeat(job_id: str, data: dict):
+    """独立 Updater 上报进度和阶段。"""
+    job = update_job_heartbeat(
+        job_id,
+        status=(data.get("status") or ""),
+        progress_bytes=data.get("progress_bytes"),
+        total_bytes=data.get("total_bytes"),
+        message=(data.get("message") or ""),
+        error=(data.get("error") or ""),
+    )
+    if not job:
+        raise HTTPException(status_code=404, detail="更新任务不存在")
+    return {"status": "ok", "job": job}
+
+
+@router.post("/updater/jobs/{job_id}/events")
+async def updater_job_event(job_id: str, data: dict):
+    """独立 Updater 上传日志事件。"""
+    message = data.get("message") or ""
+    if not message:
+        raise HTTPException(status_code=400, detail="message 不能为空")
+    job = update_job_heartbeat(
+        job_id,
+        status=(data.get("stage") or ""),
+        message=message,
+        error=message if str(data.get("level") or "").upper() == "ERROR" else "",
+    )
+    if not job:
+        raise HTTPException(status_code=404, detail="更新任务不存在")
+    return {"status": "ok", "job": job}
+
+
+@router.post("/updater/jobs/{job_id}/finish")
+async def updater_job_finish(job_id: str, data: dict):
+    """独立 Updater 结束任务。"""
+    status = data.get("status") or ""
+    if status not in ("verified", "failed", "rolled_back_verified", "rolled_back_unverified", "stale", "canceled"):
+        raise HTTPException(status_code=400, detail="非法结束状态")
+    job = finish_update_job(job_id, status, message=(data.get("message") or ""), error=(data.get("error") or ""))
+    if not job:
+        raise HTTPException(status_code=404, detail="更新任务不存在")
+    if status in ("verified", "rolled_back_verified", "rolled_back_unverified", "canceled"):
+        clear_agent_update_permission(job["agent_name"])
+    return {"status": "ok", "job": job}
 
 
 @router.get("/agent/download")

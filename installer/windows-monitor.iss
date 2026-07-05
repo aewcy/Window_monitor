@@ -1,5 +1,5 @@
 ﻿#define AppName "GameFrameRateViewer"
-#define AppVersion "0.57.3"
+#define AppVersion "0.58.1"
 #define Publisher "Monitor Demo"
 #define SourceRoot ".."
 
@@ -31,6 +31,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Source: "{#SourceRoot}\server\static\agent\monitor-agent.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceRoot}\agent\install-agent.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceRoot}\agent\updater.ps1"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourceRoot}\agent\runner.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceRoot}\agent\uninstall-agent.bat"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]

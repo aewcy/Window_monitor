@@ -22,7 +22,7 @@ from config import (
     AGENT_API_PORT, WEB_PUBLIC_PORT, WEB_AUTH_USER, WEB_AUTH_PASSWORD, WEB_AUTH_SECRET,
 )
 from logger import log
-from models import init_db, cleanup_old_screenshots
+from models import init_db, cleanup_old_screenshots, reap_stale_update_jobs
 from routes import router
 
 # 初始化目录
@@ -127,11 +127,24 @@ async def storage_cleanup_loop():
         await asyncio.sleep(interval_seconds)
 
 
+async def update_job_reaper_loop():
+    """后台刷新卡住的更新任务，避免 Web 长期停在安装中。"""
+    while True:
+        try:
+            changed = reap_stale_update_jobs()
+            if changed:
+                log.warning("更新任务超时刷新完成: changed=%s", changed, extra={"category": "update"})
+        except Exception as exc:
+            log.warning("更新任务超时刷新失败: %s", exc, extra={"category": "update"})
+        await asyncio.sleep(30)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     init_db()
     cleanup_task = None
+    update_reaper_task = asyncio.create_task(update_job_reaper_loop())
     if SCREENSHOT_RETENTION_HOURS > 0 and SCREENSHOT_CLEANUP_INTERVAL_MINUTES > 0:
         cleanup_task = asyncio.create_task(storage_cleanup_loop())
     print("=" * 60)
@@ -149,13 +162,18 @@ async def lifespan(app: FastAPI):
                 await cleanup_task
             except asyncio.CancelledError:
                 pass
+        update_reaper_task.cancel()
+        try:
+            await update_reaper_task
+        except asyncio.CancelledError:
+            pass
 
 
 # 创建 FastAPI 应用
 app = FastAPI(
     title="Monitor Server",
     description="Monitor System - Server",
-    version="0.57.3",
+    version="0.58.1",
     lifespan=lifespan,
 )
 

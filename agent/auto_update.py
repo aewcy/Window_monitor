@@ -18,6 +18,8 @@ import requests
 
 from config import (
     AGENT_VERSION,
+    INSTALL_ID,
+    UPDATE_JOB_ID,
     IS_WINDOWS,
     UPDATE_CHECK_INTERVAL,
     UPDATE_DOWNLOAD_CONNECT_TIMEOUT,
@@ -132,7 +134,9 @@ class AutoUpdater:
     def _install(self, data: dict):
         target_version = data.get("version", "")
         expected_sha = (data.get("sha256") or "").upper()
-        exe_url = data.get("exe_url") or "/api/agent/exe"
+        exe_url = data.get("package_exe_url") or data.get("exe_url") or "/api/agent/exe"
+        job = data.get("job") or {}
+        job_id = job.get("job_id") or UPDATE_JOB_ID
         download_url = exe_url if exe_url.startswith("http") else f"{self.url}{exe_url}"
         target_path = os.path.join(self.download_dir, f"WindowsMonitor-{target_version}.exe")
 
@@ -146,7 +150,7 @@ class AutoUpdater:
 
         self._report("installing", "正在安装更新", target_version)
         self._flush_control_status()
-        if not self._launch_updater(target_path, target_version):
+        if not self._launch_updater(target_path, target_version, job_id):
             return
         time.sleep(1)
         os._exit(0)
@@ -241,7 +245,7 @@ class AutoUpdater:
             except Exception:
                 pass
 
-    def _launch_updater(self, new_exe: str, target_version: str) -> bool:
+    def _launch_updater(self, new_exe: str, target_version: str, job_id: str = "") -> bool:
         creationflags = 0x00000008 | 0x08000000 if IS_WINDOWS else 0
         command = [
             "powershell.exe",
@@ -258,6 +262,10 @@ class AutoUpdater:
             "-TargetVersion",
             target_version,
         ]
+        if job_id:
+            command.extend(["-JobId", job_id])
+        if INSTALL_ID:
+            command.extend(["-InstallId", INSTALL_ID])
         self._stop_update_tasks()
         try:
             with open(self.launch_log_path, "a", encoding="utf-8") as launch_log:

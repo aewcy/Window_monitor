@@ -270,17 +270,26 @@ Agent 列表或详情区域需要展示：
 - 最近一次更新结果
 - 更新失败原因
 
-状态文案需要直观区分：
+状态文案需要以更新 job 为准，旧 `agents.update_status` 只作为兼容字段，不得覆盖 job 状态。
 
 | 状态 | 前端显示 |
 |------|----------|
-| `idle` | 空闲 |
-| `checking` | 检查更新中 |
+| `pending` | 等待上线后自动更新 |
+| `claimed` | 已领取更新任务 |
 | `downloading` | 下载更新中 |
+| `downloaded` | 下载完成，等待安装 |
 | `installing` | 安装更新中 |
-| `updated` | 已更新 |
+| `restarting` | 正在重启 Agent |
+| `waiting_login` | 等待用户登录后验证 |
+| `verifying` | 正在验证新版本 |
+| `verified` | 已更新并验证成功 |
 | `failed` | 更新失败 |
-| `rolled_back` | 已回滚 |
+| `rolled_back_verified` | 已回滚并验证成功 |
+| `rolled_back_unverified` | 已尝试回滚，等待旧版本心跳确认 |
+| `stale` | 更新卡住 |
+| `canceled` | 已取消 |
+
+旧字段 `updated` 只能显示为“旧更新器：文件已替换，等待验证”，不能显示为“已更新”。
 
 ### 7.2 单台灰度更新
 
@@ -294,7 +303,9 @@ Agent 列表或详情区域需要展示：
 4. 前端轮询该 Agent 更新状态。
 5. 更新成功并稳定在线后，再允许更新下一台。
 
-当已有 Agent 处于 `installing` 状态时，其他 Agent 的更新按钮应禁用，并提示“已有机器正在更新”。
+当已有 active job 时，其他 Agent 的更新按钮应禁用，并提示“已有机器正在更新”。active 状态包括：
+
+`claimed` / `downloading` / `downloaded` / `installing` / `restarting` / `waiting_login` / `verifying`
 
 ### 7.3 更新批次视图
 
@@ -328,7 +339,7 @@ SHA256 应使用等宽字体展示，并提供复制操作。
 - 下载中、安装中不可重复点击。
 - 更新失败要显示失败原因。
 - 回滚后要明确显示当前仍在旧版本运行。
-- 离线 Agent 不允许开始更新。
+- 离线 Agent 允许创建 `pending` 更新任务，但必须显示“等待上线后自动更新”，且不占用当前 active 更新名额。
 - 强制更新需要使用更明显的确认文案。
 
 ### 7.6 推荐入口

@@ -18,7 +18,7 @@ from config import (
     SCREENSHOT_UPLOAD_QUEUE_SIZE, APP_EVENT_UPLOAD_QUEUE_SIZE,
     BROWSER_UPLOAD_QUEUE_SIZE, CONTROL_UPLOAD_QUEUE_SIZE,
     SCREENSHOT_DROP_REPORT_INTERVAL,
-    AGENT_VERSION,
+    AGENT_VERSION, INSTALL_ID, UPDATER_VERSION, UPDATE_JOB_ID,
     get_machine_id,
 )
 from auto_update import AutoUpdater
@@ -276,6 +276,9 @@ class Reporter:
             "agent_name": self.agent,
             "screenshot_interval": screenshot_interval,
             "agent_version": AGENT_VERSION,
+            "install_id": INSTALL_ID,
+            "updater_version": UPDATER_VERSION,
+            "update_job_id": UPDATE_JOB_ID,
         }
         if ip:
             data["ip"] = ip
@@ -299,6 +302,9 @@ class Reporter:
             "status": status,
             "message": message,
             "agent_version": AGENT_VERSION,
+            "install_id": INSTALL_ID,
+            "updater_version": UPDATER_VERSION,
+            "update_job_id": UPDATE_JOB_ID,
         }
         if machine_id:
             data["machine_id"] = machine_id

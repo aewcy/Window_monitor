@@ -5,6 +5,7 @@
 import os
 import sqlite3
 import threading
+import uuid
 from datetime import datetime, timedelta
 from urllib.parse import quote
 
@@ -18,6 +19,31 @@ SCREENSHOT_THUMB_WIDTH = 220
 SCREENSHOT_THUMB_QUALITY = 38
 SCREENSHOT_PREVIEW_WIDTH = 1280
 SCREENSHOT_PREVIEW_QUALITY = 65
+UPDATE_ACTIVE_STATUSES = (
+    "claimed",
+    "downloading",
+    "downloaded",
+    "installing",
+    "restarting",
+    "waiting_login",
+    "verifying",
+)
+UPDATE_TERMINAL_STATUSES = (
+    "verified",
+    "failed",
+    "rolled_back_verified",
+    "rolled_back_unverified",
+    "stale",
+    "canceled",
+)
+UPDATE_STALE_SECONDS = {
+    "claimed": 120,
+    "downloading": 20 * 60,
+    "downloaded": 5 * 60,
+    "installing": 180,
+    "restarting": 120,
+    "verifying": 180,
+}
 
 
 def _parse_db_datetime(value: str) -> datetime | None:
@@ -232,6 +258,66 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_agent_commands_agent_status
             ON agent_commands(agent_name, status, id);
 
+        -- Agent 版本表
+        CREATE TABLE IF NOT EXISTS agent_versions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            version TEXT UNIQUE NOT NULL,
+            channel TEXT DEFAULT 'stable',
+            exe_path TEXT DEFAULT '',
+            setup_path TEXT DEFAULT '',
+            exe_sha256 TEXT DEFAULT '',
+            setup_sha256 TEXT DEFAULT '',
+            exe_size_bytes INTEGER DEFAULT 0,
+            setup_size_bytes INTEGER DEFAULT 0,
+            updater_version TEXT DEFAULT '',
+            release_notes TEXT DEFAULT '',
+            created_at TEXT DEFAULT (datetime('now', 'localtime')),
+            is_active INTEGER DEFAULT 1
+        );
+
+        -- Agent 更新任务表
+        CREATE TABLE IF NOT EXISTS agent_update_jobs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id TEXT UNIQUE NOT NULL,
+            install_id TEXT DEFAULT '',
+            machine_id TEXT DEFAULT '',
+            agent_name TEXT NOT NULL,
+            from_version TEXT DEFAULT '',
+            target_version TEXT NOT NULL,
+            status TEXT DEFAULT 'pending',
+            progress_bytes INTEGER DEFAULT 0,
+            total_bytes INTEGER DEFAULT 0,
+            attempt_count INTEGER DEFAULT 0,
+            last_error TEXT DEFAULT '',
+            last_log TEXT DEFAULT '',
+            claimed_at TEXT DEFAULT '',
+            verifying_started_at TEXT DEFAULT '',
+            rollback_started_at TEXT DEFAULT '',
+            updated_at TEXT DEFAULT (datetime('now', 'localtime')),
+            created_at TEXT DEFAULT (datetime('now', 'localtime')),
+            finished_at TEXT DEFAULT '',
+            FOREIGN KEY (agent_name) REFERENCES agents(name)
+        );
+        CREATE INDEX IF NOT EXISTS idx_update_jobs_agent_status
+            ON agent_update_jobs(agent_name, status, updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_update_jobs_machine_status
+            ON agent_update_jobs(machine_id, install_id, status, updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_update_jobs_status
+            ON agent_update_jobs(status, updated_at);
+
+        -- Agent 更新事件表
+        CREATE TABLE IF NOT EXISTS agent_update_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id TEXT NOT NULL,
+            agent_name TEXT DEFAULT '',
+            level TEXT DEFAULT 'INFO',
+            stage TEXT DEFAULT '',
+            message TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now', 'localtime'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_update_events_job
+            ON agent_update_events(job_id, id DESC);
+
     """)
     db.commit()
 
@@ -319,6 +405,9 @@ def init_db():
         ("update_checked_at", "ALTER TABLE agents ADD COLUMN update_checked_at TEXT DEFAULT ''"),
         ("update_allowed_version", "ALTER TABLE agents ADD COLUMN update_allowed_version TEXT DEFAULT ''"),
         ("update_allowed_at", "ALTER TABLE agents ADD COLUMN update_allowed_at TEXT DEFAULT ''"),
+        ("install_id", "ALTER TABLE agents ADD COLUMN install_id TEXT DEFAULT ''"),
+        ("updater_version", "ALTER TABLE agents ADD COLUMN updater_version TEXT DEFAULT ''"),
+        ("update_job_id", "ALTER TABLE agents ADD COLUMN update_job_id TEXT DEFAULT ''"),
     ]:
         try:
             db.execute(ddl)
@@ -333,7 +422,8 @@ def init_db():
 
 def upsert_agent(name: str, status: str = "online", message: str = "", ip: str = "",
                  machine_id: str = "", agent_version: str = "", update_status: str = "",
-                 update_target_version: str = "", update_error: str = "", control_status: str = ""):
+                 update_target_version: str = "", update_error: str = "", control_status: str = "",
+                 install_id: str = "", updater_version: str = "", update_job_id: str = ""):
     name = name.strip()
     if not name:
         return
@@ -343,15 +433,19 @@ def upsert_agent(name: str, status: str = "online", message: str = "", ip: str =
             """INSERT INTO agents (
                     name, status, last_seen, message, ip, machine_id,
                     agent_version, control_status, control_updated_at,
-                    update_status, update_target_version, update_error, update_checked_at
+                    update_status, update_target_version, update_error, update_checked_at,
+                    install_id, updater_version, update_job_id
                   )
-               VALUES (?, ?, datetime('now', 'localtime'), ?, ?, ?, ?, ?, datetime('now', 'localtime'), ?, ?, ?, datetime('now', 'localtime'))
+               VALUES (?, ?, datetime('now', 'localtime'), ?, ?, ?, ?, ?, datetime('now', 'localtime'), ?, ?, ?, datetime('now', 'localtime'), ?, ?, ?)
                ON CONFLICT(name) DO UPDATE SET
                  status=excluded.status,
                  last_seen=excluded.last_seen,
                  message=excluded.message,
                  ip=CASE WHEN excluded.ip != '' THEN excluded.ip ELSE agents.ip END,
                  machine_id=CASE WHEN excluded.machine_id != '' THEN excluded.machine_id ELSE agents.machine_id END,
+                 install_id=CASE WHEN excluded.install_id != '' THEN excluded.install_id ELSE agents.install_id END,
+                 updater_version=CASE WHEN excluded.updater_version != '' THEN excluded.updater_version ELSE agents.updater_version END,
+                 update_job_id=CASE WHEN excluded.update_job_id != '' THEN excluded.update_job_id ELSE agents.update_job_id END,
                  agent_version=CASE WHEN excluded.agent_version != '' THEN excluded.agent_version ELSE agents.agent_version END,
                  control_status=CASE WHEN excluded.control_status != '' THEN excluded.control_status ELSE agents.control_status END,
                  control_updated_at=CASE WHEN excluded.control_status != '' THEN excluded.control_updated_at ELSE agents.control_updated_at END,
@@ -368,7 +462,7 @@ def upsert_agent(name: str, status: str = "online", message: str = "", ip: str =
                    WHEN excluded.update_status IN ('updated', 'rolled_back') THEN ''
                    ELSE agents.update_allowed_version
                  END""",
-            (name, status, message, ip, machine_id, agent_version, control_status, update_status, update_target_version, update_error)
+            (name, status, message, ip, machine_id, agent_version, control_status, update_status, update_target_version, update_error, install_id, updater_version, update_job_id)
         )
     except sqlite3.IntegrityError:
         # 并发 INSERT 竞态兜底：另一个线程先 INSERT 成功，改为 UPDATE
@@ -379,6 +473,9 @@ def upsert_agent(name: str, status: str = "online", message: str = "", ip: str =
                  message=?,
                  ip=CASE WHEN ? != '' THEN ? ELSE ip END,
                  machine_id=CASE WHEN ? != '' THEN ? ELSE machine_id END,
+                 install_id=CASE WHEN ? != '' THEN ? ELSE install_id END,
+                 updater_version=CASE WHEN ? != '' THEN ? ELSE updater_version END,
+                 update_job_id=CASE WHEN ? != '' THEN ? ELSE update_job_id END,
                  agent_version=CASE WHEN ? != '' THEN ? ELSE agent_version END,
                  control_status=CASE WHEN ? != '' THEN ? ELSE control_status END,
                  control_updated_at=CASE WHEN ? != '' THEN datetime('now','localtime') ELSE control_updated_at END,
@@ -397,7 +494,8 @@ def upsert_agent(name: str, status: str = "online", message: str = "", ip: str =
                  END
                WHERE name=?""",
             (
-                status, message, ip, ip, machine_id, machine_id,
+                status, message, ip, ip, machine_id, machine_id, install_id, install_id,
+                updater_version, updater_version, update_job_id, update_job_id,
                 agent_version, agent_version, control_status, control_status, control_status,
                 update_status, update_status,
                 update_target_version, update_target_version, update_status, update_error, update_error,
@@ -406,7 +504,324 @@ def upsert_agent(name: str, status: str = "online", message: str = "", ip: str =
         )
     if machine_id:
         _merge_duplicate_agents_by_machine_id(db, machine_id)
+    _verify_update_job_from_agent(db, name, machine_id, install_id, agent_version, update_job_id)
     db.commit()
+
+
+def _dict_or_none(row: sqlite3.Row | None) -> dict | None:
+    return dict(row) if row else None
+
+
+def _add_update_event(db: sqlite3.Connection, job_id: str, agent_name: str, level: str, stage: str, message: str):
+    db.execute(
+        """INSERT INTO agent_update_events (job_id, agent_name, level, stage, message)
+           VALUES (?, ?, ?, ?, ?)""",
+        (job_id, agent_name or "", level or "INFO", stage or "", message or ""),
+    )
+
+
+def _row_is_active_update(row: sqlite3.Row | dict | None) -> bool:
+    return bool(row and row["status"] in UPDATE_ACTIVE_STATUSES)
+
+
+def _active_status_placeholders() -> str:
+    return ",".join("?" for _ in UPDATE_ACTIVE_STATUSES)
+
+
+def register_agent_version(version: str, exe_path: str = "", setup_path: str = "", exe_sha256: str = "",
+                           setup_sha256: str = "", exe_size_bytes: int = 0, setup_size_bytes: int = 0,
+                           updater_version: str = "", release_notes: str = "", channel: str = "stable") -> dict:
+    """登记一个可下载 Agent 版本，保持版本元数据可查询。"""
+    db = get_db()
+    db.execute(
+        """INSERT INTO agent_versions (
+             version, channel, exe_path, setup_path, exe_sha256, setup_sha256,
+             exe_size_bytes, setup_size_bytes, updater_version, release_notes, is_active
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+           ON CONFLICT(version) DO UPDATE SET
+             channel=excluded.channel,
+             exe_path=excluded.exe_path,
+             setup_path=excluded.setup_path,
+             exe_sha256=excluded.exe_sha256,
+             setup_sha256=excluded.setup_sha256,
+             exe_size_bytes=excluded.exe_size_bytes,
+             setup_size_bytes=excluded.setup_size_bytes,
+             updater_version=excluded.updater_version,
+             release_notes=excluded.release_notes,
+             is_active=1""",
+        (version, channel, exe_path, setup_path, exe_sha256, setup_sha256, exe_size_bytes, setup_size_bytes, updater_version, release_notes),
+    )
+    db.commit()
+    return get_agent_version(version) or {}
+
+
+def get_agent_version(version: str) -> dict | None:
+    row = get_db().execute("SELECT * FROM agent_versions WHERE version = ?", (version,)).fetchone()
+    return _dict_or_none(row)
+
+
+def list_agent_versions() -> list[dict]:
+    rows = get_db().execute("SELECT * FROM agent_versions ORDER BY created_at DESC, id DESC").fetchall()
+    return [dict(row) for row in rows]
+
+
+def create_agent_update_job(agent_name: str, target_version: str, from_version: str = "") -> dict | None:
+    """创建单机更新任务；同一时间只允许一个 active job。"""
+    db = get_db()
+    placeholders = _active_status_placeholders()
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        agent = db.execute("SELECT * FROM agents WHERE name = ?", (agent_name,)).fetchone()
+        if not agent:
+            db.rollback()
+            return None
+
+        existing = db.execute(
+            f"""SELECT * FROM agent_update_jobs
+                WHERE agent_name = ?
+                  AND status IN ('pending', {placeholders})
+                ORDER BY id DESC LIMIT 1""",
+            (agent_name, *UPDATE_ACTIVE_STATUSES),
+        ).fetchone()
+        if existing:
+            db.commit()
+            return dict(existing)
+
+        active = db.execute(
+            f"""SELECT * FROM agent_update_jobs
+                WHERE status IN ({placeholders})
+                ORDER BY updated_at DESC LIMIT 1""",
+            UPDATE_ACTIVE_STATUSES,
+        ).fetchone()
+        agent_status = dict(agent).get("status") or ""
+        # 离线机器只创建 pending，不占用 active；在线机器如果已有 active job 则拒绝。
+        if active and agent_status == "online":
+            db.rollback()
+            raise RuntimeError(f"已有机器正在更新: {active['agent_name']} {active['status']}")
+
+        job_id = uuid.uuid4().hex
+        effective_from = from_version or (agent["agent_version"] or "")
+        db.execute(
+            """INSERT INTO agent_update_jobs (
+                 job_id, install_id, machine_id, agent_name, from_version, target_version,
+                 status, total_bytes, updated_at
+               ) VALUES (?, ?, ?, ?, ?, ?, 'pending', 0, datetime('now', 'localtime'))""",
+            (job_id, agent["install_id"] if "install_id" in agent.keys() else "", agent["machine_id"] or "", agent_name, effective_from, target_version),
+        )
+        _add_update_event(db, job_id, agent_name, "INFO", "pending", f"创建更新任务到 v{target_version}")
+        db.commit()
+        return get_update_job(job_id)
+    except Exception:
+        try:
+            db.rollback()
+        except sqlite3.Error:
+            pass
+        raise
+
+
+def get_update_job(job_id: str) -> dict | None:
+    row = get_db().execute("SELECT * FROM agent_update_jobs WHERE job_id = ?", (job_id,)).fetchone()
+    return _dict_or_none(row)
+
+
+def get_latest_update_job(agent_name: str) -> dict | None:
+    row = get_db().execute(
+        "SELECT * FROM agent_update_jobs WHERE agent_name = ? ORDER BY id DESC LIMIT 1",
+        (agent_name,),
+    ).fetchone()
+    return _dict_or_none(row)
+
+
+def list_update_events(job_id: str, limit: int = 10) -> list[dict]:
+    rows = get_db().execute(
+        """SELECT * FROM agent_update_events
+           WHERE job_id = ?
+           ORDER BY id DESC LIMIT ?""",
+        (job_id, max(1, min(int(limit or 10), 100))),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def claim_next_update_job(install_id: str = "", machine_id: str = "", updater_version: str = "") -> dict | None:
+    """Updater 领取属于本机的下一个任务。"""
+    db = get_db()
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        conditions = ["status = 'pending'"]
+        params: list[str] = []
+        if install_id:
+            conditions.append("(install_id = ? OR install_id = '')")
+            params.append(install_id)
+        if machine_id:
+            conditions.append("machine_id = ?")
+            params.append(machine_id)
+        if not install_id and not machine_id:
+            db.rollback()
+            return None
+        row = db.execute(
+            f"""SELECT * FROM agent_update_jobs
+                WHERE {' AND '.join(conditions)}
+                ORDER BY id ASC LIMIT 1""",
+            params,
+        ).fetchone()
+        if not row:
+            db.commit()
+            return None
+
+        db.execute(
+            """UPDATE agent_update_jobs
+               SET status='claimed',
+                   install_id=CASE WHEN install_id = '' THEN ? ELSE install_id END,
+                   claimed_at=datetime('now', 'localtime'),
+                   updated_at=datetime('now', 'localtime'),
+                   last_log=?
+               WHERE job_id = ? AND status='pending'""",
+            (install_id or row["install_id"] or "", f"Updater {updater_version or 'unknown'} 已领取任务", row["job_id"]),
+        )
+        _add_update_event(db, row["job_id"], row["agent_name"], "INFO", "claimed", f"Updater {updater_version or 'unknown'} 已领取任务")
+        db.commit()
+        return get_update_job(row["job_id"])
+    except Exception:
+        try:
+            db.rollback()
+        except sqlite3.Error:
+            pass
+        raise
+
+
+def update_job_heartbeat(job_id: str, status: str = "", progress_bytes: int | None = None,
+                         total_bytes: int | None = None, message: str = "", error: str = "") -> dict | None:
+    db = get_db()
+    job = get_update_job(job_id)
+    if not job:
+        return None
+    next_status = status or job["status"]
+    progress = job["progress_bytes"] if progress_bytes is None else max(0, int(progress_bytes))
+    total = job["total_bytes"] if total_bytes is None else max(0, int(total_bytes))
+    verifying_started_at = job.get("verifying_started_at") or ""
+    rollback_started_at = job.get("rollback_started_at") or ""
+    finished_at = job.get("finished_at") or ""
+    if next_status == "verifying" and not verifying_started_at:
+        verifying_started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    if next_status in ("rolled_back_verified", "rolled_back_unverified") and not rollback_started_at:
+        rollback_started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    if next_status in UPDATE_TERMINAL_STATUSES and not finished_at:
+        finished_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    db.execute(
+        """UPDATE agent_update_jobs
+           SET status=?,
+               progress_bytes=?,
+               total_bytes=?,
+               last_error=CASE WHEN ? != '' THEN ? ELSE last_error END,
+               last_log=CASE WHEN ? != '' THEN ? ELSE last_log END,
+               verifying_started_at=?,
+               rollback_started_at=?,
+               finished_at=?,
+               updated_at=datetime('now', 'localtime')
+           WHERE job_id=?""",
+        (next_status, progress, total, error or "", error or "", message or "", message or "", verifying_started_at, rollback_started_at, finished_at, job_id),
+    )
+    if message or error or status:
+        _add_update_event(db, job_id, job["agent_name"], "ERROR" if error else "INFO", next_status, error or message or f"status={next_status}")
+    db.commit()
+    return get_update_job(job_id)
+
+
+def finish_update_job(job_id: str, status: str, message: str = "", error: str = "") -> dict | None:
+    if status == "rolled_back":
+        status = "rolled_back_unverified"
+    return update_job_heartbeat(job_id, status=status, message=message, error=error)
+
+
+def cancel_update_job(job_id: str) -> dict | None:
+    job = get_update_job(job_id)
+    if not job or job["status"] not in ("pending", "claimed", "downloaded"):
+        return None
+    return finish_update_job(job_id, "canceled", "更新任务已取消")
+
+
+def retry_update_job(job_id: str) -> dict | None:
+    job = get_update_job(job_id)
+    if not job or job["status"] not in UPDATE_TERMINAL_STATUSES:
+        return None
+    return create_agent_update_job(job["agent_name"], job["target_version"], job["from_version"])
+
+
+def reap_stale_update_jobs() -> int:
+    """把长时间未推进的更新任务标记为 stale，避免 Web 无限显示安装中。"""
+    db = get_db()
+    changed = 0
+    now = datetime.now()
+    rows = db.execute(
+        f"""SELECT * FROM agent_update_jobs
+            WHERE status IN ({_active_status_placeholders()})""",
+        UPDATE_ACTIVE_STATUSES,
+    ).fetchall()
+    for row in rows:
+        status = row["status"]
+        if status == "waiting_login":
+            continue
+        timeout = UPDATE_STALE_SECONDS.get(status)
+        updated_at = _parse_db_datetime(row["updated_at"] or "")
+        if not timeout or not updated_at or now - updated_at <= timedelta(seconds=timeout):
+            continue
+        db.execute(
+            """UPDATE agent_update_jobs
+               SET status='stale',
+                   last_error=?,
+                   finished_at=datetime('now', 'localtime'),
+                   updated_at=datetime('now', 'localtime')
+               WHERE job_id=?""",
+            (f"{status} 阶段超过 {timeout} 秒未推进", row["job_id"]),
+        )
+        _add_update_event(db, row["job_id"], row["agent_name"], "ERROR", "stale", f"{status} 阶段超时")
+        changed += 1
+    if changed:
+        db.commit()
+    return changed
+
+
+def _verify_update_job_from_agent(db: sqlite3.Connection, agent_name: str, machine_id: str, install_id: str,
+                                  agent_version: str, update_job_id: str = ""):
+    if not agent_version:
+        return
+    params: list[str] = []
+    conditions = [
+        "agent_name = ?",
+        "status IN ('verifying', 'restarting', 'waiting_login')",
+    ]
+    params.append(agent_name)
+    if machine_id:
+        conditions.append("machine_id = ?")
+        params.append(machine_id)
+    if install_id:
+        conditions.append("(install_id = ? OR install_id = '')")
+        params.append(install_id)
+    if update_job_id:
+        conditions.append("job_id = ?")
+        params.append(update_job_id)
+    row = db.execute(
+        f"""SELECT * FROM agent_update_jobs
+            WHERE {' AND '.join(conditions)}
+            ORDER BY id DESC LIMIT 1""",
+        params,
+    ).fetchone()
+    if not row or row["target_version"] != agent_version:
+        return
+    verify_start = _parse_db_datetime(row["verifying_started_at"] or row["updated_at"] or "")
+    if verify_start and datetime.now() + timedelta(seconds=2) < verify_start:
+        return
+    db.execute(
+        """UPDATE agent_update_jobs
+           SET status='verified',
+               install_id=CASE WHEN install_id = '' THEN ? ELSE install_id END,
+               last_log='目标版本心跳验证成功',
+               finished_at=datetime('now', 'localtime'),
+               updated_at=datetime('now', 'localtime')
+           WHERE job_id=?""",
+        (install_id or "", row["job_id"]),
+    )
+    _add_update_event(db, row["job_id"], agent_name, "INFO", "verified", "目标版本心跳验证成功")
 
 
 def set_agent_update_permission(name: str, target_version: str = "") -> bool:
@@ -532,6 +947,7 @@ def _merge_duplicate_agents_by_machine_id(db: sqlite3.Connection, machine_id: st
 
 def get_agents() -> list[dict]:
     db = get_db()
+    reap_stale_update_jobs()
     rows = db.execute(
         "SELECT * FROM agents ORDER BY last_seen DESC"
     ).fetchall()
@@ -542,6 +958,19 @@ def get_agents() -> list[dict]:
         if item.get("status") == "online" and not _is_agent_online(item, now):
             item["status"] = "offline"
             item["message"] = item.get("message") or "heartbeat timeout"
+        job = db.execute(
+            "SELECT * FROM agent_update_jobs WHERE agent_name = ? ORDER BY id DESC LIMIT 1",
+            (item["name"],),
+        ).fetchone()
+        if job:
+            job_dict = dict(job)
+            item["update_job"] = job_dict
+            item["update_job_id"] = job_dict.get("job_id", "")
+            item["update_status"] = job_dict.get("status") or item.get("update_status", "")
+            item["update_target_version"] = job_dict.get("target_version") or item.get("update_target_version", "")
+            item["update_error"] = job_dict.get("last_error") or item.get("update_error", "")
+            item["update_progress_bytes"] = job_dict.get("progress_bytes", 0)
+            item["update_total_bytes"] = job_dict.get("total_bytes", 0)
         agents.append(item)
     return agents
 
