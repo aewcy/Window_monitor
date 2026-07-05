@@ -26,6 +26,12 @@ export const allowAgentUpdate = (name) =>
 export const pauseAgentUpdate = (name) =>
   request(`/agents/${encodeURIComponent(name)}/update/pause`, { method: 'POST' })
 export const getAgentVersion = () => request('/agent/version')
+export const sendAgentCommand = (name, command, payload = {}) =>
+  request(`/agents/${encodeURIComponent(name)}/commands`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ command, payload }),
+  })
 
 // Screenshots
 export const getLatestScreenshot = (agent, monitor) => {

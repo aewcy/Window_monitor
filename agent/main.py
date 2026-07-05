@@ -270,7 +270,8 @@ class Reporter:
             print(f"  [OK] Enter事件 {data.get('display_name', '?')}")
 
     def heartbeat(self, screenshot_interval: float = 0, ip: str = "", machine_id: str = "",
-                  update_status: str = "", update_target_version: str = "", update_error: str = ""):
+                  update_status: str = "", update_target_version: str = "", update_error: str = "",
+                  control_status: str = ""):
         data = {
             "agent_name": self.agent,
             "screenshot_interval": screenshot_interval,
@@ -286,10 +287,13 @@ class Reporter:
             data["update_target_version"] = update_target_version
         if update_error:
             data["update_error"] = update_error
+        if control_status:
+            data["control_status"] = control_status
         self._enqueue("control", ("heartbeat", data), drop_oldest=True, warn=False)
 
     def status(self, status: str, message: str, machine_id: str = "",
-               update_status: str = "", update_target_version: str = "", update_error: str = ""):
+               update_status: str = "", update_target_version: str = "", update_error: str = "",
+               control_status: str = ""):
         data = {
             "agent_name": self.agent,
             "status": status,
@@ -304,6 +308,8 @@ class Reporter:
             data["update_target_version"] = update_target_version
         if update_error:
             data["update_error"] = update_error
+        if control_status:
+            data["control_status"] = control_status
         self._enqueue("control", ("status", data), drop_oldest=True, warn=False)
 
 
@@ -317,6 +323,7 @@ class Reporter:
 _state_lock = threading.Lock()               # 保护以下两个跨线程共享变量
 _last_activity_time = time.time()            # 最后一次用户活动时间
 _server_interval = SCREENSHOT_INTERVAL       # 服务端下发的截图间隔
+_capture_paused = threading.Event()          # Web 控制的采集暂停状态
 
 
 def resolve_screenshot_strategy(idle_sec: float, server_interval: float) -> tuple[float, str]:
@@ -351,6 +358,11 @@ def record_activity():
     global _last_activity_time
     with _state_lock:
         _last_activity_time = time.time()
+
+
+def is_capture_paused() -> bool:
+    """返回 Web 控制的采集暂停状态。"""
+    return _capture_paused.is_set()
 
 
 def _start_activity_monitor():
@@ -750,20 +762,78 @@ def main(stop_event=None):
             except (EOFError, OSError):
                 pass  # 无控制台时 input 会失败，自动继续
 
+    def current_control_status() -> str:
+        return "paused" if is_capture_paused() else "running"
+
+    def report_command_result(command_id: int, status: str, result: str):
+        try:
+            requests.post(
+                f"{SERVER_URL}/api/agent/commands/{command_id}/result",
+                json={"status": status, "result": result},
+                timeout=5,
+            )
+        except Exception as e:
+            reporter.diagnostic("network", "WARNING", f"控制命令结果回报失败: {e}")
+
+    def execute_agent_command(command: dict):
+        command_id = int(command.get("id") or 0)
+        name = command.get("command") or ""
+        try:
+            if name == "pause_capture":
+                _capture_paused.set()
+                reporter.status("online", "capture paused", machine_id, control_status="paused")
+                reporter.flush_channel("control", timeout=3)
+                report_command_result(command_id, "done", "采集已暂停")
+                print("  [Control] 采集已暂停")
+                return
+            if name == "resume_capture":
+                _capture_paused.clear()
+                reporter.status("online", "capture resumed", machine_id, control_status="running")
+                reporter.flush_channel("control", timeout=3)
+                report_command_result(command_id, "done", "采集已恢复")
+                print("  [Control] 采集已恢复")
+                return
+            report_command_result(command_id, "failed", f"不支持的命令: {name}")
+        except Exception as e:
+            report_command_result(command_id, "failed", str(e))
+
+    def command_poller():
+        while True:
+            try:
+                r = requests.get(
+                    f"{SERVER_URL}/api/agent/commands/poll",
+                    params={"agent": agent_name},
+                    timeout=5,
+                )
+                if r.status_code == 200:
+                    command = r.json().get("command")
+                    if command:
+                        execute_agent_command(command)
+            except Exception:
+                pass
+            time.sleep(5)
+
     # 上报上线
-    reporter.status("online", f"Agent started ({platform})", machine_id)
+    reporter.status("online", f"Agent started ({platform})", machine_id, control_status=current_control_status())
     reporter.diagnostic("system", "INFO", f"Agent 启动 ({platform})")
     updater.start()
 
     # 启动采集模块
     screenshot = ScreenCapture(interval=SCREENSHOT_INTERVAL)
-    screenshot.add_listener(reporter.screenshot)
+
+    def report_screenshot_if_running(data):
+        if not is_capture_paused():
+            reporter.screenshot(data)
+
+    screenshot.add_listener(report_screenshot_if_running)
     screenshot.add_diagnostic_listener(reporter.diagnostic)
 
     window = AppTracker(interval=APP_TRACK_INTERVAL)
 
     def on_app_switch_with_screenshot(info):
         """窗口切换时立即触发截图（全屏），确保有时间戳接近的截图"""
+        if is_capture_paused():
+            return
         shots = screenshot.capture_once()
         if shots:
             for shot in shots:
@@ -775,13 +845,20 @@ def main(stop_event=None):
     window.add_listener(on_app_switch_with_screenshot)
 
     browser = BrowserHistoryCollector(interval=BROWSER_HISTORY_INTERVAL)
-    browser.add_listener(reporter.browser)
+
+    def report_browser_if_running(records):
+        if not is_capture_paused():
+            reporter.browser(records)
+
+    browser.add_listener(report_browser_if_running)
 
     # 键盘 Enter 监控 — 聊天应用发送消息时触发截图
     keyboard_monitor = KeyboardEnterMonitor()
 
     def on_chat_enter(info):
         """Enter 键在聊天应用中按下 → 立即截图（全屏）+ 上报事件"""
+        if is_capture_paused():
+            return
         shots = screenshot.capture_once()
         if shots:
             for shot in shots:
@@ -804,10 +881,11 @@ def main(stop_event=None):
     # 心跳线程
     def heartbeat_loop():
         while True:
-            reporter.heartbeat(screenshot.interval, local_ip, machine_id)
+            reporter.heartbeat(screenshot.interval, local_ip, machine_id, control_status=current_control_status())
             time.sleep(HEARTBEAT_INTERVAL)
 
     threading.Thread(target=heartbeat_loop, daemon=True).start()
+    threading.Thread(target=command_poller, daemon=True, name="command-poller").start()
 
     # 服务端配置轮询 — 只更新 _server_interval，最终由频率控制器裁决
     def config_poller():
@@ -838,6 +916,15 @@ def main(stop_event=None):
         last_interval = None
 
         while True:
+            if is_capture_paused():
+                if last_interval != "paused":
+                    screenshot.set_interval(3600)
+                    print("  [Adaptive] 采集暂停，截图间隔临时降到 3600s")
+                    reporter.diagnostic("screenshot", "INFO", "Web 控制: 采集暂停")
+                    last_interval = "paused"
+                time.sleep(1)
+                continue
+
             idle_sec = _get_idle_seconds()
             # 快照服务端间隔，减少持锁时间
             with _state_lock:
@@ -869,7 +956,7 @@ def main(stop_event=None):
     def shutdown():
         """统一关闭逻辑"""
         print("\n  正在停止...")
-        reporter.status("offline", "Agent stopped", machine_id)
+        reporter.status("offline", "Agent stopped", machine_id, control_status=current_control_status())
         screenshot.stop()
         window.stop()
         browser.stop()

@@ -197,6 +197,16 @@ class TestAgentHeartbeat:
         assert agent["status"] == "error"
         assert agent["message"] == "磁盘满"
 
+    def test_heartbeat_updates_control_status(self, client):
+        client.post("/api/heartbeat", json={
+            "agent_name": "paused-agent",
+            "control_status": "paused",
+        })
+        resp = client.get("/api/agents")
+        agent = next(a for a in resp.json() if a["name"] == "paused-agent")
+        assert agent["control_status"] == "paused"
+        assert agent["control_updated_at"]
+
 
 # ============================================================
 # 4. Agent 管理
@@ -257,6 +267,49 @@ class TestAgentManagement:
         assert resp.json()["status"] == "ok"
         agents = [a["name"] for a in client.get("/api/agents").json()]
         assert "del-agent" not in agents
+
+    def test_agent_command_lifecycle(self, client):
+        _register_agent(client, "cmd-agent")
+
+        created = client.post(
+            "/api/agents/cmd-agent/commands",
+            json={"command": "pause_capture"},
+        )
+        assert created.status_code == 200
+        command = created.json()["command"]
+        assert command["status"] == "pending"
+
+        polled = client.get("/api/agent/commands/poll?agent=cmd-agent")
+        assert polled.status_code == 200
+        claimed = polled.json()["command"]
+        assert claimed["id"] == command["id"]
+        assert claimed["status"] == "claimed"
+        assert claimed["command"] == "pause_capture"
+
+        finished = client.post(
+            f"/api/agent/commands/{claimed['id']}/result",
+            json={"status": "done", "result": "采集已暂停"},
+        )
+        assert finished.status_code == 200
+
+        empty = client.get("/api/agent/commands/poll?agent=cmd-agent")
+        assert empty.status_code == 200
+        assert empty.json()["command"] is None
+
+    def test_agent_command_rejects_invalid_command(self, client):
+        _register_agent(client, "cmd-invalid-agent")
+        resp = client.post(
+            "/api/agents/cmd-invalid-agent/commands",
+            json={"command": "shutdown"},
+        )
+        assert resp.status_code == 400
+
+    def test_agent_command_unknown_agent_404(self, client):
+        resp = client.post(
+            "/api/agents/no-such-agent/commands",
+            json={"command": "pause_capture"},
+        )
+        assert resp.status_code == 404
 
     def test_delete_agent_returns_cascade_counts(self, client):
         """删除应返回级联删除的计数"""
@@ -724,7 +777,7 @@ class TestAgentUpdate:
         resp = client.get("/api/agent/version")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["version"] == "0.57"
+        assert data["version"] == "0.57.2"
         assert data["exe_url"] == "/api/agent/exe"
         assert data["sha256"]
         assert data["size_bytes"] > 0
@@ -734,7 +787,7 @@ class TestAgentUpdate:
 
         allow = client.post("/api/agents/update-agent/update/allow", json={})
         assert allow.status_code == 200
-        assert allow.json()["version"] == "0.57"
+        assert allow.json()["version"] == "0.57.2"
 
         check = client.get("/api/agent/update/check?agent=update-agent&version=0.50")
         assert check.status_code == 200
@@ -761,7 +814,7 @@ class TestAgentUpdate:
             "agent_name": "retry-agent",
             "agent_version": "0.50",
             "update_status": "failed",
-            "update_target_version": "0.57",
+            "update_target_version": "0.57.2",
             "update_error": "network reset",
         })
         assert failed.status_code == 200
@@ -770,7 +823,7 @@ class TestAgentUpdate:
         assert check.status_code == 200
         data = check.json()
         assert data["allowed"] is True
-        assert data["allowed_version"] == "0.57"
+        assert data["allowed_version"] == "0.57.2"
 
 
 # ============================================================

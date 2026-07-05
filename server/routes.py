@@ -4,6 +4,7 @@ FastAPI 路由定义
 import hashlib
 import os
 import base64
+import json
 from collections import deque
 from datetime import datetime, timedelta
 from typing import Optional
@@ -26,6 +27,7 @@ from models import (
     save_diagnostic, query_diagnostics, get_diagnostic_categories,
     get_agent_by_ip, get_agent_by_machine_id,
     set_agent_update_permission, clear_agent_update_permission,
+    create_agent_command, claim_next_agent_command, finish_agent_command,
 )
 from logger import log, format_log_entry
 
@@ -173,6 +175,7 @@ async def heartbeat(data: dict):
     update_status = data.get("update_status", "")
     update_target_version = data.get("update_target_version", "")
     update_error = data.get("update_error", "")
+    control_status = data.get("control_status", "")
     upsert_agent(
         agent_name,
         "online",
@@ -182,6 +185,7 @@ async def heartbeat(data: dict):
         update_status=update_status,
         update_target_version=update_target_version,
         update_error=update_error,
+        control_status=control_status,
     )
     # 记录 Agent 当前截图间隔
     interval = data.get("screenshot_interval", 0)
@@ -201,6 +205,7 @@ async def agent_status(data: dict):
     update_status = data.get("update_status", "")
     update_target_version = data.get("update_target_version", "")
     update_error = data.get("update_error", "")
+    control_status = data.get("control_status", "")
     upsert_agent(
         agent_name,
         status,
@@ -210,7 +215,44 @@ async def agent_status(data: dict):
         update_status=update_status,
         update_target_version=update_target_version,
         update_error=update_error,
+        control_status=control_status,
     )
+    return {"status": "ok"}
+
+
+ALLOWED_AGENT_COMMANDS = {"pause_capture", "resume_capture"}
+
+
+@router.post("/agents/{agent_name}/commands")
+async def create_control_command(agent_name: str, data: dict):
+    """Web 下发 Agent 控制命令。"""
+    command = (data.get("command") or "").strip()
+    if command not in ALLOWED_AGENT_COMMANDS:
+        raise HTTPException(status_code=400, detail="不支持的 Agent 控制命令")
+    payload = data.get("payload") or {}
+    if not isinstance(payload, str):
+        payload = json.dumps(payload, ensure_ascii=False)
+    item = create_agent_command(agent_name, command, payload or "{}")
+    if not item:
+        raise HTTPException(status_code=404, detail="Agent 不存在")
+    return {"status": "ok", "command": item}
+
+
+@router.get("/agent/commands/poll")
+async def poll_agent_command(agent: str = Query(...)):
+    """Agent 拉取下一条待执行控制命令。"""
+    command = claim_next_agent_command(agent)
+    return {"status": "ok", "command": command}
+
+
+@router.post("/agent/commands/{command_id}/result")
+async def finish_control_command(command_id: int, data: dict):
+    """Agent 回报控制命令执行结果。"""
+    status = (data.get("status") or "done").strip()
+    result = data.get("result") or ""
+    ok = finish_agent_command(command_id, status, result)
+    if not ok:
+        raise HTTPException(status_code=404, detail="命令不存在")
     return {"status": "ok"}
 
 
@@ -610,7 +652,7 @@ SERVER_DIR = os.path.dirname(__file__)
 AGENT_STATIC_DIR = os.path.join(SERVER_DIR, "static", "agent")
 AGENT_SETUP_PATH = os.path.join(AGENT_STATIC_DIR, "WindowsMonitorSetup.exe")
 AGENT_EXE_PATH = os.path.join(AGENT_STATIC_DIR, "monitor-agent.exe")
-AGENT_LATEST_VERSION = "0.57"
+AGENT_LATEST_VERSION = "0.57.2"
 
 
 def _file_sha256(path: str) -> str:

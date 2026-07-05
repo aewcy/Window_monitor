@@ -216,6 +216,22 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_diag_category
             ON diagnostic_logs(category, level);
 
+        -- Web 下发给 Agent 的控制命令
+        CREATE TABLE IF NOT EXISTS agent_commands (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            agent_name TEXT NOT NULL,
+            command TEXT NOT NULL,
+            payload TEXT DEFAULT '{}',
+            status TEXT DEFAULT 'pending',
+            result TEXT DEFAULT '',
+            created_at TEXT DEFAULT (datetime('now', 'localtime')),
+            claimed_at TEXT DEFAULT '',
+            finished_at TEXT DEFAULT '',
+            FOREIGN KEY (agent_name) REFERENCES agents(name)
+        );
+        CREATE INDEX IF NOT EXISTS idx_agent_commands_agent_status
+            ON agent_commands(agent_name, status, id);
+
     """)
     db.commit()
 
@@ -295,6 +311,8 @@ def init_db():
     # 向前兼容迁移: Agent 后台更新状态
     for column, ddl in [
         ("agent_version", "ALTER TABLE agents ADD COLUMN agent_version TEXT DEFAULT ''"),
+        ("control_status", "ALTER TABLE agents ADD COLUMN control_status TEXT DEFAULT 'running'"),
+        ("control_updated_at", "ALTER TABLE agents ADD COLUMN control_updated_at TEXT DEFAULT ''"),
         ("update_status", "ALTER TABLE agents ADD COLUMN update_status TEXT DEFAULT 'idle'"),
         ("update_target_version", "ALTER TABLE agents ADD COLUMN update_target_version TEXT DEFAULT ''"),
         ("update_error", "ALTER TABLE agents ADD COLUMN update_error TEXT DEFAULT ''"),
@@ -315,7 +333,7 @@ def init_db():
 
 def upsert_agent(name: str, status: str = "online", message: str = "", ip: str = "",
                  machine_id: str = "", agent_version: str = "", update_status: str = "",
-                 update_target_version: str = "", update_error: str = ""):
+                 update_target_version: str = "", update_error: str = "", control_status: str = ""):
     name = name.strip()
     if not name:
         return
@@ -324,9 +342,10 @@ def upsert_agent(name: str, status: str = "online", message: str = "", ip: str =
         db.execute(
             """INSERT INTO agents (
                     name, status, last_seen, message, ip, machine_id,
-                    agent_version, update_status, update_target_version, update_error, update_checked_at
+                    agent_version, control_status, control_updated_at,
+                    update_status, update_target_version, update_error, update_checked_at
                   )
-               VALUES (?, ?, datetime('now', 'localtime'), ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
+               VALUES (?, ?, datetime('now', 'localtime'), ?, ?, ?, ?, ?, datetime('now', 'localtime'), ?, ?, ?, datetime('now', 'localtime'))
                ON CONFLICT(name) DO UPDATE SET
                  status=excluded.status,
                  last_seen=excluded.last_seen,
@@ -334,6 +353,8 @@ def upsert_agent(name: str, status: str = "online", message: str = "", ip: str =
                  ip=CASE WHEN excluded.ip != '' THEN excluded.ip ELSE agents.ip END,
                  machine_id=CASE WHEN excluded.machine_id != '' THEN excluded.machine_id ELSE agents.machine_id END,
                  agent_version=CASE WHEN excluded.agent_version != '' THEN excluded.agent_version ELSE agents.agent_version END,
+                 control_status=CASE WHEN excluded.control_status != '' THEN excluded.control_status ELSE agents.control_status END,
+                 control_updated_at=CASE WHEN excluded.control_status != '' THEN excluded.control_updated_at ELSE agents.control_updated_at END,
                  update_status=CASE WHEN excluded.update_status != '' THEN excluded.update_status ELSE agents.update_status END,
                  update_target_version=CASE WHEN excluded.update_target_version != '' THEN excluded.update_target_version ELSE agents.update_target_version END,
                  update_error=CASE
@@ -347,7 +368,7 @@ def upsert_agent(name: str, status: str = "online", message: str = "", ip: str =
                    WHEN excluded.update_status IN ('updated', 'rolled_back') THEN ''
                    ELSE agents.update_allowed_version
                  END""",
-            (name, status, message, ip, machine_id, agent_version, update_status, update_target_version, update_error)
+            (name, status, message, ip, machine_id, agent_version, control_status, update_status, update_target_version, update_error)
         )
     except sqlite3.IntegrityError:
         # 并发 INSERT 竞态兜底：另一个线程先 INSERT 成功，改为 UPDATE
@@ -359,6 +380,8 @@ def upsert_agent(name: str, status: str = "online", message: str = "", ip: str =
                  ip=CASE WHEN ? != '' THEN ? ELSE ip END,
                  machine_id=CASE WHEN ? != '' THEN ? ELSE machine_id END,
                  agent_version=CASE WHEN ? != '' THEN ? ELSE agent_version END,
+                 control_status=CASE WHEN ? != '' THEN ? ELSE control_status END,
+                 control_updated_at=CASE WHEN ? != '' THEN datetime('now','localtime') ELSE control_updated_at END,
                  update_status=CASE WHEN ? != '' THEN ? ELSE update_status END,
                  update_target_version=CASE WHEN ? != '' THEN ? ELSE update_target_version END,
                  update_error=CASE
@@ -375,7 +398,8 @@ def upsert_agent(name: str, status: str = "online", message: str = "", ip: str =
                WHERE name=?""",
             (
                 status, message, ip, ip, machine_id, machine_id,
-                agent_version, agent_version, update_status, update_status,
+                agent_version, agent_version, control_status, control_status, control_status,
+                update_status, update_status,
                 update_target_version, update_target_version, update_status, update_error, update_error,
                 agent_version, update_status, agent_version, agent_version, update_status, name,
             )
@@ -418,6 +442,63 @@ def clear_agent_update_permission(name: str) -> bool:
     return cursor.rowcount > 0
 
 
+def create_agent_command(agent_name: str, command: str, payload: str = "{}") -> dict | None:
+    """Web 创建一条待 Agent 拉取的控制命令。"""
+    db = get_db()
+    agent = db.execute("SELECT name FROM agents WHERE name = ?", (agent_name,)).fetchone()
+    if not agent:
+        return None
+    cursor = db.execute(
+        """INSERT INTO agent_commands (agent_name, command, payload, status)
+           VALUES (?, ?, ?, 'pending')""",
+        (agent_name, command, payload or "{}"),
+    )
+    db.commit()
+    return get_agent_command(cursor.lastrowid)
+
+
+def get_agent_command(command_id: int) -> dict | None:
+    db = get_db()
+    row = db.execute("SELECT * FROM agent_commands WHERE id = ?", (command_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def claim_next_agent_command(agent_name: str) -> dict | None:
+    """Agent 拉取并占用一条待执行命令。"""
+    db = get_db()
+    row = db.execute(
+        """SELECT * FROM agent_commands
+           WHERE agent_name = ? AND status = 'pending'
+           ORDER BY id ASC LIMIT 1""",
+        (agent_name,),
+    ).fetchone()
+    if not row:
+        return None
+    db.execute(
+        """UPDATE agent_commands
+           SET status = 'claimed', claimed_at = datetime('now', 'localtime')
+           WHERE id = ? AND status = 'pending'""",
+        (row["id"],),
+    )
+    db.commit()
+    return get_agent_command(row["id"])
+
+
+def finish_agent_command(command_id: int, status: str, result: str = "") -> bool:
+    """Agent 回报命令执行结果。"""
+    if status not in ("done", "failed"):
+        status = "failed"
+    db = get_db()
+    cursor = db.execute(
+        """UPDATE agent_commands
+           SET status = ?, result = ?, finished_at = datetime('now', 'localtime')
+           WHERE id = ?""",
+        (status, result or "", command_id),
+    )
+    db.commit()
+    return cursor.rowcount > 0
+
+
 def _merge_duplicate_agents_by_machine_id(db: sqlite3.Connection, machine_id: str):
     rows = db.execute(
         """SELECT name FROM agents
@@ -445,6 +526,7 @@ def _merge_duplicate_agents_by_machine_id(db: sqlite3.Connection, machine_id: st
         )
         db.execute("UPDATE browser_history SET agent_name = ? WHERE agent_name = ?", (keep, duplicate))
         db.execute("UPDATE diagnostic_logs SET agent_name = ? WHERE agent_name = ?", (keep, duplicate))
+        db.execute("UPDATE agent_commands SET agent_name = ? WHERE agent_name = ?", (keep, duplicate))
         db.execute("DELETE FROM agents WHERE name = ?", (duplicate,))
 
 

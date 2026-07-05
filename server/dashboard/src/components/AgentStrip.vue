@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useAgentStore } from '../stores/agent'
-import { allowAgentUpdate, getAgentVersion, pauseAgentUpdate, renameAgent } from '../api'
+import { allowAgentUpdate, getAgentVersion, pauseAgentUpdate, renameAgent, sendAgentCommand } from '../api'
 
 const agent = useAgentStore()
 
@@ -74,6 +74,22 @@ async function pauseUpdate() {
   closeCtx()
 }
 
+function isCapturePaused(a) {
+  return a?.control_status === 'paused'
+}
+
+async function toggleCapture() {
+  const a = ctxMenu.value.agent
+  if (!a) return
+  try {
+    await sendAgentCommand(a.name, isCapturePaused(a) ? 'resume_capture' : 'pause_capture')
+    await agent.fetchAgents()
+  } catch (e) {
+    console.error('Agent command failed:', e)
+  }
+  closeCtx()
+}
+
 function updateLabel(a) {
   return a?.agent_version ? `v${a.agent_version}` : '未上报版本'
 }
@@ -119,6 +135,7 @@ function updateTitle(a) {
   if (a?.update_allowed_version) lines.push(`允许更新: v${a.update_allowed_version}`)
   if (a?.update_status) lines.push(`更新状态: ${a.update_status}`)
   if (a?.update_checked_at) lines.push(`最近检查: ${a.update_checked_at}`)
+  lines.push(`运行控制: ${isCapturePaused(a) ? '已暂停采集' : '采集中'}`)
   const error = readableUpdateError(a?.update_error)
   if (error) lines.push(`错误: ${error}`)
   return lines.join('\n')
@@ -178,6 +195,7 @@ onUnmounted(() => {
       <span class="dot" :class="a.status === 'online' ? 'online' : 'offline'"></span>
       <span class="name">{{ a.display_name || a.name }}</span>
       <span class="meta">{{ updateLabel(a) }}</span>
+      <span v-if="isCapturePaused(a)" class="control-badge paused">已暂停采集</span>
       <span v-if="updateState(a)" class="update-badge" :class="updateStateClass(a)">{{ updateState(a) }}</span>
       <span class="meta">{{ a.screenshot_interval ? a.screenshot_interval + 's' : (a.status === 'online' ? '在线' : '离线') }}</span>
     </div>
@@ -200,6 +218,10 @@ onUnmounted(() => {
       <div class="ctx-item" @click="pauseUpdate">
         <span class="ctx-icon">⏸️</span>
         <span>暂停更新</span>
+      </div>
+      <div class="ctx-item" :class="{ disabled: ctxMenu.agent?.status !== 'online' }" @click="ctxMenu.agent?.status === 'online' && toggleCapture()">
+        <span class="ctx-icon">{{ isCapturePaused(ctxMenu.agent) ? '▶️' : '⏸️' }}</span>
+        <span>{{ isCapturePaused(ctxMenu.agent) ? '恢复采集' : '暂停采集' }}</span>
       </div>
       <div class="ctx-item danger" @click="startDelete">
         <span class="ctx-icon">🗑️</span>
@@ -264,6 +286,17 @@ onUnmounted(() => {
   font-size: 10px;
   color: var(--muted);
   background: rgba(255,255,255,.04);
+}
+.control-badge {
+  padding: 2px 6px;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  font-size: 10px;
+}
+.control-badge.paused {
+  color: #fca5a5;
+  border-color: rgba(252,165,165,.35);
+  background: rgba(252,165,165,.08);
 }
 .update-badge.pending {
   color: #fde68a;
