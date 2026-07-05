@@ -100,8 +100,8 @@ class TestHealth:
 
     def test_agent_port_blocks_web(self, client):
         resp = client.get("/", headers={"host": "monitor.local:8899"})
-        assert resp.status_code == 404
-        assert "仅用于 Agent API" in resp.json()["detail"]
+        assert resp.status_code == 503
+        assert resp.content == b""
 
     def test_public_web_port_allows_dashboard(self, client):
         resp = client.get("/", headers={"host": "monitor.local:14325"})

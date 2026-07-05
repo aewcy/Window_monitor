@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import (
@@ -109,12 +109,7 @@ async def agent_port_api_only_middleware(request: Request, call_next):
     """8899 只给 Agent/API 使用，Web 页面只通过 14325 对外展示。"""
     path = request.url.path
     if _request_port(request) == AGENT_API_PORT and not path.startswith("/api/"):
-        return JSONResponse(
-            status_code=404,
-            content={
-                "detail": f"Web 页面请使用 {WEB_PUBLIC_PORT} 端口，{AGENT_API_PORT} 端口仅用于 Agent API。",
-            },
-        )
+        return Response(status_code=503)
     return await call_next(request)
 
 
