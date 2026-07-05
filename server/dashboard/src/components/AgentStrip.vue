@@ -97,6 +97,10 @@ function updateLabel(a) {
 function updateState(a) {
   const target = a?.update_target_version || a?.update_allowed_version || latestVersion.value
   const targetText = target ? ` v${target}` : ''
+  if (a?.status !== 'online' && (a?.update_status === 'downloading' || a?.update_status === 'installing')) {
+    return `离线，更新中断${targetText}`
+  }
+  if (a?.status !== 'online' && a?.update_allowed_version) return `离线，等待上线 v${a.update_allowed_version}`
   if (a?.update_status === 'downloading') return `下载中${targetText}`
   if (a?.update_status === 'installing') return `安装中${targetText}`
   if (a?.update_status === 'updated') return `已更新${targetText}`
@@ -108,6 +112,7 @@ function updateState(a) {
 }
 
 function updateStateClass(a) {
+  if (a?.status !== 'online' && (a?.update_status === 'downloading' || a?.update_status === 'installing')) return 'danger'
   if (a?.update_status === 'failed' || a?.update_status === 'rolled_back') return 'danger'
   if (a?.update_status === 'downloading' || a?.update_status === 'installing') return 'active'
   if (a?.update_allowed_version) return 'pending'

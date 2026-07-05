@@ -670,7 +670,7 @@ def _agent_version_payload() -> dict:
     setup_sha = _file_sha256(AGENT_SETUP_PATH) if os.path.exists(AGENT_SETUP_PATH) else ""
     return {
         "version": AGENT_LATEST_VERSION,
-        "download_url": "/api/agent/download",
+        "download_url": f"/api/agent/download?v={AGENT_LATEST_VERSION}",
         "exe_url": "/api/agent/exe",
         "sha256": exe_sha,
         "setup_sha256": setup_sha,
@@ -716,6 +716,11 @@ async def download_agent_exe():
         path=AGENT_EXE_PATH,
         filename="monitor-agent.exe",
         media_type="application/vnd.microsoft.portable-executable",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
     )
 
 
@@ -770,6 +775,11 @@ async def download_agent():
 
     return FileResponse(
         path=AGENT_SETUP_PATH,
-        filename="WindowsMonitorSetup.exe",
+        filename=f"WindowsMonitorSetup-{AGENT_LATEST_VERSION}.exe",
         media_type="application/vnd.microsoft.portable-executable",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
     )
