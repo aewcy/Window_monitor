@@ -17,6 +17,8 @@ services:
       - TZ=Asia/Shanghai
       - SERVER_HOST=0.0.0.0
       - SERVER_PORT=8899
+      - AGENT_API_PORT=8899
+      - WEB_PUBLIC_PORT=14325
     logging:
       driver: "json-file"
       options:

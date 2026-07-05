@@ -18,6 +18,8 @@ def _get_int_env(name: str, default: int) -> int:
 # 服务监听
 HOST = os.environ.get("SERVER_HOST", "0.0.0.0")  # 绑定所有网卡
 PORT = _get_int_env("SERVER_PORT", 8899)
+AGENT_API_PORT = _get_int_env("AGENT_API_PORT", 8899)
+WEB_PUBLIC_PORT = _get_int_env("WEB_PUBLIC_PORT", 14325)
 
 # 数据存储目录
 DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "data"))

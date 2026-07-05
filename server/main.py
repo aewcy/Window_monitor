@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import (
     HOST, PORT, DATA_DIR, SCREENSHOT_DIR, CORS_ORIGINS,
     SCREENSHOT_RETENTION_HOURS, SCREENSHOT_CLEANUP_INTERVAL_MINUTES,
+    AGENT_API_PORT, WEB_PUBLIC_PORT,
 )
 from logger import log
 from models import init_db, cleanup_old_screenshots
@@ -88,6 +89,33 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _request_port(request: Request) -> int | None:
+    """从 Host 头解析外部访问端口。"""
+    if request.url.port:
+        return request.url.port
+    host = request.headers.get("host", "")
+    if ":" not in host:
+        return None
+    try:
+        return int(host.rsplit(":", 1)[1])
+    except ValueError:
+        return None
+
+
+@app.middleware("http")
+async def agent_port_api_only_middleware(request: Request, call_next):
+    """8899 只给 Agent/API 使用，Web 页面只通过 14325 对外展示。"""
+    path = request.url.path
+    if _request_port(request) == AGENT_API_PORT and not path.startswith("/api/"):
+        return JSONResponse(
+            status_code=404,
+            content={
+                "detail": f"Web 页面请使用 {WEB_PUBLIC_PORT} 端口，{AGENT_API_PORT} 端口仅用于 Agent API。",
+            },
+        )
+    return await call_next(request)
 
 
 # 安全响应头中间件

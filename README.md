@@ -109,6 +109,8 @@ volumes:
 
 Web 对外展示端口是 `14325`，Agent 默认上报端口仍是 `8899`。
 
+`8899` 只用于 Agent/API。浏览器访问 `http://<服务器IP>:8899/`、`/download` 或静态前端资源会返回 404；Web 面板和下载页统一使用 `14325`。
+
 `server/docker-compose.yml` 中的默认配置：
 
 ```yaml
@@ -116,6 +118,8 @@ environment:
   - TZ=Asia/Shanghai
   - SERVER_HOST=0.0.0.0
   - SERVER_PORT=8899
+  - AGENT_API_PORT=8899
+  - WEB_PUBLIC_PORT=14325
 ports:
   - "8899:8899"
   - "14325:8899"

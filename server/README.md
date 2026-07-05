@@ -40,6 +40,8 @@ python main.py
 |------|----------|--------|------|
 | `HOST` | `SERVER_HOST` | `0.0.0.0` | 监听地址 |
 | `PORT` | `SERVER_PORT` | `8899` | 容器内监听端口，宿主机可额外映射 `14325` 给 Web 访问 |
+| `AGENT_API_PORT` | `AGENT_API_PORT` | `8899` | Agent/API 专用外部端口，非 `/api/*` 路径会拒绝 |
+| `WEB_PUBLIC_PORT` | `WEB_PUBLIC_PORT` | `14325` | Web 面板和下载页对外展示端口 |
 | `DATA_DIR` | `DATA_DIR` | `data` | 数据目录 (DB + 截图) |
 | `CORS_ORIGINS` | `CORS_ORIGINS` | `["*"]` | CORS 允许源 |
 

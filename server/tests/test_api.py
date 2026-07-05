@@ -94,6 +94,19 @@ class TestHealth:
         assert data["status"] == "ok"
         assert "time" in data
 
+    def test_agent_port_allows_api(self, client):
+        resp = client.get("/api/health", headers={"host": "monitor.local:8899"})
+        assert resp.status_code == 200
+
+    def test_agent_port_blocks_web(self, client):
+        resp = client.get("/", headers={"host": "monitor.local:8899"})
+        assert resp.status_code == 404
+        assert "仅用于 Agent API" in resp.json()["detail"]
+
+    def test_public_web_port_allows_dashboard(self, client):
+        resp = client.get("/", headers={"host": "monitor.local:14325"})
+        assert resp.status_code == 200
+
 
 # ============================================================
 # 2. 观察者心跳与动态配置
