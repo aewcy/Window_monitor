@@ -95,7 +95,7 @@ $serverPort = Get-ConfigValue $primary $fallback "server_port" "8899"
 $serverUrl = Get-ConfigValue $primary $fallback "server_url" "http://${serverHost}:${serverPort}"
 $installId = Get-ConfigValue $primary $fallback "install_id" ""
 $machineId = Get-ConfigValue $primary $fallback "machine_id" ""
-$updaterVersion = Get-ConfigValue $primary $fallback "updater_version" "0.58.3"
+$updaterVersion = Get-ConfigValue $primary $fallback "updater_version" "0.58.4"
 
 try {
     if ([string]::IsNullOrWhiteSpace($installId) -or [string]::IsNullOrWhiteSpace($machineId)) {

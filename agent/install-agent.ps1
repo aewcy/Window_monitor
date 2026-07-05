@@ -1,4 +1,4 @@
-param(
+﻿param(
     [switch]$Install,
     [switch]$Remove,
     [switch]$Start,
@@ -197,7 +197,7 @@ function Write-AgentConfig {
         user_data_dir = $script:UserDataDir
         install_id = $installId
         machine_id = $machineId
-        updater_version = "0.58.3"
+        updater_version = "0.58.4"
         update_enabled = $true
         update_check_interval = 300
         installed_at = (Get-Date).ToString("s")
@@ -212,7 +212,7 @@ function Write-AgentConfig {
         install_dir = $script:InstallDir
         install_id = $installId
         machine_id = $machineId
-        updater_version = "0.58.3"
+        updater_version = "0.58.4"
     }
     $updaterConfig | ConvertTo-Json | Set-Content -Path $script:UpdaterConfigPath -Encoding UTF8
 }

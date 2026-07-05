@@ -1,4 +1,4 @@
-﻿"""
+"""
 Agent 配置文件 - 运行在试验机（被监控机器）上
 跨平台支持: Windows / Linux
 """
@@ -68,7 +68,7 @@ SERVER_URL = f"http://{SERVER_HOST}:{SERVER_PORT}"
 # ============================================
 # Agent 版本与后台更新
 # ============================================
-AGENT_VERSION = _get_setting("agent_version", "AGENT_VERSION", "0.58.3", str)
+AGENT_VERSION = _get_setting("agent_version", "AGENT_VERSION", "0.58.4", str)
 INSTALL_ID = _get_setting("install_id", "MONITOR_INSTALL_ID", "", str)
 UPDATER_VERSION = _get_setting("updater_version", "MONITOR_UPDATER_VERSION", AGENT_VERSION, str)
 UPDATE_JOB_ID = _get_setting("update_job_id", "MONITOR_UPDATE_JOB_ID", "", str)

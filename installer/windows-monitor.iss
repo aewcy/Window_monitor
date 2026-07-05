@@ -1,5 +1,5 @@
-﻿#define AppName "GameFrameRateViewer"
-#define AppVersion "0.58.3"
+#define AppName "GameFrameRateViewer"
+#define AppVersion "0.58.4"
 #define Publisher "Monitor Demo"
 #define SourceRoot ".."
 

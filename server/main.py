@@ -1,4 +1,4 @@
-﻿"""
+"""
 服务端主程序 - 运行在监控机上
 FastAPI + 静态文件服务 + 自动初始化
 """
@@ -173,7 +173,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Monitor Server",
     description="Monitor System - Server",
-    version="0.58.3",
+    version="0.58.4",
     lifespan=lifespan,
 )
 
