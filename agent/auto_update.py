@@ -82,7 +82,7 @@ class AutoUpdater:
             self._report("idle", "Agent running")
             return
         try:
-            with open(self.state_path, "r", encoding="utf-8") as f:
+            with open(self.state_path, "r", encoding="utf-8-sig") as f:
                 state = json.load(f)
             status = state.get("status") or "idle"
             target = state.get("target_version") or ""

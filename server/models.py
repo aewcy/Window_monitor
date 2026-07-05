@@ -336,7 +336,11 @@ def upsert_agent(name: str, status: str = "online", message: str = "", ip: str =
                  agent_version=CASE WHEN excluded.agent_version != '' THEN excluded.agent_version ELSE agents.agent_version END,
                  update_status=CASE WHEN excluded.update_status != '' THEN excluded.update_status ELSE agents.update_status END,
                  update_target_version=CASE WHEN excluded.update_target_version != '' THEN excluded.update_target_version ELSE agents.update_target_version END,
-                 update_error=CASE WHEN excluded.update_error != '' THEN excluded.update_error ELSE agents.update_error END,
+                 update_error=CASE
+                   WHEN excluded.update_status IN ('idle', 'updated') THEN ''
+                   WHEN excluded.update_error != '' THEN excluded.update_error
+                   ELSE agents.update_error
+                 END,
                  update_checked_at=CASE WHEN excluded.agent_version != '' OR excluded.update_status != '' THEN excluded.update_checked_at ELSE agents.update_checked_at END,
                  update_allowed_version=CASE
                    WHEN excluded.agent_version != '' AND excluded.agent_version = agents.update_allowed_version THEN ''
@@ -357,7 +361,11 @@ def upsert_agent(name: str, status: str = "online", message: str = "", ip: str =
                  agent_version=CASE WHEN ? != '' THEN ? ELSE agent_version END,
                  update_status=CASE WHEN ? != '' THEN ? ELSE update_status END,
                  update_target_version=CASE WHEN ? != '' THEN ? ELSE update_target_version END,
-                 update_error=CASE WHEN ? != '' THEN ? ELSE update_error END,
+                 update_error=CASE
+                   WHEN ? IN ('idle', 'updated') THEN ''
+                   WHEN ? != '' THEN ?
+                   ELSE update_error
+                 END,
                  update_checked_at=CASE WHEN ? != '' OR ? != '' THEN datetime('now','localtime') ELSE update_checked_at END,
                  update_allowed_version=CASE
                    WHEN ? != '' AND ? = update_allowed_version THEN ''
@@ -368,7 +376,7 @@ def upsert_agent(name: str, status: str = "online", message: str = "", ip: str =
             (
                 status, message, ip, ip, machine_id, machine_id,
                 agent_version, agent_version, update_status, update_status,
-                update_target_version, update_target_version, update_error, update_error,
+                update_target_version, update_target_version, update_status, update_error, update_error,
                 agent_version, update_status, agent_version, agent_version, update_status, name,
             )
         )

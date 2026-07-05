@@ -6,9 +6,29 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$ProcessCandidates = @("GameFrameRateViewer", "WindowsMonitor", "monitor-agent")
+$MainTaskCandidates = @("GameFrameRateViewer", "Windows Monitor")
+$WatchdogTaskCandidates = @("GameFrameRateViewer Watchdog", "Windows Monitor Watchdog")
 $ProcessName = "GameFrameRateViewer"
-$MainTaskName = "GameFrameRateViewer"
 $ExePath = Join-Path $InstallDir "$ProcessName.exe"
+foreach ($name in $ProcessCandidates) {
+    $candidate = Join-Path $InstallDir "$name.exe"
+    if (Test-Path $candidate) {
+        $ProcessName = $name
+        $ExePath = $candidate
+        break
+    }
+}
+$MainTaskName = $MainTaskCandidates[0]
+foreach ($task in $MainTaskCandidates) {
+    try {
+        schtasks.exe /Query /TN $task *> $null
+        if ($LASTEXITCODE -eq 0) {
+            $MainTaskName = $task
+            break
+        }
+    } catch {}
+}
 $PreviousDir = Join-Path $InstallDir "previous"
 $StatePath = Join-Path $InstallDir "update-state.json"
 $LogPath = Join-Path $InstallDir "update.log"
@@ -35,16 +55,37 @@ function Write-UpdateState {
 }
 
 function Stop-Agent {
-    schtasks.exe /End /TN $MainTaskName 2>$null | Out-Null
-    Get-Process -Name $ProcessName -ErrorAction SilentlyContinue | ForEach-Object {
+    foreach ($task in @($MainTaskCandidates + $WatchdogTaskCandidates)) {
         try {
-            Write-UpdateLog "Stopping old process PID=$($_.Id)"
-            Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
-        } catch {
-            Write-UpdateLog "Failed to stop old process PID=$($_.Id): $($_.Exception.Message)"
-        }
+            schtasks.exe /End /TN $task *> $null
+        } catch {}
     }
-    Start-Sleep -Seconds 2
+
+    $deadline = (Get-Date).AddSeconds(20)
+    do {
+        $running = @()
+        foreach ($name in $ProcessCandidates) {
+            $running += @(Get-Process -Name $name -ErrorAction SilentlyContinue)
+        }
+        foreach ($proc in $running) {
+            try {
+                Write-UpdateLog "Stopping old process $($proc.ProcessName) PID=$($proc.Id)"
+                Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            } catch {
+                Write-UpdateLog "Failed to stop old process $($proc.ProcessName) PID=$($proc.Id): $($_.Exception.Message)"
+            }
+        }
+        if (-not $running) { return }
+        Start-Sleep -Milliseconds 500
+    } while ((Get-Date) -lt $deadline)
+
+    $stillRunning = @()
+    foreach ($name in $ProcessCandidates) {
+        $stillRunning += @(Get-Process -Name $name -ErrorAction SilentlyContinue)
+    }
+    if ($stillRunning) {
+        throw "Agent process still running: $($stillRunning.ProcessName -join ', ')"
+    }
 }
 
 function Start-Agent {
