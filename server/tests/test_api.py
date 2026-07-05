@@ -777,7 +777,7 @@ class TestAgentUpdate:
         resp = client.get("/api/agent/version")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["version"] == "0.58.5"
+        assert data["version"] == "0.58.6"
         assert data["exe_url"] == "/api/agent/exe"
         assert data["sha256"]
         assert data["size_bytes"] > 0
@@ -792,7 +792,7 @@ class TestAgentUpdate:
 
         allow = client.post("/api/agents/update-agent/update/allow", json={})
         assert allow.status_code == 200
-        assert allow.json()["version"] == "0.58.5"
+        assert allow.json()["version"] == "0.58.6"
         assert allow.json()["job"]["status"] == "pending"
 
         check = client.get("/api/agent/update/check?agent=update-agent&version=0.50")
@@ -800,7 +800,7 @@ class TestAgentUpdate:
         data = check.json()
         assert data["update_available"] is True
         assert data["allowed"] is True
-        assert data["job"]["target_version"] == "0.58.5"
+        assert data["job"]["target_version"] == "0.58.6"
 
     def test_pause_agent_update(self, client):
         client.post("/api/heartbeat", json={"agent_name": "pause-agent", "agent_version": "0.50"})
@@ -821,7 +821,7 @@ class TestAgentUpdate:
             "agent_name": "retry-agent",
             "agent_version": "0.50",
             "update_status": "failed",
-            "update_target_version": "0.58.5",
+            "update_target_version": "0.58.6",
             "update_error": "network reset",
         })
         assert failed.status_code == 200
@@ -830,7 +830,7 @@ class TestAgentUpdate:
         assert check.status_code == 200
         data = check.json()
         assert data["allowed"] is True
-        assert data["allowed_version"] == "0.58.5"
+        assert data["allowed_version"] == "0.58.6"
 
     def test_updater_claims_job_and_reports_progress(self, client):
         client.post("/api/heartbeat", json={
@@ -843,13 +843,13 @@ class TestAgentUpdate:
         job_id = allow.json()["job"]["job_id"]
 
         claimed = client.get(
-            "/api/updater/jobs/next?install_id=install-job&machine_id=machine-job&updater_version=0.58.5"
+            "/api/updater/jobs/next?install_id=install-job&machine_id=machine-job&updater_version=0.58.6"
         )
         assert claimed.status_code == 200
         data = claimed.json()
         assert data["job"]["job_id"] == job_id
         assert data["job"]["status"] == "claimed"
-        assert data["version"]["package_exe_url"].endswith("/api/agent/packages/0.58.5/exe")
+        assert data["version"]["package_exe_url"].endswith("/api/agent/packages/0.58.6/exe")
 
         progress = client.post(f"/api/updater/jobs/{job_id}/heartbeat", json={
             "status": "downloading",
@@ -870,12 +870,12 @@ class TestAgentUpdate:
             "install_id": "install-verify",
         })
         job_id = client.post("/api/agents/verify-agent/update/allow", json={}).json()["job"]["job_id"]
-        client.get("/api/updater/jobs/next?install_id=install-verify&machine_id=machine-verify&updater_version=0.58.5")
+        client.get("/api/updater/jobs/next?install_id=install-verify&machine_id=machine-verify&updater_version=0.58.6")
         client.post(f"/api/updater/jobs/{job_id}/heartbeat", json={"status": "verifying", "message": "等待心跳"})
 
         hb = client.post("/api/heartbeat", json={
             "agent_name": "verify-agent",
-            "agent_version": "0.58.5",
+            "agent_version": "0.58.6",
             "machine_id": "machine-verify",
             "install_id": "install-verify",
             "update_job_id": job_id,

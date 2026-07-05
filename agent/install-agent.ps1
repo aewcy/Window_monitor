@@ -120,6 +120,19 @@ function Stop-AgentProcesses {
             }
         }
     }
+
+    $deadline = (Get-Date).AddSeconds(20)
+    do {
+        $running = Get-Process -Name $script:ProcessName, "WindowsMonitor", "monitor-agent" -ErrorAction SilentlyContinue
+        if (-not $running) { return }
+        Start-Sleep -Milliseconds 500
+    } while ((Get-Date) -lt $deadline)
+
+    $left = Get-Process -Name $script:ProcessName, "WindowsMonitor", "monitor-agent" -ErrorAction SilentlyContinue
+    if ($left) {
+        $pids = ($left | ForEach-Object { "$($_.ProcessName):$($_.Id)" }) -join ", "
+        throw "Agent process still running after stop request: $pids"
+    }
 }
 
 function Test-ScheduledTaskExists {
@@ -197,7 +210,7 @@ function Write-AgentConfig {
         user_data_dir = $script:UserDataDir
         install_id = $installId
         machine_id = $machineId
-        updater_version = "0.58.5"
+        updater_version = "0.58.6"
         update_enabled = $true
         update_check_interval = 300
         installed_at = (Get-Date).ToString("s")
@@ -212,7 +225,7 @@ function Write-AgentConfig {
         install_dir = $script:InstallDir
         install_id = $installId
         machine_id = $machineId
-        updater_version = "0.58.5"
+        updater_version = "0.58.6"
     }
     $updaterConfig | ConvertTo-Json | Set-Content -Path $script:UpdaterConfigPath -Encoding UTF8
 }
