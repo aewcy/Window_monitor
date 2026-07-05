@@ -197,7 +197,7 @@ function Write-AgentConfig {
         user_data_dir = $script:UserDataDir
         install_id = $installId
         machine_id = $machineId
-        updater_version = "0.58.4"
+        updater_version = "0.58.5"
         update_enabled = $true
         update_check_interval = 300
         installed_at = (Get-Date).ToString("s")
@@ -212,7 +212,7 @@ function Write-AgentConfig {
         install_dir = $script:InstallDir
         install_id = $installId
         machine_id = $machineId
-        updater_version = "0.58.4"
+        updater_version = "0.58.5"
     }
     $updaterConfig | ConvertTo-Json | Set-Content -Path $script:UpdaterConfigPath -Encoding UTF8
 }
@@ -249,7 +249,7 @@ End If
 function New-MonitorTasks {
     $mainAction = "wscript.exe `"$script:LauncherPath`""
     $watchdogAction = "wscript.exe `"$script:WatchdogPath`""
-    $runnerAction = "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$script:RunnerPath`" -InstallDir `"$script:InstallDir`""
+    $runnerAction = "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $script:RunnerPath -InstallDir $script:InstallDir"
 
     $mainOut = Invoke-NativeQuiet "schtasks.exe" @("/Create", "/TN", $script:MainTaskName, "/TR", $mainAction, "/SC", "ONLOGON", "/RL", "HIGHEST", "/IT", "/F")
     if ($mainOut.ExitCode -ne 0) {
@@ -265,6 +265,7 @@ function New-MonitorTasks {
     if ($updaterOut.ExitCode -ne 0) {
         throw "Failed to create updater task: $($updaterOut.Output)"
     }
+    Write-InstallLog "Created updater task: $runnerAction"
 }
 
 function Start-Monitor {
