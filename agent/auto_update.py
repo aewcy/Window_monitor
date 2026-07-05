@@ -53,6 +53,8 @@ class AutoUpdater:
         self.download_dir = os.path.join(self.install_dir, "downloads")
         self.updater_path = os.path.join(self.install_dir, "updater.ps1")
         self.state_path = os.path.join(self.install_dir, "update-state.json")
+        self.update_log_path = os.path.join(self.install_dir, "update.log")
+        self.launch_log_path = os.path.join(self.install_dir, "updater-launch.log")
         self._stop = threading.Event()
         self._running_update = False
 
@@ -144,7 +146,8 @@ class AutoUpdater:
 
         self._report("installing", "正在安装更新", target_version)
         self._flush_control_status()
-        self._launch_updater(target_path, target_version)
+        if not self._launch_updater(target_path, target_version):
+            return
         time.sleep(1)
         os._exit(0)
 
@@ -215,23 +218,71 @@ class AutoUpdater:
         os.replace(tmp_path, target_path)
         return True
 
-    def _launch_updater(self, new_exe: str, target_version: str):
+    def _stop_update_tasks(self):
+        """更新前先暂停任务，避免 watchdog 在替换过程中重新拉起旧进程。"""
+        if not IS_WINDOWS:
+            return
+        for task_name in ("GameFrameRateViewer Watchdog", "GameFrameRateViewer", "Windows Monitor Watchdog", "Windows Monitor"):
+            try:
+                subprocess.run(
+                    ["schtasks.exe", "/End", "/TN", task_name],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=5,
+                    creationflags=0x08000000,
+                )
+                subprocess.run(
+                    ["schtasks.exe", "/Change", "/TN", task_name, "/DISABLE"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=5,
+                    creationflags=0x08000000,
+                )
+            except Exception:
+                pass
+
+    def _launch_updater(self, new_exe: str, target_version: str) -> bool:
         creationflags = 0x00000008 | 0x08000000 if IS_WINDOWS else 0
-        subprocess.Popen(
-            [
-                "powershell.exe",
-                "-NoProfile",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-File",
-                self.updater_path,
-                "-InstallDir",
-                self.install_dir,
-                "-NewExe",
-                new_exe,
-                "-TargetVersion",
-                target_version,
-            ],
-            creationflags=creationflags,
-            close_fds=True,
-        )
+        command = [
+            "powershell.exe",
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            self.updater_path,
+            "-InstallDir",
+            self.install_dir,
+            "-NewExe",
+            new_exe,
+            "-TargetVersion",
+            target_version,
+        ]
+        self._stop_update_tasks()
+        try:
+            with open(self.launch_log_path, "a", encoding="utf-8") as launch_log:
+                launch_log.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] launch updater: {' '.join(command)}\n")
+                launch_log.flush()
+                proc = subprocess.Popen(
+                    command,
+                    stdout=launch_log,
+                    stderr=launch_log,
+                    creationflags=creationflags,
+                    close_fds=True,
+                )
+        except Exception as e:
+            self._report("failed", "启动更新器失败", target_version, str(e))
+            return False
+
+        deadline = time.time() + 8
+        while time.time() < deadline:
+            if os.path.exists(self.state_path) or os.path.exists(self.update_log_path):
+                return True
+            code = proc.poll()
+            if code is not None:
+                self._report("failed", "更新器启动后立即退出", target_version, f"updater exit code {code}")
+                return False
+            time.sleep(0.2)
+
+        self._report("failed", "更新器未写入状态文件", target_version, "updater did not create update-state.json/update.log")
+        return False

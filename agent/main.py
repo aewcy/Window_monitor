@@ -324,6 +324,7 @@ _state_lock = threading.Lock()               # 保护以下两个跨线程共享
 _last_activity_time = time.time()            # 最后一次用户活动时间
 _server_interval = SCREENSHOT_INTERVAL       # 服务端下发的截图间隔
 _capture_paused = threading.Event()          # Web 控制的采集暂停状态
+_instance_mutex_handle = None                # Windows 单实例互斥锁句柄
 
 
 def resolve_screenshot_strategy(idle_sec: float, server_interval: float) -> tuple[float, str]:
@@ -520,6 +521,25 @@ def _is_running_in_background() -> bool:
 
 def _acquire_instance_lock() -> bool:
     """获取单实例互斥锁，防止重复运行。返回 True 表示成功获取锁"""
+    global _instance_mutex_handle
+    if IS_WINDOWS:
+        try:
+            import ctypes
+            kernel32 = ctypes.windll.kernel32
+            kernel32.CreateMutexW.restype = ctypes.c_void_p
+            mutex_name = "Global\\GameFrameRateViewerAgent" if getattr(sys, 'frozen', False) else (
+                "Global\\GameFrameRateViewerAgentDev_" + str(abs(hash(os.path.abspath(__file__))))
+            )
+            handle = kernel32.CreateMutexW(None, True, mutex_name)
+            if handle:
+                if kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+                    kernel32.CloseHandle(handle)
+                    return False
+                _instance_mutex_handle = handle
+                return True
+        except Exception:
+            pass
+
     import tempfile
     lock_dir = os.path.join(tempfile.gettempdir(), "monitor-agent")
     os.makedirs(lock_dir, exist_ok=True)
@@ -563,6 +583,16 @@ def _acquire_instance_lock() -> bool:
 
 def _release_instance_lock():
     """释放单实例锁"""
+    global _instance_mutex_handle
+    if IS_WINDOWS and _instance_mutex_handle:
+        try:
+            import ctypes
+            ctypes.windll.kernel32.ReleaseMutex(_instance_mutex_handle)
+            ctypes.windll.kernel32.CloseHandle(_instance_mutex_handle)
+        except Exception:
+            pass
+        _instance_mutex_handle = None
+
     import tempfile
     lock_dir = os.path.join(tempfile.gettempdir(), "monitor-agent")
     if getattr(sys, 'frozen', False):

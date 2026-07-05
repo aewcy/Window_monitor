@@ -54,7 +54,21 @@ function Write-UpdateState {
     $state | ConvertTo-Json | Set-Content -Path $StatePath -Encoding UTF8
 }
 
+function Set-AgentTasksEnabled {
+    param([bool]$Enabled)
+    $mode = if ($Enabled) { "/ENABLE" } else { "/DISABLE" }
+    foreach ($task in @($MainTaskCandidates + $WatchdogTaskCandidates)) {
+        try {
+            schtasks.exe /Change /TN $task $mode *> $null
+            Write-UpdateLog "$(if ($Enabled) { 'Enabled' } else { 'Disabled' }) task $task"
+        } catch {
+            Write-UpdateLog "Task change skipped ${task}: $($_.Exception.Message)"
+        }
+    }
+}
+
 function Stop-Agent {
+    Set-AgentTasksEnabled $false
     foreach ($task in @($MainTaskCandidates + $WatchdogTaskCandidates)) {
         try {
             schtasks.exe /End /TN $task *> $null
@@ -89,6 +103,7 @@ function Stop-Agent {
 }
 
 function Start-Agent {
+    Set-AgentTasksEnabled $true
     schtasks.exe /Run /TN $MainTaskName 2>$null | Out-Null
     Start-Sleep -Seconds 3
     if (-not (Get-Process -Name $ProcessName -ErrorAction SilentlyContinue)) {
