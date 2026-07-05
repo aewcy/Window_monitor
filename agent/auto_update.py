@@ -143,9 +143,19 @@ class AutoUpdater:
             return
 
         self._report("installing", "正在安装更新", target_version)
+        self._flush_control_status()
         self._launch_updater(target_path, target_version)
         time.sleep(1)
         os._exit(0)
+
+    def _flush_control_status(self):
+        flush = getattr(self.reporter, "flush_channel", None)
+        if not callable(flush):
+            return
+        try:
+            flush("control", timeout=5)
+        except Exception:
+            pass
 
     def _download_and_verify(self, download_url: str, target_path: str, expected_sha: str, target_version: str) -> bool:
         digest = hashlib.sha256()

@@ -195,6 +195,18 @@ class Reporter:
         for _, worker in self._workers:
             worker.join(timeout=2)
 
+    def flush_channel(self, channel: str, timeout: float = 5.0) -> bool:
+        """等待指定队列尽量发完，用于退出前保证控制状态落库。"""
+        q = self._queues.get(channel)
+        if not q:
+            return True
+        deadline = time.time() + max(0.0, timeout)
+        while time.time() < deadline:
+            if q.unfinished_tasks == 0:
+                return True
+            time.sleep(0.05)
+        return q.unfinished_tasks == 0
+
     def diagnostic(self, category: str, level: str, message: str):
         """上报诊断信息 — 被控机不写本地日志"""
         payload = {

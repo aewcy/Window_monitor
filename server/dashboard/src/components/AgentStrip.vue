@@ -98,6 +98,19 @@ function updateStateClass(a) {
   return ''
 }
 
+function readableUpdateError(error) {
+  const text = String(error || '').trim()
+  if (!text) return ''
+  if (
+    text.includes('ConnectionResetError')
+    || text.includes('Connection broken')
+    || text.includes('10054')
+  ) {
+    return '更新连接中断，等待 Agent 重试或重启后回报'
+  }
+  return text.length > 120 ? `${text.slice(0, 120)}...` : text
+}
+
 function updateTitle(a) {
   const lines = [
     `当前版本: ${a?.agent_version ? `v${a.agent_version}` : '未上报'}`,
@@ -106,7 +119,8 @@ function updateTitle(a) {
   if (a?.update_allowed_version) lines.push(`允许更新: v${a.update_allowed_version}`)
   if (a?.update_status) lines.push(`更新状态: ${a.update_status}`)
   if (a?.update_checked_at) lines.push(`最近检查: ${a.update_checked_at}`)
-  if (a?.update_error) lines.push(`错误: ${a.update_error}`)
+  const error = readableUpdateError(a?.update_error)
+  if (error) lines.push(`错误: ${error}`)
   return lines.join('\n')
 }
 
