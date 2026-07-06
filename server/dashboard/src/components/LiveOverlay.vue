@@ -10,7 +10,9 @@ const agent = useAgentStore()
 const { startHeartbeat, stopHeartbeat } = usePolling()
 const imgSrc = ref(null)
 const currentLiveId = ref(null)
+const placeholderText = ref('等待实时画面')
 let liveTimer = null
+let liveRequestSeq = 0
 const zoom = ref(1)
 const panX = ref(0)
 const panY = ref(0)
@@ -44,13 +46,46 @@ const itemTitle = computed(() => {
 })
 
 async function loadLive() {
-  const data = await ss.loadLatest({ allowStoredFallback: false })
+  const snapshot = {
+    seq: liveRequestSeq + 1,
+    agentName: agent.selectedAgent,
+    monitor: agent.selectedMonitor,
+    source: ss.displaySource,
+    open: ss.liveOpen,
+  }
+  liveRequestSeq = snapshot.seq
+  const data = await ss.loadLatest({
+    agentName: snapshot.agentName,
+    monitor: snapshot.monitor,
+    allowStoredFallback: false,
+  })
+  if (
+    snapshot.seq !== liveRequestSeq
+    || !snapshot.open
+    || !ss.liveOpen
+    || ss.displaySource !== snapshot.source
+    || agent.selectedAgent !== snapshot.agentName
+    || agent.selectedMonitor !== snapshot.monitor
+  ) {
+    return
+  }
   if (data && (data.id || data.image_base64)) {
     if (data.id !== currentLiveId.value) {
       currentLiveId.value = data.id
       imgSrc.value = getLiveScreenshotImage(data) || getScreenshotImage(data.id)
     }
+    placeholderText.value = '等待实时画面'
+  } else if (!imgSrc.value) {
+    placeholderText.value = '等待实时画面'
   }
+}
+
+function resetLiveView(message = '正在切换...') {
+  liveRequestSeq += 1
+  currentLiveId.value = null
+  imgSrc.value = null
+  placeholderText.value = message
+  resetImageTransform()
 }
 
 function shouldPollLive() {
@@ -74,10 +109,14 @@ function stopLivePolling() {
 }
 
 function loadBrowseItem() {
+  liveRequestSeq += 1
   const item = currentItem.value
   if (item && item.screenshot_id) {
     imgSrc.value = getScreenshotImage(item.screenshot_id)
     resetImageTransform()
+  } else {
+    imgSrc.value = null
+    placeholderText.value = '暂无截图'
   }
 }
 
@@ -89,7 +128,9 @@ async function syncOpenImage() {
     loadBrowseItem()
     return
   }
-  currentLiveId.value = null
+  stopLivePolling()
+  resetLiveView('正在切换...')
+  ss.resetLiveInterval(agent.selectedAgentData?.screenshot_interval || null)
   startLivePolling()
 }
 
@@ -231,7 +272,7 @@ function stopDrag(e) {
           <img v-if="imgSrc" :src="imgSrc" class="live-img" :key="imgSrc"
             draggable="false"
             :style="{ transform: `translate(${panX}px, ${panY}px) scale(${zoom})` }" />
-          <div v-else class="placeholder"><span class="big">[ ]</span>暂无截图</div>
+          <div v-else class="placeholder"><span class="big">[ ]</span>{{ placeholderText }}</div>
         </div>
         <div class="mon-chips" v-if="agent.monitorTotal > 1 && !showUI">
           <button v-for="i in agent.monitorTotal" :key="i"

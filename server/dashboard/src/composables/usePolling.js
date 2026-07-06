@@ -8,6 +8,7 @@ export function usePolling() {
 
   function startHeartbeat() {
     stopHeartbeat()
+    api.sendHeartbeat()
     heartbeatTimer = setInterval(() => api.sendHeartbeat(), 1000)
   }
 

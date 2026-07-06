@@ -32,18 +32,23 @@ export const useScreenshotStore = defineStore('screenshot', () => {
 
   async function loadLatest(options = {}) {
     const agent = useAgentStore()
-    if (!agent.selectedAgent) return null
+    const agentName = options.agentName ?? agent.selectedAgent
+    const monitor = options.monitor ?? agent.selectedMonitor
+    if (!agentName) return null
     const allowStoredFallback = options.allowStoredFallback !== false
     let data
     try {
-      data = await api.getLatestLiveScreenshot(agent.selectedAgent, agent.selectedMonitor, allowStoredFallback)
+      data = await api.getLatestLiveScreenshot(agentName, monitor, allowStoredFallback)
     } catch (err) {
       if (!allowStoredFallback) return null
-      data = await api.getLatestScreenshot(agent.selectedAgent, agent.selectedMonitor)
+      data = await api.getLatestScreenshot(agentName, monitor)
     }
     if (data && (data.id || data.image_base64)) {
-      agent.setMonitorTotal(data.monitor_total || 1)
-      liveInterval.value = data.capture_interval || agent.selectedAgentData?.screenshot_interval || liveInterval.value
+      const stillCurrent = agent.selectedAgent === agentName && agent.selectedMonitor === monitor
+      if (stillCurrent) {
+        agent.setMonitorTotal(data.monitor_total || 1)
+        liveInterval.value = data.capture_interval || agent.selectedAgentData?.screenshot_interval || liveInterval.value
+      }
     }
     return data
   }
@@ -82,6 +87,10 @@ export const useScreenshotStore = defineStore('screenshot', () => {
     displayItems.value = []
     displayIndex.value = 0
     liveMode.value = true
+  }
+
+  function resetLiveInterval(value = null) {
+    liveInterval.value = value
   }
 
   async function loadGrid(append = false, limitOverride = null) {
@@ -213,7 +222,7 @@ export const useScreenshotStore = defineStore('screenshot', () => {
     liveMode,
     gridMode, gridItems, gridSelected, gridOffset, gridLoading, gridExhausted, gridQuery,
     liveOpen, liveInterval, livePollMs, displaySource, displayItems, displayIndex, currentDisplayItem, BATCH,
-    loadLatest, prev, next,
+    loadLatest, resetLiveInterval, prev, next,
     browseTimeline, browseBrowser, goLive,
     loadGrid, loadGridComplete, setGridQuery, openGrid, toggleGridItem, setGridItemSelected, selectOnlyGridItem, selectAllGrid, deleteSelected, resetGrid,
     removeGridItems, notifyScreenshotsChanged,

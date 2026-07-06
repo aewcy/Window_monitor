@@ -3,13 +3,17 @@ import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { useScreenshotStore } from '../stores/screenshot'
 import { useAgentStore } from '../stores/agent'
 import { getLiveScreenshotImage, getScreenshotImage } from '../api'
+import { usePolling } from '../composables/usePolling'
 
 const ss = useScreenshotStore()
 const agent = useAgentStore()
+const { startHeartbeat, stopHeartbeat } = usePolling()
 const imgSrc = ref(null)
 const timestamp = ref('')
 const currentId = ref(null)
+const placeholderText = ref('选择被控端查看截图')
 let liveTimer = null
+let requestSeq = 0
 
 const fpsLabel = () => {
   const d = agent.selectedAgentData
@@ -22,15 +26,51 @@ const fpsLabel = () => {
   return null
 }
 
+function resetLiveView(message = '正在切换...') {
+  requestSeq += 1
+  imgSrc.value = null
+  timestamp.value = ''
+  currentId.value = null
+  placeholderText.value = message
+}
+
+function makeSnapshot() {
+  return {
+    seq: requestSeq + 1,
+    agentName: agent.selectedAgent,
+    monitor: agent.selectedMonitor,
+    source: ss.displaySource,
+  }
+}
+
+function isSnapshotCurrent(snapshot) {
+  return (
+    snapshot.seq === requestSeq
+    && agent.selectedAgent === snapshot.agentName
+    && agent.selectedMonitor === snapshot.monitor
+    && ss.displaySource === snapshot.source
+  )
+}
+
 async function load() {
   if (!agent.selectedAgent) return
-  const data = await ss.loadLatest({ allowStoredFallback: false })
+  const snapshot = makeSnapshot()
+  requestSeq = snapshot.seq
+  const data = await ss.loadLatest({
+    agentName: snapshot.agentName,
+    monitor: snapshot.monitor,
+    allowStoredFallback: false,
+  })
+  if (!isSnapshotCurrent(snapshot)) return
   if (data && (data.id || data.image_base64)) {
     if (data.id !== currentId.value) {
       currentId.value = data.id
       imgSrc.value = getLiveScreenshotImage(data) || getScreenshotImage(data.id)
     }
     timestamp.value = '实时 ' + new Date(data.timestamp).toTimeString().slice(0, 8)
+    placeholderText.value = '等待实时画面'
+  } else if (!imgSrc.value) {
+    placeholderText.value = '等待实时画面'
   }
 }
 
@@ -43,6 +83,7 @@ function startLivePolling() {
   if (!shouldPollLive()) return
   load()
   liveTimer = setInterval(load, ss.livePollMs)
+  startHeartbeat()
 }
 
 function stopLivePolling() {
@@ -50,18 +91,23 @@ function stopLivePolling() {
     clearInterval(liveTimer)
     liveTimer = null
   }
+  stopHeartbeat()
 }
 
 watch(() => agent.selectedAgent, () => {
   if (agent.selectedAgent) {
+    stopLivePolling()
+    resetLiveView('正在切换被控机...')
     ss.goLive()
-    currentId.value = null
+    ss.resetLiveInterval(agent.selectedAgentData?.screenshot_interval || null)
     startLivePolling()
   }
 })
 watch(() => agent.selectedMonitor, () => {
-  currentId.value = null
-  if (shouldPollLive()) load()
+  stopLivePolling()
+  resetLiveView('正在切换屏幕...')
+  ss.resetLiveInterval(agent.selectedAgentData?.screenshot_interval || null)
+  if (shouldPollLive()) startLivePolling()
 })
 watch(() => ss.displaySource, startLivePolling)
 watch(() => ss.livePollMs, startLivePolling)
@@ -76,7 +122,7 @@ onUnmounted(stopLivePolling)
     <img v-if="imgSrc" :src="imgSrc" class="screenshot-img" :key="imgSrc" />
     <div v-else class="placeholder">
       <span class="big">[ ]</span>
-      选择被控端查看截图
+      {{ placeholderText }}
     </div>
     <div class="monitor-chips" v-if="agent.monitorTotal > 1">
       <button v-for="i in agent.monitorTotal" :key="i"
