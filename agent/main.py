@@ -18,7 +18,7 @@ from config import (
     SCREENSHOT_UPLOAD_QUEUE_SIZE, APP_EVENT_UPLOAD_QUEUE_SIZE,
     BROWSER_UPLOAD_QUEUE_SIZE, CONTROL_UPLOAD_QUEUE_SIZE,
     SCREENSHOT_DROP_REPORT_INTERVAL,
-    AGENT_VERSION, INSTALL_ID, UPDATER_VERSION, UPDATE_JOB_ID,
+    AGENT_VERSION, PRODUCT_PUBLISHER, INSTALL_ID, UPDATER_VERSION, UPDATE_JOB_ID,
     get_machine_id,
 )
 from auto_update import AutoUpdater
@@ -704,6 +704,56 @@ def _resolve_agent_name(base_name: str, machine_id: str = "") -> str:
     return base_name
 
 
+def sync_windows_uninstall_registry():
+    """同步 Windows 已安装应用列表，避免自更新后仍显示旧版本。"""
+    if not IS_WINDOWS:
+        return
+    try:
+        import winreg
+    except Exception:
+        return
+
+    roots = (
+        r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+        r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
+    )
+    updated = False
+    for root in roots:
+        try:
+            parent = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, root, 0, winreg.KEY_READ)
+        except OSError:
+            continue
+        try:
+            count = winreg.QueryInfoKey(parent)[0]
+            for index in range(count):
+                try:
+                    subkey = winreg.EnumKey(parent, index)
+                    path = root + "\\" + subkey
+                    key = winreg.OpenKey(
+                        winreg.HKEY_LOCAL_MACHINE,
+                        path,
+                        0,
+                        winreg.KEY_READ | winreg.KEY_SET_VALUE,
+                    )
+                    try:
+                        display_name, _ = winreg.QueryValueEx(key, "DisplayName")
+                    except OSError:
+                        display_name = ""
+                    if display_name == "GameFrameRateViewer":
+                        winreg.SetValueEx(key, "DisplayVersion", 0, winreg.REG_SZ, AGENT_VERSION)
+                        winreg.SetValueEx(key, "Publisher", 0, winreg.REG_SZ, PRODUCT_PUBLISHER)
+                        winreg.SetValueEx(key, "DisplayIcon", 0, winreg.REG_SZ, sys.executable)
+                        updated = True
+                    winreg.CloseKey(key)
+                except OSError:
+                    continue
+        finally:
+            winreg.CloseKey(parent)
+
+    if updated:
+        print(f"  [OK] 已同步系统应用列表版本: {AGENT_VERSION}")
+
+
 def main(stop_event=None):
     """主函数 — stop_event 可选，用于 Windows 服务接收停止信号"""
     global _server_interval
@@ -727,6 +777,8 @@ def main(stop_event=None):
     # 注册退出时释放锁
     import atexit
     atexit.register(_release_instance_lock)
+
+    sync_windows_uninstall_registry()
 
     # DPI 感知 — 必须在任何 GUI/截图操作前设置，解决高 DPI 多屏截图内容相同的问题
     if IS_WINDOWS:

