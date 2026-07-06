@@ -17,10 +17,6 @@ function toggleGrid() {
     </div>
     <div class="header-right">
       <CalendarPicker />
-      <div class="header-chip active">
-        <span class="live-dot"></span>
-        实时模式
-      </div>
       <button class="header-chip" :class="{ active: ss.gridMode }" @click="toggleGrid">
         网格视图 <span class="shortcut">⌘G</span>
       </button>
@@ -48,5 +44,4 @@ function toggleGrid() {
 .header-chip:hover { border-color: var(--accent); color: var(--text); background: var(--surface-hover); }
 .header-chip.active { border-color: var(--accent); color: var(--accent); background: rgba(255,99,99,.1); }
 .shortcut { font-size: 9px; opacity: 0.5; }
-.live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
 </style>
