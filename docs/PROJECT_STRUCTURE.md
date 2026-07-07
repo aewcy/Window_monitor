@@ -41,7 +41,8 @@ monitor-demo/
 │  │  │  └─ uninstall-agent.bat     # 兼容旧下载包
 │  │  ├─ assets/
 │  │  │  └─ windows-monitor-icon.png # 下载页展示图标
-│  │  └─ dist/                     # Vue Dashboard 构建产物
+│  │  ├─ dist/                     # Vue Dashboard 构建产物
+│  │  └─ dashboard-v0-raycast.html # 旧版回退页
 │  ├─ dashboard/                   # Vue 3 Dashboard 源码
 │  │  ├─ src/
 │  │  ├─ package.json
@@ -71,5 +72,6 @@ server/static/agent/WindowsMonitorSetup.exe
 - `agent/` 只放 Agent 源码、安装脚本和 Agent 构建配置。
 - `installer/` 只放安装器脚本，不放临时输出。
 - `server/static/agent/` 放 Web 实际下载所需的发布产物。
+- `server/static/` 只保留当前 Dashboard 构建产物、下载页和一个旧版回退页。
 - `server/data/`、`build/`、`dist/`、`agent/build/`、`agent/dist/` 都是本地或运行时目录，不应该提交。
 - `.codex/`、`AGENTS.md` 是本地 Codex 工作配置，不进入版本库。

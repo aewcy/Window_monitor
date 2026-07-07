@@ -340,7 +340,7 @@ async def security_headers_middleware(request: Request, call_next):
         "form-action 'self'"
     )
     # 禁止浏览器缓存 HTML，确保更新后立即生效
-    if request.url.path in ("/", "/index.html", "/static/dashboard.html", "/static/dashboard-v0-raycast.html"):
+    if request.url.path in ("/", "/index.html", "/static/dashboard-v0-raycast.html"):
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"

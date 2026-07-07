@@ -27,8 +27,6 @@ monitor-agent.exe
 被控机需安装 Python 3.10+：
 
 ```bash
-# Windows — 双击 start.bat (自动检测环境)
-# Linux
 pip install -r requirements.txt
 MONITOR_SERVER_HOST=<IP> python main.py
 ```
@@ -99,6 +97,5 @@ agent/
 ├── keyboard_monitor.py     # 键盘 Enter 监听 (pynput)
 ├── agent.spec              # PyInstaller 规格
 ├── build.bat               # 一键打包脚本
-├── start.bat               # 源码运行启动脚本
 └── requirements.txt        # Python 依赖
 ```

@@ -56,3 +56,23 @@
 
 - `agent/`、`server/`、`installer/`、核心 `docs/`、测试、发布链路真实依赖的静态包保留。
 - AI 工具说明、代理运行目录、缓存、日志、动态测试产物不保留。
+
+## 2026-07-07 本地目录清理与结构收口
+
+### 目标
+
+- 删除不再使用的源码启动入口、图标参考目录、动态测试残留和本地工具目录。
+- 保留当前实际运行链路：`agent/` 源码、`server/` 服务端、`installer/` 安装器、`server/static/agent/` 发布包、`server/static/dist/` 当前 Dashboard 构建产物。
+
+### 本次处理
+
+- 从版本库移除 `agent/start.bat`，后续不再支持双击源码脚本启动 Agent。
+- 从版本库移除 `server/static/dashboard.html` 与 `server/static/dashboard-v0.html`，只保留 `server/static/dashboard-v0-raycast.html` 作为旧版回退页。
+- 删除本地 AI 工具目录、PyInstaller 中间目录、pytest 缓存、动态测试数据库、动态测试日志、图标参考目录。
+- `.gitignore` 增加动态测试残留与本地图标参考目录规则，避免再次回流。
+
+### 结果
+
+- 仓库根目录只保留项目本体、正式文档、构建/发布链路相关内容。
+- `agent/` 不再混入“源码双击启动”入口，职责更聚焦在源码、打包和安装更新脚本。
+- `server/static/` 收敛为“当前构建产物 + 保留一个旧版回退页”的结构。

@@ -46,3 +46,13 @@ monitor-final.png
 
 # Agent runtime files
 agent/run-hidden.vbs
+
+# Local test artifacts
+docs/dynamic-test-artifacts/
+imageres_11_export/
+agent/*-dyn-test.err.log
+agent/*-dyn-test.out.log
+server/*-dyn-test.err.log
+server/*-dyn-test.out.log
+server/data-dyn-test-*/
+server/data-idle-dyn-test/

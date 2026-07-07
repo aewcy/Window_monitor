@@ -105,8 +105,9 @@ server/
 ├── .dockerignore
 ├── logger.py                # 日志模块 (按天轮转)
 ├── static/
-│   └── dashboard.html      # Web 监控面板 (SPA)
-├── templates/              # (预留)
+│   ├── dist/               # 当前 Vue Dashboard 构建产物
+│   ├── download.html       # 下载页
+│   └── dashboard-v0-raycast.html # 旧版回退页
 └── data/                   # 运行时数据 (gitignore)
     ├── monitor.db
     └── screenshots/
