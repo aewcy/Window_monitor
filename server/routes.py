@@ -19,6 +19,7 @@ from models import (
     ensure_screenshot_variant,
     delete_screenshot, delete_screenshots_batch, delete_screenshots_range,
     save_app_event, get_app_usage_summary,
+    get_recent_foreground_event, get_recent_browser_record,
     save_browser_history, get_browser_history,
     get_browser_history_with_screenshots,
     get_app_events, get_app_events_with_screenshots,
@@ -50,11 +51,14 @@ _agent_intervals: dict[str, float] = {}
 # Live 最新帧缓存。它不入库，只服务实时画面；历史/网格仍读取 screenshots 表。
 _latest_live_frames: dict[tuple[str, int], dict] = {}
 _live_frame_buffers: dict[tuple[str, int], deque] = {}
+_history_policy_sessions: dict[tuple[str, int], dict] = {}
 LIVE_DELAY_SECONDS = float(os.getenv("LIVE_DELAY_SECONDS", "5"))
 LIVE_BUFFER_SECONDS = float(os.getenv("LIVE_BUFFER_SECONDS", "15"))
 LIVE_FRESH_MAX_AGE_SECONDS = float(os.getenv("LIVE_FRESH_MAX_AGE_SECONDS", "30"))
 SPECIAL_RULE_WARMUP_SECONDS = int(os.getenv("SCREENSHOT_RULE_WARMUP_SECONDS", "10"))
 SPECIAL_RULE_KEEPALIVE_SECONDS = int(os.getenv("SCREENSHOT_RULE_KEEPALIVE_SECONDS", "300"))
+SERVER_POLICY_CONTEXT_MAX_AGE_SECONDS = int(os.getenv("SCREENSHOT_RULE_CONTEXT_MAX_AGE_SECONDS", "30"))
+SERVER_POLICY_BROWSER_MAX_AGE_SECONDS = int(os.getenv("SCREENSHOT_RULE_BROWSER_MAX_AGE_SECONDS", "120"))
 
 
 def _parse_iso_datetime(value: str) -> datetime:
@@ -130,6 +134,107 @@ def _select_fresh_live_frame(
     if candidates:
         return _public_live_frame(max(candidates, key=lambda item: item.get("_received_at", datetime.min)))
     return None
+
+
+def _history_policy_context(agent_name: str, timestamp: str, data: dict) -> dict:
+    process_name = data.get("foreground_process_name", "") or ""
+    window_title = data.get("foreground_window_title", "") or ""
+    foreground_url = data.get("foreground_url", "") or ""
+
+    if not process_name and not window_title:
+        event = get_recent_foreground_event(agent_name, timestamp, SERVER_POLICY_CONTEXT_MAX_AGE_SECONDS)
+        if event:
+            process_name = event.get("process_name", "") or ""
+            window_title = event.get("window_title", "") or ""
+
+    browser_record = None
+    if not foreground_url:
+        browser_record = get_recent_browser_record(agent_name, timestamp, SERVER_POLICY_BROWSER_MAX_AGE_SECONDS)
+        if browser_record:
+            foreground_url = browser_record.get("url", "") or ""
+
+    return {
+        "foreground_process_name": process_name,
+        "foreground_window_title": window_title,
+        "foreground_url": foreground_url,
+    }
+
+
+def _match_history_rule(context: dict) -> dict | None:
+    process_name = (context.get("foreground_process_name") or "").strip().lower()
+    foreground_url = (context.get("foreground_url") or "").strip().lower()
+    rules = list_screenshot_rules(enabled_only=True)
+    for rule in rules:
+        pattern = (rule.get("pattern") or "").strip().lower()
+        if not pattern:
+            continue
+        if rule.get("rule_type") == "url_contains" and foreground_url and pattern in foreground_url:
+            return rule
+    for rule in rules:
+        pattern = (rule.get("pattern") or "").strip().lower()
+        if not pattern:
+            continue
+        if rule.get("rule_type") == "process" and process_name == pattern:
+            return rule
+    return None
+
+
+def _history_policy_decision(agent_name: str, monitor_index: int, timestamp: str, data: dict) -> dict:
+    context = _history_policy_context(agent_name, timestamp, data)
+    rule = _match_history_rule(context)
+    if not rule:
+        _history_policy_sessions.pop((agent_name, int(monitor_index or 0)), None)
+        return {
+            **context,
+            "store_history": True,
+            "matched_rule_type": data.get("matched_rule_type", "") or "",
+            "matched_rule_pattern": data.get("matched_rule_pattern", "") or "",
+            "save_policy_phase": data.get("save_policy_phase", "") or "default",
+        }
+
+    captured_at = _parse_iso_datetime(timestamp)
+    rule_type = rule.get("rule_type") or ""
+    pattern = rule.get("pattern") or ""
+    if rule_type == "url_contains":
+        identity = context.get("foreground_url", "")
+    else:
+        identity = (context.get("foreground_process_name", "") or "").strip().lower()
+    session_key = f"{rule.get('id')}:{rule_type}:{identity}"
+    state_key = (agent_name, int(monitor_index or 0))
+    state = _history_policy_sessions.get(state_key)
+    if not state or state.get("session_key") != session_key:
+        state = {
+            "session_key": session_key,
+            "started_at": captured_at,
+            "last_saved_at": None,
+        }
+        _history_policy_sessions[state_key] = state
+
+    elapsed = (captured_at - state["started_at"]).total_seconds()
+    last_saved_at = state.get("last_saved_at")
+    if elapsed < SPECIAL_RULE_WARMUP_SECONDS:
+        store_history = True
+        phase = "warmup"
+    elif last_saved_at is None:
+        store_history = True
+        phase = "post_warmup_first"
+    elif (captured_at - last_saved_at).total_seconds() >= SPECIAL_RULE_KEEPALIVE_SECONDS:
+        store_history = True
+        phase = "keepalive"
+    else:
+        store_history = False
+        phase = "suppressed"
+
+    if store_history:
+        state["last_saved_at"] = captured_at
+
+    return {
+        **context,
+        "store_history": store_history,
+        "matched_rule_type": rule_type,
+        "matched_rule_pattern": pattern,
+        "save_policy_phase": phase,
+    }
 
 
 # ============================================
@@ -326,6 +431,8 @@ async def screenshot(data: dict):
         except (TypeError, ValueError):
             pass
 
+    server_decision = _history_policy_decision(agent_name, int(monitor_index or 0), timestamp, data)
+
     live_frame = {
         "id": f"live:{agent_name}:{monitor_index}:{timestamp}",
         "agent_name": agent_name,
@@ -335,28 +442,29 @@ async def screenshot(data: dict):
         "monitor_index": monitor_index,
         "monitor_total": monitor_total,
         "capture_interval": capture_interval,
-        "foreground_process_name": data.get("foreground_process_name", ""),
-        "foreground_window_title": data.get("foreground_window_title", ""),
-        "foreground_url": data.get("foreground_url", ""),
-        "matched_rule_type": data.get("matched_rule_type", ""),
-        "matched_rule_pattern": data.get("matched_rule_pattern", ""),
-        "save_policy_phase": data.get("save_policy_phase", ""),
+        "foreground_process_name": server_decision.get("foreground_process_name", ""),
+        "foreground_window_title": server_decision.get("foreground_window_title", ""),
+        "foreground_url": server_decision.get("foreground_url", ""),
+        "matched_rule_type": server_decision.get("matched_rule_type", ""),
+        "matched_rule_pattern": server_decision.get("matched_rule_pattern", ""),
+        "save_policy_phase": server_decision.get("save_policy_phase", ""),
     }
     _store_live_frame(agent_name, int(monitor_index or 0), live_frame)
 
-    store_history = bool(data.get("store_history", True))
+    agent_allows_history = bool(data.get("store_history", True))
+    store_history = agent_allows_history and bool(server_decision.get("store_history", True))
     if not store_history:
         return {"status": "ok", "id": None}
 
     # 入库存储仍执行 2 秒节流；Live 画面读取上面的内存最新帧，不受节流影响。
     screenshot_id = save_screenshot(agent_name, timestamp, image_b64,
                                     monitor_index, monitor_total, {
-                                        "foreground_process_name": data.get("foreground_process_name", ""),
-                                        "foreground_window_title": data.get("foreground_window_title", ""),
-                                        "foreground_url": data.get("foreground_url", ""),
-                                        "matched_rule_type": data.get("matched_rule_type", ""),
-                                        "matched_rule_pattern": data.get("matched_rule_pattern", ""),
-                                        "save_policy_phase": data.get("save_policy_phase", ""),
+                                        "foreground_process_name": server_decision.get("foreground_process_name", ""),
+                                        "foreground_window_title": server_decision.get("foreground_window_title", ""),
+                                        "foreground_url": server_decision.get("foreground_url", ""),
+                                        "matched_rule_type": server_decision.get("matched_rule_type", ""),
+                                        "matched_rule_pattern": server_decision.get("matched_rule_pattern", ""),
+                                        "save_policy_phase": server_decision.get("save_policy_phase", ""),
                                     })
     return {"status": "ok", "id": screenshot_id}
 

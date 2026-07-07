@@ -42,6 +42,7 @@ def setup_test_env(tmp_path):
     routes._agent_intervals.clear()
     routes._latest_live_frames.clear()
     routes._live_frame_buffers.clear()
+    routes._history_policy_sessions.clear()
     routes.LIVE_DELAY_SECONDS = 5
     routes.LIVE_BUFFER_SECONDS = 15
     routes.AGENT_RELEASES_DIR = os.path.join(data_dir, "releases", "agent")
@@ -525,6 +526,87 @@ class TestScreenshot:
         live_data = live.json()
         assert live_data["timestamp"] == ts
         assert live_data["save_policy_phase"] == "suppressed"
+
+    def test_server_policy_uses_recent_app_event_for_old_agent(self, client):
+        _register_agent(client, "server-policy-agent")
+        client.post("/api/screenshot-rules", json={
+            "rule_type": "process",
+            "pattern": "chrome.exe",
+            "enabled": True,
+        })
+        base = datetime.now()
+        client.post("/api/app_event", json={
+            "agent_name": "server-policy-agent",
+            "type": "app_switch",
+            "process_name": "chrome.exe",
+            "window_title": "cn.tradingview.com/chart",
+            "timestamp": base.strftime("%Y-%m-%dT%H:%M:%S"),
+        })
+
+        first_id, _ = _upload_screenshot(
+            client,
+            "server-policy-agent",
+            (base + timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%S"),
+        )
+        assert first_id is not None
+
+        suppressed_id, _ = _upload_screenshot(
+            client,
+            "server-policy-agent",
+            (base + timedelta(seconds=12)).strftime("%Y-%m-%dT%H:%M:%S"),
+        )
+        assert suppressed_id is None
+
+        rows = client.get("/api/screenshots?agent=server-policy-agent").json()
+        assert len(rows) == 1
+        assert rows[0]["matched_rule_type"] == "process"
+        assert rows[0]["save_policy_phase"] == "warmup"
+
+        live = client.get("/api/screenshots/live/latest?agent=server-policy-agent&monitor=0&fresh=true")
+        assert live.status_code == 200
+        assert live.json()["save_policy_phase"] == "suppressed"
+
+    def test_server_policy_url_rule_can_use_recent_browser_history(self, client):
+        _register_agent(client, "server-url-policy-agent")
+        client.post("/api/screenshot-rules", json={
+            "rule_type": "url_contains",
+            "pattern": "cn.tradingview.com",
+            "enabled": True,
+        })
+        base = datetime.now()
+        client.post("/api/app_event", json={
+            "agent_name": "server-url-policy-agent",
+            "type": "app_switch",
+            "process_name": "chrome.exe",
+            "window_title": "TradingView",
+            "timestamp": base.strftime("%Y-%m-%dT%H:%M:%S"),
+        })
+        client.post("/api/browser_history", json={
+            "agent_name": "server-url-policy-agent",
+            "records": [{
+                "url": "https://cn.tradingview.com/chart/abc?symbol=SSE%3A688686",
+                "title": "TradingView",
+                "last_visit": base.strftime("%Y-%m-%dT%H:%M:%S"),
+                "browser": "chrome",
+            }],
+        })
+
+        first_id, _ = _upload_screenshot(
+            client,
+            "server-url-policy-agent",
+            (base + timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%S"),
+        )
+        assert first_id is not None
+        suppressed_id, _ = _upload_screenshot(
+            client,
+            "server-url-policy-agent",
+            (base + timedelta(seconds=12)).strftime("%Y-%m-%dT%H:%M:%S"),
+        )
+        assert suppressed_id is None
+
+        rows = client.get("/api/screenshots?agent=server-url-policy-agent").json()
+        assert rows[0]["matched_rule_type"] == "url_contains"
+        assert "cn.tradingview.com" in rows[0]["foreground_url"]
 
     def test_screenshot_image_retrievable(self, client):
         _register_agent(client, "img-agent")

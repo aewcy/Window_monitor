@@ -1163,6 +1163,49 @@ def list_screenshot_rules(enabled_only: bool = False) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def get_recent_foreground_event(agent_name: str, timestamp: str, max_age_seconds: int = 30) -> dict | None:
+    """取截图时间附近最近一次前台窗口事件，供服务端历史保存策略兜底使用。"""
+    db = get_db()
+    try:
+        shot_time = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00")).replace(tzinfo=None)
+    except (TypeError, ValueError):
+        shot_time = datetime.now()
+    start = (shot_time - timedelta(seconds=max_age_seconds)).isoformat()
+    end = (shot_time + timedelta(seconds=max_age_seconds)).isoformat()
+    row = db.execute(
+        """SELECT * FROM app_events
+           WHERE agent_name = ?
+             AND event_type = 'app_switch'
+             AND timestamp >= ?
+             AND timestamp <= ?
+           ORDER BY ABS((julianday(timestamp) - julianday(?)) * 86400.0) ASC, id DESC
+           LIMIT 1""",
+        (agent_name, start, end, timestamp),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def get_recent_browser_record(agent_name: str, timestamp: str, max_age_seconds: int = 120) -> dict | None:
+    """取截图时间附近最近一次浏览器历史记录，作为旧 Agent 网页 URL 规则的弱兜底。"""
+    db = get_db()
+    try:
+        shot_time = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00")).replace(tzinfo=None)
+    except (TypeError, ValueError):
+        shot_time = datetime.now()
+    start = (shot_time - timedelta(seconds=max_age_seconds)).isoformat()
+    end = (shot_time + timedelta(seconds=max_age_seconds)).isoformat()
+    row = db.execute(
+        """SELECT * FROM browser_history
+           WHERE agent_name = ?
+             AND last_visit >= ?
+             AND last_visit <= ?
+           ORDER BY ABS((julianday(last_visit) - julianday(?)) * 86400.0) ASC, id DESC
+           LIMIT 1""",
+        (agent_name, start, end, timestamp),
+    ).fetchone()
+    return dict(row) if row else None
+
+
 def create_screenshot_rule(rule_type: str, pattern: str, enabled: bool = True) -> dict:
     db = get_db()
     now = datetime.now().isoformat()
