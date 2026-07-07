@@ -1,0 +1,36 @@
+# Implementation Notes
+
+## 2026-07-07 Web 登录改为标签页级会话
+
+### 背景
+
+- 目标：用户关闭当前标签页后，再重新打开 Web 或下载页时，必须重新输入密码。
+- 原实现只有 `crkrd_session` cookie，登录态可跨标签页复用，不符合产品要求。
+
+### 实现方案
+
+- 服务端登录成功后，仍然签发 `HttpOnly` cookie。
+- 但 cookie 内额外绑定当前标签页生成的 `tab_token` 哈希。
+- Dashboard 和下载页在当前标签页的 `sessionStorage` 中保存 `crkrd_tab_session`。
+- Web API 请求统一通过请求头 `X-CRKRD-Tab-Session` 传递当前标签页 token。
+- 图片、缩略图、预览图、安装包下载这类不能自定义请求头的入口，统一改为通过 URL 参数 `tab_session` 传递 token。
+
+### 涉及文件
+
+- `server/main.py`
+- `server/dashboard/src/api.js`
+- `server/dashboard/src/components/AgentStrip.vue`
+- `server/static/download.html`
+- `server/tests/test_api.py`
+
+### 边缘情况与偏离说明
+
+- 偏离点：浏览器首次请求 HTML 页面时，天然不能像 `fetch` 一样附带自定义请求头。
+- 处理方式：服务端页面入口仍先基于 cookie 放行 HTML，但会在返回的页面里注入标签页守卫脚本。
+- 结果：如果用户是重新新开一个标签页，虽然浏览器还会带旧 cookie，但由于这个新标签页没有 `sessionStorage` 里的 token，页面加载后会立即跳回登录页。
+- 说明：最终用户效果满足“关掉标签页后重新打开必须重登”，只是呈现形式不是服务端首包直接拦截，而是页面加载后立即回登录页。
+
+### 验证
+
+- `D:\python\python.exe -m pytest server\tests\test_api.py -q`
+- `npm run build`

@@ -82,6 +82,17 @@ def _upload_screenshot(c, agent: str = "test-agent", ts: str = None, monitor: in
     return resp.json().get("id"), ts
 
 
+def _login_web(client):
+    headers = {"host": "monitor.local:14325"}
+    tab_token = "tab-session-test"
+    resp = client.post(
+        "/api/auth/login",
+        headers=headers,
+        json={"username": "admin", "password": "wxnlyzds310", "tab_token": tab_token},
+    )
+    return headers, tab_token, resp
+
+
 # ============================================================
 # 1. 健康检查
 # ============================================================
@@ -115,28 +126,37 @@ class TestHealth:
         assert resp.content == b""
 
     def test_public_web_login_allows_dashboard_and_download(self, client):
-        headers = {"host": "monitor.local:14325"}
-        resp = client.post(
-            "/api/auth/login",
-            headers=headers,
-            json={"username": "admin", "password": "wxnlyzds310"},
-        )
+        headers, tab_token, resp = _login_web(client)
         assert resp.status_code == 200
         assert "crkrd_session" in resp.cookies
 
         dashboard = client.get("/", headers=headers)
         assert dashboard.status_code == 200
-        assert 'id="app"' in dashboard.text
+        assert "crkrd_tab_session" in dashboard.text
 
         download = client.get("/download", headers=headers)
         assert download.status_code == 200
         assert "CRKRD 下载" in download.text
 
+        api_headers = {**headers, "X-CRKRD-Tab-Session": tab_token}
+        agents = client.get("/api/agents", headers=api_headers)
+        assert agents.status_code == 200
+
+    def test_public_web_api_requires_matching_tab_token(self, client):
+        headers, _, resp = _login_web(client)
+        assert resp.status_code == 200
+
+        missing = client.get("/api/agents", headers=headers)
+        assert missing.status_code == 401
+
+        wrong = client.get("/api/agents", headers={**headers, "X-CRKRD-Tab-Session": "wrong-token"})
+        assert wrong.status_code == 401
+
     def test_public_web_login_rejects_wrong_password(self, client):
         resp = client.post(
             "/api/auth/login",
             headers={"host": "monitor.local:14325"},
-            json={"username": "admin", "password": "wrong"},
+            json={"username": "admin", "password": "wrong", "tab_token": "tab-session-test"},
         )
         assert resp.status_code == 401
 

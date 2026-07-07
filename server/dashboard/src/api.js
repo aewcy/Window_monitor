@@ -1,10 +1,58 @@
 const BASE = '/api'
+const TAB_SESSION_KEY = 'crkrd_tab_session'
+const TAB_SESSION_HEADER = 'X-CRKRD-Tab-Session'
+const TAB_SESSION_QUERY = 'tab_session'
+
+export function redirectToLogin(path = window.location.pathname) {
+  sessionStorage.removeItem(TAB_SESSION_KEY)
+  window.location.replace(`${path}?login=1`)
+}
+
+export function getTabSessionToken() {
+  return window.__CRKRD_TAB_TOKEN__ || sessionStorage.getItem(TAB_SESSION_KEY) || ''
+}
+
+function requireTabSessionToken() {
+  const token = getTabSessionToken()
+  if (!token) {
+    redirectToLogin()
+    throw new Error('missing-tab-session')
+  }
+  return token
+}
+
+function withTabSessionHeaders(headers = {}) {
+  const token = requireTabSessionToken()
+  return {
+    ...headers,
+    [TAB_SESSION_HEADER]: token,
+  }
+}
+
+export function appendTabSession(url) {
+  const token = requireTabSessionToken()
+  const parsed = new URL(url, window.location.origin)
+  parsed.searchParams.set(TAB_SESSION_QUERY, token)
+  return parsed.origin === window.location.origin
+    ? `${parsed.pathname}${parsed.search}${parsed.hash}`
+    : parsed.toString()
+}
+
+export async function authFetch(url, options = {}) {
+  const resp = await fetch(url, {
+    cache: 'no-store',
+    credentials: 'same-origin',
+    ...options,
+    headers: withTabSessionHeaders(options.headers || {}),
+  })
+  if (resp.status === 401) {
+    redirectToLogin()
+  }
+  return resp
+}
 
 async function request(path, options = {}) {
-  const resp = await fetch(BASE + path, {
-    cache: 'no-store',
-    ...options,
-  })
+  const resp = await authFetch(BASE + path, options)
   if (!resp.ok) throw new Error(`${resp.status}`)
   return resp.json()
 }
@@ -56,9 +104,9 @@ export const getScreenshots = (agent, limit = 50, offset = 0, monitor = null, da
   if (dateTo) url += `&date_to=${encodeURIComponent(dateTo)}`
   return request(url)
 }
-export const getScreenshotImage = (id) => `/api/screenshots/image/${id}`
-export const getScreenshotThumb = (id) => `/api/screenshots/thumb/${id}`
-export const getScreenshotPreview = (id) => `/api/screenshots/preview/${id}`
+export const getScreenshotImage = (id) => appendTabSession(`/api/screenshots/image/${id}`)
+export const getScreenshotThumb = (id) => appendTabSession(`/api/screenshots/thumb/${id}`)
+export const getScreenshotPreview = (id) => appendTabSession(`/api/screenshots/preview/${id}`)
 export const getScreenshotThumbsBatch = (ids) =>
   request('/screenshots/thumbs-batch', {
     method: 'POST',
@@ -117,4 +165,4 @@ export const getStorageStats = () => request('/storage/stats')
 
 // Heartbeat
 export const sendHeartbeat = () =>
-  fetch(BASE + '/viewer/heartbeat', { method: 'POST', cache: 'no-store' }).catch(() => {})
+  authFetch(BASE + '/viewer/heartbeat', { method: 'POST' }).catch(() => {})

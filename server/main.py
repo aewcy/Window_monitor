@@ -31,6 +31,10 @@ os.makedirs(SCREENSHOT_DIR, exist_ok=True)
 
 SESSION_COOKIE = "crkrd_session"
 SESSION_MAX_AGE_SECONDS = 12 * 60 * 60
+TAB_SESSION_HEADER = "X-CRKRD-Tab-Session"
+TAB_SESSION_QUERY = "tab_session"
+FORCE_LOGIN_QUERY = "login"
+TAB_SESSION_STORAGE_KEY = "crkrd_tab_session"
 
 
 LOGIN_HTML = """<!doctype html>
@@ -57,14 +61,26 @@ LOGIN_HTML = """<!doctype html>
 const form=document.getElementById("login-form");
 const btn=document.getElementById("submit");
 const err=document.getElementById("error");
+const TAB_SESSION_KEY="__TAB_SESSION_KEY__";
+function getOrCreateTabToken(){
+  let token=sessionStorage.getItem(TAB_SESSION_KEY);
+  if(token) return token;
+  if(window.crypto&&window.crypto.randomUUID){
+    token=window.crypto.randomUUID();
+  }else{
+    token=Date.now().toString(36)+Math.random().toString(36).slice(2);
+  }
+  sessionStorage.setItem(TAB_SESSION_KEY,token);
+  return token;
+}
 form.addEventListener("submit",async(e)=>{
   e.preventDefault();
   err.textContent="";
   btn.disabled=true;
   try{
-    const resp=await fetch("/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:document.getElementById("username").value,password:document.getElementById("password").value})});
+    const resp=await fetch("/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:document.getElementById("username").value,password:document.getElementById("password").value,tab_token:getOrCreateTabToken()})});
     if(!resp.ok) throw new Error("login");
-    window.location.reload();
+    window.location.href=window.location.pathname;
   }catch{
     err.textContent="账户或密码错误";
   }finally{
@@ -73,35 +89,93 @@ form.addEventListener("submit",async(e)=>{
 });
 </script>
 </body>
-</html>"""
+</html>""".replace("__TAB_SESSION_KEY__", TAB_SESSION_STORAGE_KEY)
 
 
-def _session_signature(username: str, expires_at: int) -> str:
-    payload = f"{username}:{expires_at}".encode("utf-8")
+def _tab_token_hash(tab_token: str) -> str:
+    return hashlib.sha256(tab_token.encode("utf-8")).hexdigest()
+
+
+def _session_signature(username: str, expires_at: int, tab_token_hash: str) -> str:
+    payload = f"{username}:{expires_at}:{tab_token_hash}".encode("utf-8")
     return hmac.new(WEB_AUTH_SECRET.encode("utf-8"), payload, hashlib.sha256).hexdigest()
 
 
-def _make_session_token(username: str) -> str:
+def _make_session_token(username: str, tab_token: str) -> str:
     expires_at = int(time.time()) + SESSION_MAX_AGE_SECONDS
-    return f"{username}:{expires_at}:{_session_signature(username, expires_at)}"
+    tab_token_hash = _tab_token_hash(tab_token)
+    return f"{username}:{expires_at}:{tab_token_hash}:{_session_signature(username, expires_at, tab_token_hash)}"
 
 
-def _valid_session_token(token: str | None) -> bool:
+def _valid_session_token(token: str | None, tab_token: str | None = None, require_tab: bool = False) -> bool:
     if not token:
         return False
     try:
-        username, expires_raw, signature = token.split(":", 2)
+        username, expires_raw, tab_token_hash, signature = token.split(":", 3)
         expires_at = int(expires_raw)
     except (ValueError, TypeError):
         return False
     if username != WEB_AUTH_USER or expires_at < int(time.time()):
         return False
-    expected = _session_signature(username, expires_at)
+    expected = _session_signature(username, expires_at, tab_token_hash)
+    if require_tab:
+        if not tab_token:
+            return False
+        if not hmac.compare_digest(tab_token_hash, _tab_token_hash(tab_token)):
+            return False
     return hmac.compare_digest(signature, expected)
 
 
-def _is_authenticated(request: Request) -> bool:
-    return _valid_session_token(request.cookies.get(SESSION_COOKIE))
+def _extract_tab_token(request: Request) -> str | None:
+    return request.headers.get(TAB_SESSION_HEADER) or request.query_params.get(TAB_SESSION_QUERY)
+
+
+def _is_authenticated(request: Request, require_tab: bool = False) -> bool:
+    return _valid_session_token(
+        request.cookies.get(SESSION_COOKIE),
+        tab_token=_extract_tab_token(request),
+        require_tab=require_tab,
+    )
+
+
+def _build_login_url(path: str) -> str:
+    return f"{path}?{FORCE_LOGIN_QUERY}=1"
+
+
+def _build_page_guard_script(path: str) -> str:
+    login_url = _build_login_url(path)
+    return f"""<script>
+(() => {{
+  const TAB_SESSION_KEY = {TAB_SESSION_STORAGE_KEY!r};
+  const TAB_SESSION_QUERY = {TAB_SESSION_QUERY!r};
+  const TAB_SESSION_HEADER = {TAB_SESSION_HEADER!r};
+  const token = sessionStorage.getItem(TAB_SESSION_KEY);
+  const loginUrl = {login_url!r};
+  if (!token) {{
+    window.location.replace(loginUrl);
+    return;
+  }}
+  window.__CRKRD_TAB_TOKEN__ = token;
+  window.__crkrdAppendTabSession = (url) => {{
+    const base = window.location.origin;
+    const parsed = new URL(url, base);
+    parsed.searchParams.set(TAB_SESSION_QUERY, token);
+    return parsed.origin === base ? `${{parsed.pathname}}${{parsed.search}}${{parsed.hash}}` : parsed.toString();
+  }};
+  window.__crkrdFetch = (input, init = {{}}) => {{
+    const headers = new Headers(init.headers || undefined);
+    headers.set(TAB_SESSION_HEADER, token);
+    return fetch(input, {{ ...init, headers, credentials: 'same-origin' }});
+  }};
+}})();
+</script>"""
+
+
+def _inject_page_guard(html: str, path: str) -> str:
+    guard = _build_page_guard_script(path)
+    if "</head>" in html:
+        return html.replace("</head>", f"{guard}</head>", 1)
+    return guard + html
 
 
 async def storage_cleanup_loop():
@@ -190,6 +264,7 @@ app.add_middleware(
 class LoginPayload(BaseModel):
     username: str
     password: str
+    tab_token: str
 
 
 @app.post("/api/auth/login")
@@ -197,12 +272,13 @@ async def login(payload: LoginPayload):
     if not (
         hmac.compare_digest(payload.username, WEB_AUTH_USER)
         and hmac.compare_digest(payload.password, WEB_AUTH_PASSWORD)
+        and payload.tab_token.strip()
     ):
         return Response(status_code=401)
     response = JSONResponse({"status": "ok"})
     response.set_cookie(
         SESSION_COOKIE,
-        _make_session_token(payload.username),
+        _make_session_token(payload.username, payload.tab_token.strip()),
         max_age=SESSION_MAX_AGE_SECONDS,
         httponly=True,
         samesite="lax",
@@ -230,11 +306,16 @@ async def port_and_auth_middleware(request: Request, call_next):
     port = _request_port(request)
     if port == AGENT_API_PORT and not path.startswith("/api/"):
         return Response(status_code=503)
-    if port == WEB_PUBLIC_PORT and path != "/api/auth/login":
-        if not _is_authenticated(request):
-            if path.startswith("/api/"):
+    if port == WEB_PUBLIC_PORT:
+        if path == "/api/auth/login":
+            return await call_next(request)
+        if path.startswith("/api/"):
+            if not _is_authenticated(request, require_tab=True):
                 return Response(status_code=401)
-            return HTMLResponse(LOGIN_HTML, status_code=200)
+            return await call_next(request)
+        if path in ("/", "/download"):
+            if request.query_params.get(FORCE_LOGIN_QUERY) == "1" or not _is_authenticated(request):
+                return HTMLResponse(LOGIN_HTML, status_code=200)
     return await call_next(request)
 
 
@@ -285,12 +366,12 @@ async def dashboard():
     vue_dist = os.path.join(STATIC_DIR, "dist", "index.html")
     if os.path.exists(vue_dist):
         with open(vue_dist, "r", encoding="utf-8") as f:
-            return HTMLResponse(f.read())
+            return HTMLResponse(_inject_page_guard(f.read(), "/"))
     # Fallback: 旧版单文件 Dashboard
     fallback = os.path.join(STATIC_DIR, "dashboard-v0-raycast.html")
     if os.path.exists(fallback):
         with open(fallback, "r", encoding="utf-8") as f:
-            return HTMLResponse(f.read())
+            return HTMLResponse(_inject_page_guard(f.read(), "/"))
     return HTMLResponse("<h1>Dashboard not found</h1>")
 
 
@@ -300,7 +381,7 @@ async def download_page():
     html_path = os.path.join(STATIC_DIR, "download.html")
     if os.path.exists(html_path):
         with open(html_path, "r", encoding="utf-8") as f:
-            return HTMLResponse(f.read())
+            return HTMLResponse(_inject_page_guard(f.read(), "/download"))
     return HTMLResponse("<h1>Download page not found</h1>", status_code=404)
 
 

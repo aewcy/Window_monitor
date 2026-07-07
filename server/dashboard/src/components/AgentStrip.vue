@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useAgentStore } from '../stores/agent'
-import { allowAgentUpdate, getAgentVersion, pauseAgentUpdate, renameAgent, sendAgentCommand } from '../api'
+import { allowAgentUpdate, authFetch, getAgentVersion, pauseAgentUpdate, renameAgent, sendAgentCommand } from '../api'
 
 const agent = useAgentStore()
 
@@ -187,7 +187,7 @@ function updateTitle(a) {
 
 async function confirmDelete() {
   try {
-    const resp = await fetch(`/api/agents/${encodeURIComponent(deleting.value.agent.name)}`, { method: 'DELETE' })
+    const resp = await authFetch(`/api/agents/${encodeURIComponent(deleting.value.agent.name)}`, { method: 'DELETE' })
     if (resp.ok) {
       await agent.fetchAgents()
       if (agent.selectedAgent === deleting.value.agent.name && agent.agents.length) {

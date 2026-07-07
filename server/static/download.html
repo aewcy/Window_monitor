@@ -171,23 +171,24 @@
 
   async function startDownload() {
     try {
-      const resp = await fetch("/api/agent/version", { cache: "no-store" });
+      const resp = await window.__crkrdFetch("/api/agent/version", { cache: "no-store" });
       if (resp.ok) {
         const data = await resp.json();
         const url = data.download_url || "/api/agent/download";
-        const sep = url.includes("?") ? "&" : "?";
-        window.location.href = url + sep + "t=" + Date.now();
+        const downloadUrl = window.__crkrdAppendTabSession(url);
+        const sep = downloadUrl.includes("?") ? "&" : "?";
+        window.location.href = downloadUrl + sep + "t=" + Date.now();
         return;
       }
     } catch (err) {
       // 版本接口失败时仍允许直接下载。
     }
-    window.location.href = "/api/agent/download?t=" + Date.now();
+    window.location.href = window.__crkrdAppendTabSession("/api/agent/download?t=" + Date.now());
   }
 
   async function detect() {
     try {
-      const resp = await fetch("/api/agent/detect", { method: "POST" });
+      const resp = await window.__crkrdFetch("/api/agent/detect", { method: "POST" });
       if (!resp.ok) throw new Error("检测请求失败");
       const data = await resp.json();
 
