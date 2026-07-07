@@ -38,3 +38,21 @@
 
 - `D:\python\python.exe -m pytest server\tests\test_api.py -q`
 - `npm run build`
+
+## 2026-07-07 仓库清理规则收敛
+
+### 目标
+
+- Git 仓库只保留项目运行、构建、发布、测试、正式文档需要的内容。
+- 本地 AI 工具配置、协作过程文件、缓存、动态测试残留不进入版本库。
+
+### 本次处理
+
+- 从版本库移除 `CLAUDE.md`。
+- 从版本库移除 `docs/superpowers/` 下的 AI 过程计划/设计文档。
+- `.gitignore` 增加 `docs/superpowers/`，避免后续再次误提交。
+
+### 判断原则
+
+- `agent/`、`server/`、`installer/`、核心 `docs/`、测试、发布链路真实依赖的静态包保留。
+- AI 工具说明、代理运行目录、缓存、日志、动态测试产物不保留。
