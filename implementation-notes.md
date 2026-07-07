@@ -136,3 +136,47 @@
 - `D:\python\python.exe -m pytest agent\tests\test_foreground_policy.py -q`
 - `D:\python\python.exe -m py_compile agent\main.py agent\foreground_context.py server\routes.py server\models.py`
 - `npm run build`
+
+## 2026-07-07 Agent 免重构发布与后台推送更新
+
+### 目标
+
+- 后续发布 `monitor-agent.exe` / `WindowsMonitorSetup.exe` 时，不再依赖重构 Server 镜像。
+- 下载页和 Web 后台推送更新都读取同一个“当前激活版本”。
+- 更新任务创建后绑定具体 `target_version`，避免激活版本后续切换导致下载包漂移。
+
+### 实现方案
+
+- `docker-compose.yml` 新增 `../releases/agent:/app/releases/agent` 挂载。
+- 发布目录约定为 `/app/releases/agent/{version}/`：
+  - `monitor-agent.exe`
+  - `WindowsMonitorSetup.exe`
+- 复用 `agent_versions` 表作为发布版本清单。
+- `is_active=1` 表示当前激活版本，激活操作会先清空其他版本的激活状态。
+- 新增发布管理接口：
+  - `POST /api/agent/versions/register`
+  - `POST /api/agent/versions/{version}/activate`
+- `/api/agent/version`、`/api/agent/download`、`/api/agent/exe` 默认读取当前激活版本。
+- `/api/agent/packages/{version}/exe|setup` 按指定版本目录读取文件。
+- `/api/updater/jobs/next` 按 job 的 `target_version` 返回版本包元数据，不再返回当前 latest。
+
+### 冗余与兼容设计
+
+- 保留 `server/static/agent` 旧包作为 `0.59.0` 兜底版本。
+- 如果 releases 目录还没有注册版本，服务端会自动注册旧静态包，并在没有激活版本时激活它。
+- 注册版本时由服务端读取文件并计算 sha256/size，避免人工填写错误。
+- 激活版本前会校验 exe/setup 文件都存在。
+- 旧接口 `/api/agent/exe`、`/api/agent/download` 保留，继续服务下载页和旧更新入口。
+
+### 后续发布流程
+
+- 本地构建 Agent exe 和安装器。
+- 上传到服务器 `/root/monitor-aewcy/releases/agent/{version}/`。
+- 调用 `POST /api/agent/versions/register` 注册版本。
+- 调用 `POST /api/agent/versions/{version}/activate` 激活版本。
+- Web 点“允许更新”后，后台更新任务默认推送当前激活版本。
+
+### 验证
+
+- `D:\python\python.exe -m pytest server\tests\test_api.py -q`
+- `D:\python\python.exe -m py_compile server\routes.py server\models.py`

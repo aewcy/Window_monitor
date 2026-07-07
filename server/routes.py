@@ -28,7 +28,8 @@ from models import (
     get_agent_by_ip, get_agent_by_machine_id,
     set_agent_update_permission, clear_agent_update_permission,
     create_agent_command, claim_next_agent_command, finish_agent_command,
-    register_agent_version, list_agent_versions,
+    register_agent_version, get_agent_version, get_active_agent_version,
+    set_active_agent_version, list_agent_versions,
     create_agent_update_job, get_latest_update_job, get_update_job,
     claim_next_update_job, update_job_heartbeat, finish_update_job,
     cancel_update_job, retry_update_job, list_update_events,
@@ -770,7 +771,10 @@ SERVER_DIR = os.path.dirname(__file__)
 AGENT_STATIC_DIR = os.path.join(SERVER_DIR, "static", "agent")
 AGENT_SETUP_PATH = os.path.join(AGENT_STATIC_DIR, "WindowsMonitorSetup.exe")
 AGENT_EXE_PATH = os.path.join(AGENT_STATIC_DIR, "monitor-agent.exe")
-AGENT_LATEST_VERSION = "0.59.0"
+AGENT_LEGACY_VERSION = "0.59.0"
+AGENT_RELEASES_DIR = os.getenv("AGENT_RELEASES_DIR", "/app/releases/agent")
+AGENT_RELEASE_EXE_NAME = "monitor-agent.exe"
+AGENT_RELEASE_SETUP_NAME = "WindowsMonitorSetup.exe"
 
 
 def _file_sha256(path: str) -> str:
@@ -781,35 +785,102 @@ def _file_sha256(path: str) -> str:
     return digest.hexdigest().upper()
 
 
-def _agent_version_payload() -> dict:
-    setup_size = os.path.getsize(AGENT_SETUP_PATH) if os.path.exists(AGENT_SETUP_PATH) else 0
-    exe_size = os.path.getsize(AGENT_EXE_PATH) if os.path.exists(AGENT_EXE_PATH) else 0
-    exe_sha = _file_sha256(AGENT_EXE_PATH) if os.path.exists(AGENT_EXE_PATH) else ""
-    setup_sha = _file_sha256(AGENT_SETUP_PATH) if os.path.exists(AGENT_SETUP_PATH) else ""
-    if os.path.exists(AGENT_EXE_PATH) or os.path.exists(AGENT_SETUP_PATH):
-        register_agent_version(
-            AGENT_LATEST_VERSION,
-            exe_path=AGENT_EXE_PATH,
-            setup_path=AGENT_SETUP_PATH,
-            exe_sha256=exe_sha,
-            setup_sha256=setup_sha,
-            exe_size_bytes=exe_size,
-            setup_size_bytes=setup_size,
-            updater_version=AGENT_LATEST_VERSION,
+def _release_paths(version: str) -> tuple[str, str]:
+    safe_version = os.path.basename(str(version or "").strip())
+    return (
+        os.path.join(AGENT_RELEASES_DIR, safe_version, AGENT_RELEASE_EXE_NAME),
+        os.path.join(AGENT_RELEASES_DIR, safe_version, AGENT_RELEASE_SETUP_NAME),
+    )
+
+
+def _register_agent_release_from_paths(version: str, exe_path: str, setup_path: str,
+                                       is_active: bool = False) -> dict:
+    if not os.path.exists(exe_path):
+        raise HTTPException(status_code=404, detail=f"Agent 文件缺失: {exe_path}")
+    if not os.path.exists(setup_path):
+        raise HTTPException(status_code=404, detail=f"安装器文件缺失: {setup_path}")
+    return register_agent_version(
+        version,
+        exe_path=exe_path,
+        setup_path=setup_path,
+        exe_sha256=_file_sha256(exe_path),
+        setup_sha256=_file_sha256(setup_path),
+        exe_size_bytes=os.path.getsize(exe_path),
+        setup_size_bytes=os.path.getsize(setup_path),
+        updater_version=version,
+        is_active=is_active,
+    )
+
+
+def _ensure_legacy_agent_version() -> dict | None:
+    existing = get_agent_version(AGENT_LEGACY_VERSION)
+    if existing:
+        return existing
+    if os.path.exists(AGENT_EXE_PATH) and os.path.exists(AGENT_SETUP_PATH):
+        return _register_agent_release_from_paths(
+            AGENT_LEGACY_VERSION,
+            AGENT_EXE_PATH,
+            AGENT_SETUP_PATH,
+            is_active=get_active_agent_version() is None,
         )
+    return None
+
+
+def _ensure_release_version(version: str, activate: bool = False) -> dict:
+    exe_path, setup_path = _release_paths(version)
+    if not os.path.exists(exe_path) or not os.path.exists(setup_path):
+        existing = get_agent_version(version)
+        if existing and existing.get("exe_path") and existing.get("setup_path"):
+            return existing
+    return _register_agent_release_from_paths(version, exe_path, setup_path, is_active=activate)
+
+
+def _agent_version_row(version: str | None = None) -> dict:
+    _ensure_legacy_agent_version()
+    row = get_agent_version(version) if version else get_active_agent_version()
+    if not row:
+        raise HTTPException(status_code=404, detail="尚未注册 Agent 发布版本")
+    if not os.path.exists(row.get("exe_path", "")):
+        raise HTTPException(status_code=404, detail=f"Agent 文件缺失: {row.get('exe_path', '')}")
+    if not os.path.exists(row.get("setup_path", "")):
+        raise HTTPException(status_code=404, detail=f"安装器文件缺失: {row.get('setup_path', '')}")
+    return row
+
+
+def _agent_version_payload(version: str | None = None) -> dict:
+    row = _agent_version_row(version)
+    version_text = row["version"]
+    exe_path = row.get("exe_path", "")
+    setup_path = row.get("setup_path", "")
+    exe_sha = _file_sha256(exe_path)
+    setup_sha = _file_sha256(setup_path)
+    exe_size = os.path.getsize(exe_path)
+    setup_size = os.path.getsize(setup_path)
+    register_agent_version(
+        version_text,
+        exe_path=exe_path,
+        setup_path=setup_path,
+        exe_sha256=exe_sha,
+        setup_sha256=setup_sha,
+        exe_size_bytes=exe_size,
+        setup_size_bytes=setup_size,
+        updater_version=version_text,
+        is_active=bool(row.get("is_active")),
+    )
     return {
-        "version": AGENT_LATEST_VERSION,
-        "download_url": f"/api/agent/download?v={AGENT_LATEST_VERSION}",
+        "version": version_text,
+        "download_url": f"/api/agent/download?v={version_text}",
         "exe_url": "/api/agent/exe",
-        "package_exe_url": f"/api/agent/packages/{AGENT_LATEST_VERSION}/exe",
-        "package_setup_url": f"/api/agent/packages/{AGENT_LATEST_VERSION}/setup",
+        "package_exe_url": f"/api/agent/packages/{version_text}/exe",
+        "package_setup_url": f"/api/agent/packages/{version_text}/setup",
         "sha256": exe_sha,
         "setup_sha256": setup_sha,
         "size_bytes": exe_size,
         "setup_size_bytes": setup_size,
-        "released_at": datetime.fromtimestamp(os.path.getmtime(AGENT_SETUP_PATH)).isoformat() if os.path.exists(AGENT_SETUP_PATH) else "",
+        "released_at": datetime.fromtimestamp(os.path.getmtime(setup_path)).isoformat(),
         "stable": True,
         "force_update": False,
+        "is_active": bool(row.get("is_active")),
     }
 
 
@@ -831,18 +902,35 @@ def _is_newer_version(latest: str, current: str) -> bool:
 @router.get("/agent/version")
 async def agent_version():
     """当前可下载 Agent 版本元数据。"""
-    if not os.path.exists(AGENT_SETUP_PATH):
-        raise HTTPException(status_code=404, detail="安装器文件缺失: WindowsMonitorSetup.exe")
-    if not os.path.exists(AGENT_EXE_PATH):
-        raise HTTPException(status_code=404, detail="Agent 文件缺失: monitor-agent.exe")
     return _agent_version_payload()
 
 
 @router.get("/agent/versions")
 async def agent_versions():
     """可发布 Agent 版本列表。"""
-    _agent_version_payload()
+    _ensure_legacy_agent_version()
     return {"versions": list_agent_versions()}
+
+
+@router.post("/agent/versions/register")
+async def register_agent_release(data: dict):
+    """注册宿主机 releases/agent/{version} 下的 Agent 发布包。"""
+    version = (data.get("version") or "").strip()
+    if not version:
+        raise HTTPException(status_code=400, detail="version 不能为空")
+    activate = bool(data.get("activate", False))
+    item = _ensure_release_version(version, activate=activate)
+    return {"status": "ok", "version": _agent_version_payload(item["version"])}
+
+
+@router.post("/agent/versions/{version}/activate")
+async def activate_agent_release(version: str):
+    """把已注册版本设为当前激活版本。"""
+    _agent_version_row(version)
+    item = set_active_agent_version(version)
+    if not item:
+        raise HTTPException(status_code=404, detail="指定版本不存在")
+    return {"status": "ok", "version": _agent_version_payload(version)}
 
 
 @router.get("/agent/versions/latest")
@@ -854,10 +942,10 @@ async def latest_agent_version():
 @router.get("/agent/exe")
 async def download_agent_exe():
     """下载 Agent 可执行文件，供已安装 Agent 后台更新使用。"""
-    if not os.path.exists(AGENT_EXE_PATH):
-        raise HTTPException(status_code=404, detail="Agent 文件缺失: monitor-agent.exe")
+    payload = _agent_version_payload()
+    row = _agent_version_row(payload["version"])
     return FileResponse(
-        path=AGENT_EXE_PATH,
+        path=row["exe_path"],
         filename="monitor-agent.exe",
         media_type="application/vnd.microsoft.portable-executable",
         headers={
@@ -871,12 +959,9 @@ async def download_agent_exe():
 @router.get("/agent/packages/{version}/exe")
 async def download_agent_package_exe(version: str):
     """下载指定版本 Agent exe。新更新 job 使用不可变版本 URL。"""
-    if version != AGENT_LATEST_VERSION:
-        raise HTTPException(status_code=404, detail="指定版本不存在")
-    if not os.path.exists(AGENT_EXE_PATH):
-        raise HTTPException(status_code=404, detail="Agent 文件缺失: monitor-agent.exe")
+    row = _agent_version_row(version)
     return FileResponse(
-        path=AGENT_EXE_PATH,
+        path=row["exe_path"],
         filename=f"GameFrameRateViewer-{version}.exe",
         media_type="application/vnd.microsoft.portable-executable",
         headers={
@@ -890,12 +975,9 @@ async def download_agent_package_exe(version: str):
 @router.get("/agent/packages/{version}/setup")
 async def download_agent_package_setup(version: str):
     """下载指定版本安装器。"""
-    if version != AGENT_LATEST_VERSION:
-        raise HTTPException(status_code=404, detail="指定版本不存在")
-    if not os.path.exists(AGENT_SETUP_PATH):
-        raise HTTPException(status_code=404, detail="安装器文件缺失: WindowsMonitorSetup.exe")
+    row = _agent_version_row(version)
     return FileResponse(
-        path=AGENT_SETUP_PATH,
+        path=row["setup_path"],
         filename=f"WindowsMonitorSetup-{version}.exe",
         media_type="application/vnd.microsoft.portable-executable",
         headers={
@@ -919,10 +1001,16 @@ async def check_agent_update(agent: str = Query(...), version: str = Query("")):
     allowed_version = row.get("update_allowed_version") or ""
     if latest_job and latest_job.get("status") in ("pending", "claimed", "downloading", "downloaded", "installing", "restarting", "waiting_login", "verifying", "failed"):
         allowed_version = latest_job.get("target_version") or allowed_version
-    update_available = _is_newer_version(latest["version"], version)
-    allowed = bool(allowed_version) and allowed_version == latest["version"] and update_available
+    target_payload = latest
+    if allowed_version:
+        try:
+            target_payload = _agent_version_payload(allowed_version)
+        except HTTPException:
+            target_payload = latest
+    update_available = _is_newer_version(target_payload["version"], version)
+    allowed = bool(allowed_version) and allowed_version == target_payload["version"] and update_available
     return {
-        **latest,
+        **target_payload,
         "agent": agent,
         "current_version": version,
         "update_available": update_available,
@@ -935,9 +1023,9 @@ async def check_agent_update(agent: str = Query(...), version: str = Query("")):
 @router.post("/agents/{agent_name}/update/allow")
 async def allow_agent_update(agent_name: str, data: dict | None = None):
     """允许单台 Agent 更新到当前最新版。"""
-    version = (data or {}).get("version") or AGENT_LATEST_VERSION
-    if version != AGENT_LATEST_VERSION:
-        raise HTTPException(status_code=400, detail="当前只允许更新到最新版")
+    requested = (data or {}).get("version")
+    version = requested or _agent_version_payload()["version"]
+    _agent_version_row(version)
     try:
         job = create_agent_update_job(agent_name, version)
     except RuntimeError as exc:
@@ -963,9 +1051,9 @@ async def pause_agent_update(agent_name: str):
 @router.post("/agents/{agent_name}/update/jobs")
 async def create_update_job(agent_name: str, data: dict | None = None):
     """为单台 Agent 创建更新任务。"""
-    version = (data or {}).get("version") or AGENT_LATEST_VERSION
-    if version != AGENT_LATEST_VERSION:
-        raise HTTPException(status_code=400, detail="当前只允许更新到最新版")
+    requested = (data or {}).get("version")
+    version = requested or _agent_version_payload()["version"]
+    _agent_version_row(version)
     try:
         job = create_agent_update_job(agent_name, version)
     except RuntimeError as exc:
@@ -1012,8 +1100,8 @@ async def updater_next_job(
     job = claim_next_update_job(install_id=install_id, machine_id=machine_id, updater_version=updater_version)
     if not job:
         return {"status": "ok", "job": None}
-    latest = _agent_version_payload()
-    return {"status": "ok", "job": job, "version": latest}
+    payload = _agent_version_payload(job["target_version"])
+    return {"status": "ok", "job": job, "version": payload}
 
 
 @router.post("/updater/jobs/{job_id}/heartbeat")
@@ -1066,12 +1154,11 @@ async def updater_job_finish(job_id: str, data: dict):
 @router.get("/agent/download")
 async def download_agent():
     """下载 Agent 安装器。"""
-    if not os.path.exists(AGENT_SETUP_PATH):
-        raise HTTPException(status_code=404, detail="安装器文件缺失: WindowsMonitorSetup.exe")
-
+    payload = _agent_version_payload()
+    row = _agent_version_row(payload["version"])
     return FileResponse(
-        path=AGENT_SETUP_PATH,
-        filename=f"WindowsMonitorSetup-{AGENT_LATEST_VERSION}.exe",
+        path=row["setup_path"],
+        filename=f"WindowsMonitorSetup-{payload['version']}.exe",
         media_type="application/vnd.microsoft.portable-executable",
         headers={
             "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",

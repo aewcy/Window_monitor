@@ -13,6 +13,8 @@ services:
     volumes:
       # 持久化数据 (截图 + 数据库)
       - ./data:/app/data
+      # Agent 多版本发布包，不随 Server 镜像重建而丢失
+      - ../releases/agent:/app/releases/agent
     environment:
       - TZ=Asia/Shanghai
       - SERVER_HOST=0.0.0.0

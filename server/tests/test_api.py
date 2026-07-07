@@ -4,6 +4,7 @@
 """
 import base64
 import os
+import shutil
 import sys
 import tempfile
 from datetime import datetime, timedelta
@@ -31,6 +32,8 @@ def setup_test_env(tmp_path):
     config.DB_PATH = os.path.join(data_dir, "monitor.db")
     # 重置线程本地连接
     import models
+    models.DB_PATH = config.DB_PATH
+    models.SCREENSHOT_DIR = config.SCREENSHOT_DIR
     if hasattr(models._local, "conn"):
         models._local.conn = None
     # 清除 viewer 状态
@@ -41,6 +44,7 @@ def setup_test_env(tmp_path):
     routes._live_frame_buffers.clear()
     routes.LIVE_DELAY_SECONDS = 5
     routes.LIVE_BUFFER_SECONDS = 15
+    routes.AGENT_RELEASES_DIR = os.path.join(data_dir, "releases", "agent")
     yield
 
 
@@ -91,6 +95,19 @@ def _login_web(client):
         json={"username": "admin", "password": "wxnlyzds310", "tab_token": tab_token},
     )
     return headers, tab_token, resp
+
+
+def _prepare_agent_release(version: str, routes_module=None):
+    """在测试临时 releases 目录准备一组 Agent 发布包。"""
+    if routes_module is None:
+        import routes as routes_module
+    target_dir = os.path.join(routes_module.AGENT_RELEASES_DIR, version)
+    os.makedirs(target_dir, exist_ok=True)
+    exe_path = os.path.join(target_dir, routes_module.AGENT_RELEASE_EXE_NAME)
+    setup_path = os.path.join(target_dir, routes_module.AGENT_RELEASE_SETUP_NAME)
+    shutil.copy2(routes_module.AGENT_EXE_PATH, exe_path)
+    shutil.copy2(routes_module.AGENT_SETUP_PATH, setup_path)
+    return target_dir
 
 
 # ============================================================
@@ -897,6 +914,31 @@ class TestAgentUpdate:
         assert data["sha256"]
         assert data["size_bytes"] > 0
 
+    def test_register_and_activate_release_version(self, client):
+        import routes
+        _prepare_agent_release("0.60.0", routes)
+
+        registered = client.post("/api/agent/versions/register", json={"version": "0.60.0"})
+        assert registered.status_code == 200
+        assert registered.json()["version"]["version"] == "0.60.0"
+        assert registered.json()["version"]["is_active"] is False
+
+        before = client.get("/api/agent/version")
+        assert before.json()["version"] == "0.59.0"
+
+        activated = client.post("/api/agent/versions/0.60.0/activate")
+        assert activated.status_code == 200
+        assert activated.json()["version"]["version"] == "0.60.0"
+        assert activated.json()["version"]["is_active"] is True
+
+        current = client.get("/api/agent/version")
+        assert current.json()["version"] == "0.60.0"
+        assert current.json()["package_exe_url"].endswith("/api/agent/packages/0.60.0/exe")
+
+    def test_activate_missing_release_fails(self, client):
+        resp = client.post("/api/agent/versions/9.99.9/activate")
+        assert resp.status_code == 404
+
     def test_allow_agent_update_then_check(self, client):
         client.post("/api/heartbeat", json={
             "agent_name": "update-agent",
@@ -976,6 +1018,32 @@ class TestAgentUpdate:
         assert progress.json()["job"]["status"] == "downloading"
         assert progress.json()["job"]["progress_bytes"] == 1024
         client.post(f"/api/updater/jobs/{job_id}/finish", json={"status": "failed", "error": "test done"})
+
+    def test_update_job_returns_target_version_package(self, client):
+        import routes
+        _prepare_agent_release("0.60.0", routes)
+        client.post("/api/agent/versions/register", json={"version": "0.60.0", "activate": True})
+        client.post("/api/heartbeat", json={
+            "agent_name": "version-bound-agent",
+            "agent_version": "0.50",
+            "machine_id": "machine-bound",
+            "install_id": "install-bound",
+        })
+
+        allow = client.post("/api/agents/version-bound-agent/update/allow", json={"version": "0.60.0"})
+        assert allow.status_code == 200
+        assert allow.json()["job"]["target_version"] == "0.60.0"
+
+        # 激活版本切回旧版后，已创建 job 仍应下载 0.60.0，避免任务漂移。
+        client.post("/api/agent/versions/0.59.0/activate")
+        claimed = client.get(
+            "/api/updater/jobs/next?install_id=install-bound&machine_id=machine-bound&updater_version=0.59.0"
+        )
+        assert claimed.status_code == 200
+        data = claimed.json()
+        assert data["job"]["target_version"] == "0.60.0"
+        assert data["version"]["version"] == "0.60.0"
+        assert data["version"]["package_exe_url"].endswith("/api/agent/packages/0.60.0/exe")
 
     def test_agent_heartbeat_verifies_update_job(self, client):
         client.post("/api/heartbeat", json={

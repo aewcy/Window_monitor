@@ -571,14 +571,17 @@ def _active_status_placeholders() -> str:
 
 def register_agent_version(version: str, exe_path: str = "", setup_path: str = "", exe_sha256: str = "",
                            setup_sha256: str = "", exe_size_bytes: int = 0, setup_size_bytes: int = 0,
-                           updater_version: str = "", release_notes: str = "", channel: str = "stable") -> dict:
+                           updater_version: str = "", release_notes: str = "", channel: str = "stable",
+                           is_active: bool = False) -> dict:
     """登记一个可下载 Agent 版本，保持版本元数据可查询。"""
     db = get_db()
+    if is_active:
+        db.execute("UPDATE agent_versions SET is_active = 0")
     db.execute(
         """INSERT INTO agent_versions (
              version, channel, exe_path, setup_path, exe_sha256, setup_sha256,
              exe_size_bytes, setup_size_bytes, updater_version, release_notes, is_active
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(version) DO UPDATE SET
              channel=excluded.channel,
              exe_path=excluded.exe_path,
@@ -589,8 +592,12 @@ def register_agent_version(version: str, exe_path: str = "", setup_path: str = "
              setup_size_bytes=excluded.setup_size_bytes,
              updater_version=excluded.updater_version,
              release_notes=excluded.release_notes,
-             is_active=1""",
-        (version, channel, exe_path, setup_path, exe_sha256, setup_sha256, exe_size_bytes, setup_size_bytes, updater_version, release_notes),
+             is_active=CASE WHEN excluded.is_active = 1 THEN 1 ELSE agent_versions.is_active END""",
+        (
+            version, channel, exe_path, setup_path, exe_sha256, setup_sha256,
+            exe_size_bytes, setup_size_bytes, updater_version, release_notes,
+            1 if is_active else 0,
+        ),
     )
     db.commit()
     return get_agent_version(version) or {}
@@ -602,8 +609,37 @@ def get_agent_version(version: str) -> dict | None:
 
 
 def list_agent_versions() -> list[dict]:
-    rows = get_db().execute("SELECT * FROM agent_versions ORDER BY created_at DESC, id DESC").fetchall()
+    rows = get_db().execute("SELECT * FROM agent_versions ORDER BY is_active DESC, created_at DESC, id DESC").fetchall()
     return [dict(row) for row in rows]
+
+
+def get_active_agent_version() -> dict | None:
+    db = get_db()
+    row = db.execute(
+        """SELECT * FROM agent_versions
+           WHERE is_active = 1
+           ORDER BY created_at DESC, id DESC
+           LIMIT 1"""
+    ).fetchone()
+    if row:
+        return dict(row)
+    row = db.execute(
+        """SELECT * FROM agent_versions
+           ORDER BY created_at DESC, id DESC
+           LIMIT 1"""
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def set_active_agent_version(version: str) -> dict | None:
+    db = get_db()
+    row = db.execute("SELECT * FROM agent_versions WHERE version = ?", (version,)).fetchone()
+    if not row:
+        return None
+    db.execute("UPDATE agent_versions SET is_active = 0")
+    db.execute("UPDATE agent_versions SET is_active = 1 WHERE version = ?", (version,))
+    db.commit()
+    return get_agent_version(version)
 
 
 def create_agent_update_job(agent_name: str, target_version: str, from_version: str = "") -> dict | None:
