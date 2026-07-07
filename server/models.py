@@ -1206,6 +1206,39 @@ def get_recent_browser_record(agent_name: str, timestamp: str, max_age_seconds: 
     return dict(row) if row else None
 
 
+def find_recent_browser_record_matching_url(agent_name: str, timestamp: str, patterns: list[str],
+                                            browser: str = "", max_age_seconds: int = 21600) -> dict | None:
+    """按 URL 规则在较长历史窗口里找最近匹配记录，服务旧 Agent 的网页规则兜底。"""
+    cleaned = [p.strip().lower() for p in patterns if p and p.strip()]
+    if not cleaned:
+        return None
+    db = get_db()
+    try:
+        shot_time = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00")).replace(tzinfo=None)
+    except (TypeError, ValueError):
+        shot_time = datetime.now()
+    start = (shot_time - timedelta(seconds=max_age_seconds)).isoformat()
+    end = (shot_time + timedelta(seconds=60)).isoformat()
+    conditions = ["agent_name = ?", "last_visit >= ?", "last_visit <= ?"]
+    params: list = [agent_name, start, end]
+    if browser:
+        conditions.append("browser = ?")
+        params.append(browser)
+    where = " AND ".join(conditions)
+    rows = db.execute(
+        f"""SELECT * FROM browser_history
+            WHERE {where}
+            ORDER BY last_visit DESC
+            LIMIT 300""",
+        params,
+    ).fetchall()
+    for row in rows:
+        url = (row["url"] or "").lower()
+        if any(pattern in url for pattern in cleaned):
+            return dict(row)
+    return None
+
+
 def create_screenshot_rule(rule_type: str, pattern: str, enabled: bool = True) -> dict:
     db = get_db()
     now = datetime.now().isoformat()

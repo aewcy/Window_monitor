@@ -608,6 +608,48 @@ class TestScreenshot:
         assert rows[0]["matched_rule_type"] == "url_contains"
         assert "cn.tradingview.com" in rows[0]["foreground_url"]
 
+    def test_server_policy_url_rule_uses_long_browser_history_for_old_agent(self, client):
+        _register_agent(client, "server-url-long-agent")
+        client.post("/api/screenshot-rules", json={
+            "rule_type": "url_contains",
+            "pattern": "cn.tradingview.com",
+            "enabled": True,
+        })
+        base = datetime.now()
+        client.post("/api/app_event", json={
+            "agent_name": "server-url-long-agent",
+            "type": "app_switch",
+            "process_name": "chrome.exe",
+            "window_title": "000300 4,792.2624 - Google Chrome",
+            "timestamp": base.strftime("%Y-%m-%dT%H:%M:%S"),
+        })
+        client.post("/api/browser_history", json={
+            "agent_name": "server-url-long-agent",
+            "records": [{
+                "url": "https://cn.tradingview.com/chart/YS9lFlYj/?symbol=SSE%3A000300",
+                "title": "000300 4,792.2624",
+                "last_visit": (base - timedelta(minutes=8)).strftime("%Y-%m-%dT%H:%M:%S"),
+                "browser": "chrome",
+            }],
+        })
+
+        first_id, _ = _upload_screenshot(
+            client,
+            "server-url-long-agent",
+            (base + timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%S"),
+        )
+        suppressed_id, _ = _upload_screenshot(
+            client,
+            "server-url-long-agent",
+            (base + timedelta(seconds=12)).strftime("%Y-%m-%dT%H:%M:%S"),
+        )
+
+        assert first_id is not None
+        assert suppressed_id is None
+        rows = client.get("/api/screenshots?agent=server-url-long-agent").json()
+        assert rows[0]["matched_rule_type"] == "url_contains"
+        assert "cn.tradingview.com" in rows[0]["foreground_url"]
+
     def test_screenshot_image_retrievable(self, client):
         _register_agent(client, "img-agent")
         sid, _ = _upload_screenshot(client, "img-agent")

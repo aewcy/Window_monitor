@@ -20,6 +20,7 @@ from models import (
     delete_screenshot, delete_screenshots_batch, delete_screenshots_range,
     save_app_event, get_app_usage_summary,
     get_recent_foreground_event, get_recent_browser_record,
+    find_recent_browser_record_matching_url,
     save_browser_history, get_browser_history,
     get_browser_history_with_screenshots,
     get_app_events, get_app_events_with_screenshots,
@@ -59,6 +60,15 @@ SPECIAL_RULE_WARMUP_SECONDS = int(os.getenv("SCREENSHOT_RULE_WARMUP_SECONDS", "1
 SPECIAL_RULE_KEEPALIVE_SECONDS = int(os.getenv("SCREENSHOT_RULE_KEEPALIVE_SECONDS", "300"))
 SERVER_POLICY_CONTEXT_MAX_AGE_SECONDS = int(os.getenv("SCREENSHOT_RULE_CONTEXT_MAX_AGE_SECONDS", "30"))
 SERVER_POLICY_BROWSER_MAX_AGE_SECONDS = int(os.getenv("SCREENSHOT_RULE_BROWSER_MAX_AGE_SECONDS", "120"))
+SERVER_POLICY_BROWSER_RULE_LOOKBACK_SECONDS = int(os.getenv("SCREENSHOT_RULE_BROWSER_LOOKBACK_SECONDS", str(6 * 60 * 60)))
+
+_PROCESS_TO_BROWSER = {
+    "chrome.exe": "chrome",
+    "msedge.exe": "edge",
+    "firefox.exe": "firefox",
+    "brave.exe": "brave",
+    "chromium.exe": "chromium",
+}
 
 
 def _parse_iso_datetime(value: str) -> datetime:
@@ -136,7 +146,22 @@ def _select_fresh_live_frame(
     return None
 
 
-def _history_policy_context(agent_name: str, timestamp: str, data: dict) -> dict:
+def _url_rule_patterns(rules: list[dict]) -> list[str]:
+    return [
+        (rule.get("pattern") or "").strip()
+        for rule in rules
+        if rule.get("rule_type") == "url_contains" and (rule.get("pattern") or "").strip()
+    ]
+
+
+def _url_matches_any_rule(url: str, rules: list[dict]) -> bool:
+    text = (url or "").strip().lower()
+    if not text:
+        return False
+    return any(pattern.lower() in text for pattern in _url_rule_patterns(rules))
+
+
+def _history_policy_context(agent_name: str, timestamp: str, data: dict, rules: list[dict]) -> dict:
     process_name = data.get("foreground_process_name", "") or ""
     window_title = data.get("foreground_window_title", "") or ""
     foreground_url = data.get("foreground_url", "") or ""
@@ -153,6 +178,18 @@ def _history_policy_context(agent_name: str, timestamp: str, data: dict) -> dict
         if browser_record:
             foreground_url = browser_record.get("url", "") or ""
 
+    if _url_rule_patterns(rules) and not _url_matches_any_rule(foreground_url, rules):
+        browser_name = _PROCESS_TO_BROWSER.get((process_name or "").strip().lower(), "")
+        matched_record = find_recent_browser_record_matching_url(
+            agent_name,
+            timestamp,
+            _url_rule_patterns(rules),
+            browser=browser_name,
+            max_age_seconds=SERVER_POLICY_BROWSER_RULE_LOOKBACK_SECONDS,
+        )
+        if matched_record:
+            foreground_url = matched_record.get("url", "") or foreground_url
+
     return {
         "foreground_process_name": process_name,
         "foreground_window_title": window_title,
@@ -160,10 +197,9 @@ def _history_policy_context(agent_name: str, timestamp: str, data: dict) -> dict
     }
 
 
-def _match_history_rule(context: dict) -> dict | None:
+def _match_history_rule(context: dict, rules: list[dict]) -> dict | None:
     process_name = (context.get("foreground_process_name") or "").strip().lower()
     foreground_url = (context.get("foreground_url") or "").strip().lower()
-    rules = list_screenshot_rules(enabled_only=True)
     for rule in rules:
         pattern = (rule.get("pattern") or "").strip().lower()
         if not pattern:
@@ -180,8 +216,9 @@ def _match_history_rule(context: dict) -> dict | None:
 
 
 def _history_policy_decision(agent_name: str, monitor_index: int, timestamp: str, data: dict) -> dict:
-    context = _history_policy_context(agent_name, timestamp, data)
-    rule = _match_history_rule(context)
+    rules = list_screenshot_rules(enabled_only=True)
+    context = _history_policy_context(agent_name, timestamp, data, rules)
+    rule = _match_history_rule(context, rules)
     if not rule:
         _history_policy_sessions.pop((agent_name, int(monitor_index or 0)), None)
         return {
