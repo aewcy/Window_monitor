@@ -14,6 +14,7 @@ const currentId = ref(null)
 const placeholderText = ref('选择被控端查看截图')
 let liveTimer = null
 let requestSeq = 0
+const preferFreshLive = ref(true)
 
 const fpsLabel = () => {
   const d = agent.selectedAgentData
@@ -32,6 +33,7 @@ function resetLiveView(message = '正在切换...') {
   timestamp.value = ''
   currentId.value = null
   placeholderText.value = message
+  preferFreshLive.value = true
 }
 
 function makeSnapshot() {
@@ -59,16 +61,31 @@ async function load() {
   const data = await ss.loadLatest({
     agentName: snapshot.agentName,
     monitor: snapshot.monitor,
-    allowStoredFallback: false,
+    allowStoredFallback: true,
+    preferFresh: preferFreshLive.value,
   })
   if (!isSnapshotCurrent(snapshot)) return
+  if (!data && Number(snapshot.monitor) > 0) {
+    const primaryData = await ss.loadLatest({
+      agentName: snapshot.agentName,
+      monitor: 0,
+      allowStoredFallback: true,
+      preferFresh: preferFreshLive.value,
+    })
+    if (primaryData && isSnapshotCurrent(snapshot)) {
+      agent.selectMonitor(0)
+    }
+    return
+  }
   if (data && (data.id || data.image_base64)) {
     if (data.id !== currentId.value) {
       currentId.value = data.id
       imgSrc.value = getLiveScreenshotImage(data) || getScreenshotImage(data.id)
     }
-    timestamp.value = '实时 ' + new Date(data.timestamp).toTimeString().slice(0, 8)
+    const label = String(data.id || '').startsWith('live:') ? '实时' : '最近'
+    timestamp.value = label + ' ' + new Date(data.timestamp).toTimeString().slice(0, 8)
     placeholderText.value = '等待实时画面'
+    if (String(data.id || '').startsWith('live:')) preferFreshLive.value = false
   } else if (!imgSrc.value) {
     placeholderText.value = '等待实时画面'
   }
@@ -99,14 +116,14 @@ watch(() => agent.selectedAgent, () => {
     stopLivePolling()
     resetLiveView('正在切换被控机...')
     ss.goLive()
-    ss.resetLiveInterval(agent.selectedAgentData?.screenshot_interval || null)
+    ss.resetLiveInterval(null)
     startLivePolling()
   }
 })
 watch(() => agent.selectedMonitor, () => {
   stopLivePolling()
   resetLiveView('正在切换屏幕...')
-  ss.resetLiveInterval(agent.selectedAgentData?.screenshot_interval || null)
+  ss.resetLiveInterval(null)
   if (shouldPollLive()) startLivePolling()
 })
 watch(() => ss.displaySource, startLivePolling)

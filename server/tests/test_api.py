@@ -501,6 +501,35 @@ class TestScreenshotQuery:
         assert "_received_at" not in body
         assert "_captured_at" not in body
 
+    def test_live_latest_fresh_bypasses_delay_for_switching(self, client):
+        import routes
+
+        routes.LIVE_DELAY_SECONDS = 5
+        _register_agent(client, "live-fresh-agent")
+        _, ts = _upload_screenshot(client, "live-fresh-agent", monitor=0)
+
+        immediate = client.get("/api/screenshots/live/latest?agent=live-fresh-agent&monitor=0")
+        assert immediate.status_code == 404
+
+        fresh = client.get("/api/screenshots/live/latest?agent=live-fresh-agent&monitor=0&fresh=true")
+        assert fresh.status_code == 200
+        body = fresh.json()
+        assert body["timestamp"] == ts
+        assert "image_base64" in body
+
+    def test_live_latest_fresh_rejects_stale_frame(self, client):
+        import routes
+
+        routes.LIVE_DELAY_SECONDS = 100
+        _register_agent(client, "live-stale-agent")
+        _upload_screenshot(client, "live-stale-agent", monitor=0)
+        frame = routes._latest_live_frames[("live-stale-agent", 0)]
+        frame["_received_at"] = datetime.now() - timedelta(seconds=60)
+        routes._live_frame_buffers[("live-stale-agent", 0)].clear()
+
+        fresh = client.get("/api/screenshots/live/latest?agent=live-stale-agent&monitor=0&fresh=true&max_age=10")
+        assert fresh.status_code == 404
+
     def test_screenshot_dates(self, client):
         _register_agent(client, "date-agent")
         _upload_screenshot(client, "date-agent")
@@ -777,7 +806,7 @@ class TestAgentUpdate:
         resp = client.get("/api/agent/version")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["version"] == "0.58.9"
+        assert data["version"] == "0.59.0"
         assert data["exe_url"] == "/api/agent/exe"
         assert data["sha256"]
         assert data["size_bytes"] > 0
@@ -792,7 +821,7 @@ class TestAgentUpdate:
 
         allow = client.post("/api/agents/update-agent/update/allow", json={})
         assert allow.status_code == 200
-        assert allow.json()["version"] == "0.58.9"
+        assert allow.json()["version"] == "0.59.0"
         assert allow.json()["job"]["status"] == "pending"
 
         check = client.get("/api/agent/update/check?agent=update-agent&version=0.50")
@@ -800,7 +829,7 @@ class TestAgentUpdate:
         data = check.json()
         assert data["update_available"] is True
         assert data["allowed"] is True
-        assert data["job"]["target_version"] == "0.58.9"
+        assert data["job"]["target_version"] == "0.59.0"
 
     def test_pause_agent_update(self, client):
         client.post("/api/heartbeat", json={"agent_name": "pause-agent", "agent_version": "0.50"})
@@ -821,7 +850,7 @@ class TestAgentUpdate:
             "agent_name": "retry-agent",
             "agent_version": "0.50",
             "update_status": "failed",
-            "update_target_version": "0.58.9",
+            "update_target_version": "0.59.0",
             "update_error": "network reset",
         })
         assert failed.status_code == 200
@@ -830,7 +859,7 @@ class TestAgentUpdate:
         assert check.status_code == 200
         data = check.json()
         assert data["allowed"] is True
-        assert data["allowed_version"] == "0.58.9"
+        assert data["allowed_version"] == "0.59.0"
 
     def test_updater_claims_job_and_reports_progress(self, client):
         client.post("/api/heartbeat", json={
@@ -843,13 +872,13 @@ class TestAgentUpdate:
         job_id = allow.json()["job"]["job_id"]
 
         claimed = client.get(
-            "/api/updater/jobs/next?install_id=install-job&machine_id=machine-job&updater_version=0.58.9"
+            "/api/updater/jobs/next?install_id=install-job&machine_id=machine-job&updater_version=0.59.0"
         )
         assert claimed.status_code == 200
         data = claimed.json()
         assert data["job"]["job_id"] == job_id
         assert data["job"]["status"] == "claimed"
-        assert data["version"]["package_exe_url"].endswith("/api/agent/packages/0.58.9/exe")
+        assert data["version"]["package_exe_url"].endswith("/api/agent/packages/0.59.0/exe")
 
         progress = client.post(f"/api/updater/jobs/{job_id}/heartbeat", json={
             "status": "downloading",
@@ -870,12 +899,12 @@ class TestAgentUpdate:
             "install_id": "install-verify",
         })
         job_id = client.post("/api/agents/verify-agent/update/allow", json={}).json()["job"]["job_id"]
-        client.get("/api/updater/jobs/next?install_id=install-verify&machine_id=machine-verify&updater_version=0.58.9")
+        client.get("/api/updater/jobs/next?install_id=install-verify&machine_id=machine-verify&updater_version=0.59.0")
         client.post(f"/api/updater/jobs/{job_id}/heartbeat", json={"status": "verifying", "message": "等待心跳"})
 
         hb = client.post("/api/heartbeat", json={
             "agent_name": "verify-agent",
-            "agent_version": "0.58.9",
+            "agent_version": "0.59.0",
             "machine_id": "machine-verify",
             "install_id": "install-verify",
             "update_job_id": job_id,

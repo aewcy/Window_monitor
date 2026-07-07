@@ -13,6 +13,7 @@ const currentLiveId = ref(null)
 const placeholderText = ref('等待实时画面')
 let liveTimer = null
 let liveRequestSeq = 0
+const preferFreshLive = ref(true)
 const zoom = ref(1)
 const panX = ref(0)
 const panY = ref(0)
@@ -57,7 +58,8 @@ async function loadLive() {
   const data = await ss.loadLatest({
     agentName: snapshot.agentName,
     monitor: snapshot.monitor,
-    allowStoredFallback: false,
+    allowStoredFallback: true,
+    preferFresh: preferFreshLive.value,
   })
   if (
     snapshot.seq !== liveRequestSeq
@@ -69,12 +71,32 @@ async function loadLive() {
   ) {
     return
   }
+  if (!data && Number(snapshot.monitor) > 0) {
+    const primaryData = await ss.loadLatest({
+      agentName: snapshot.agentName,
+      monitor: 0,
+      allowStoredFallback: true,
+      preferFresh: preferFreshLive.value,
+    })
+    if (
+      primaryData
+      && snapshot.seq === liveRequestSeq
+      && ss.liveOpen
+      && ss.displaySource === snapshot.source
+      && agent.selectedAgent === snapshot.agentName
+      && agent.selectedMonitor === snapshot.monitor
+    ) {
+      agent.selectMonitor(0)
+    }
+    return
+  }
   if (data && (data.id || data.image_base64)) {
     if (data.id !== currentLiveId.value) {
       currentLiveId.value = data.id
       imgSrc.value = getLiveScreenshotImage(data) || getScreenshotImage(data.id)
     }
     placeholderText.value = '等待实时画面'
+    if (String(data.id || '').startsWith('live:')) preferFreshLive.value = false
   } else if (!imgSrc.value) {
     placeholderText.value = '等待实时画面'
   }
@@ -85,6 +107,7 @@ function resetLiveView(message = '正在切换...') {
   currentLiveId.value = null
   imgSrc.value = null
   placeholderText.value = message
+  preferFreshLive.value = true
   resetImageTransform()
 }
 
@@ -130,7 +153,7 @@ async function syncOpenImage() {
   }
   stopLivePolling()
   resetLiveView('正在切换...')
-  ss.resetLiveInterval(agent.selectedAgentData?.screenshot_interval || null)
+  ss.resetLiveInterval(null)
   startLivePolling()
 }
 

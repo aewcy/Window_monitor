@@ -49,6 +49,7 @@ _latest_live_frames: dict[tuple[str, int], dict] = {}
 _live_frame_buffers: dict[tuple[str, int], deque] = {}
 LIVE_DELAY_SECONDS = float(os.getenv("LIVE_DELAY_SECONDS", "5"))
 LIVE_BUFFER_SECONDS = float(os.getenv("LIVE_BUFFER_SECONDS", "15"))
+LIVE_FRESH_MAX_AGE_SECONDS = float(os.getenv("LIVE_FRESH_MAX_AGE_SECONDS", "30"))
 
 
 def _parse_iso_datetime(value: str) -> datetime:
@@ -101,6 +102,28 @@ def _select_delayed_live_frame(agent_name: str, monitor_index: int | None = None
     ready_latest = [frame for frame in latest_candidates if frame.get("_received_at", datetime.now()) <= target_time]
     if ready_latest:
         return _public_live_frame(max(ready_latest, key=lambda item: item.get("_received_at", datetime.min)))
+    return None
+
+
+def _select_fresh_live_frame(
+    agent_name: str,
+    monitor_index: int | None = None,
+    max_age_seconds: float = LIVE_FRESH_MAX_AGE_SECONDS,
+) -> dict | None:
+    cutoff = datetime.now() - timedelta(seconds=max(0.1, max_age_seconds))
+    if monitor_index is not None:
+        latest = _latest_live_frames.get((agent_name, int(monitor_index)))
+        if latest and latest.get("_received_at", datetime.min) >= cutoff:
+            return _public_live_frame(latest)
+        return None
+
+    candidates = [
+        frame
+        for (name, _), frame in _latest_live_frames.items()
+        if name == agent_name and frame.get("_received_at", datetime.min) >= cutoff
+    ]
+    if candidates:
+        return _public_live_frame(max(candidates, key=lambda item: item.get("_received_at", datetime.min)))
     return None
 
 
@@ -469,8 +492,14 @@ async def latest_live_screenshot(
     agent: str = Query(...),
     monitor: Optional[int] = Query(None),
     fallback: bool = Query(False),
+    fresh: bool = Query(False),
+    max_age: Optional[float] = Query(None),
 ):
     """获取 Agent 最近一次上传的实时帧，不受截图入库节流影响"""
+    if fresh:
+        result = _select_fresh_live_frame(agent, monitor, max_age or LIVE_FRESH_MAX_AGE_SECONDS)
+        if result:
+            return result
     result = _select_delayed_live_frame(agent, monitor)
     if result:
         return result
@@ -669,7 +698,7 @@ SERVER_DIR = os.path.dirname(__file__)
 AGENT_STATIC_DIR = os.path.join(SERVER_DIR, "static", "agent")
 AGENT_SETUP_PATH = os.path.join(AGENT_STATIC_DIR, "WindowsMonitorSetup.exe")
 AGENT_EXE_PATH = os.path.join(AGENT_STATIC_DIR, "monitor-agent.exe")
-AGENT_LATEST_VERSION = "0.58.9"
+AGENT_LATEST_VERSION = "0.59.0"
 
 
 def _file_sha256(path: str) -> str:

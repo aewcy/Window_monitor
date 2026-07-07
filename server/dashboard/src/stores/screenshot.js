@@ -36,12 +36,21 @@ export const useScreenshotStore = defineStore('screenshot', () => {
     const monitor = options.monitor ?? agent.selectedMonitor
     if (!agentName) return null
     const allowStoredFallback = options.allowStoredFallback !== false
+    const preferFresh = options.preferFresh === true
     let data
     try {
-      data = await api.getLatestLiveScreenshot(agentName, monitor, allowStoredFallback)
+      data = await api.getLatestLiveScreenshot(agentName, monitor, {
+        fallback: allowStoredFallback,
+        fresh: preferFresh,
+        maxAge: options.maxAge,
+      })
     } catch (err) {
       if (!allowStoredFallback) return null
-      data = await api.getLatestScreenshot(agentName, monitor)
+      try {
+        data = await api.getLatestScreenshot(agentName, monitor)
+      } catch (fallbackErr) {
+        return null
+      }
     }
     if (data && (data.id || data.image_base64)) {
       const stillCurrent = agent.selectedAgent === agentName && agent.selectedMonitor === monitor

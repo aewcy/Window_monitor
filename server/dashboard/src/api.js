@@ -39,10 +39,12 @@ export const getLatestScreenshot = (agent, monitor) => {
   if (monitor !== null && monitor !== undefined) url += `&monitor=${monitor}`
   return request(url)
 }
-export const getLatestLiveScreenshot = (agent, monitor, fallback = false) => {
+export const getLatestLiveScreenshot = (agent, monitor, options = {}) => {
   let url = `/screenshots/live/latest?agent=${encodeURIComponent(agent)}`
   if (monitor !== null && monitor !== undefined) url += `&monitor=${monitor}`
-  if (fallback) url += '&fallback=true'
+  if (options.fallback) url += '&fallback=true'
+  if (options.fresh) url += '&fresh=true'
+  if (options.maxAge) url += `&max_age=${encodeURIComponent(options.maxAge)}`
   return request(url)
 }
 export const getLiveScreenshotImage = (s) =>
