@@ -29,6 +29,10 @@
 - 处理方式：服务端页面入口仍先基于 cookie 放行 HTML，但会在返回的页面里注入标签页守卫脚本。
 - 结果：如果用户是重新新开一个标签页，虽然浏览器还会带旧 cookie，但由于这个新标签页没有 `sessionStorage` 里的 token，页面加载后会立即跳回登录页。
 - 说明：最终用户效果满足“关掉标签页后重新打开必须重登”，只是呈现形式不是服务端首包直接拦截，而是页面加载后立即回登录页。
+- 部署偏离点：通过 Paramiko 拉取远端 `docker compose` 输出时，日志中包含 `✓` 等字符，本地 Windows Python 默认 `gbk` 输出会抛 `UnicodeEncodeError`。
+- 部署处理：远端继续把完整构建日志写入 `/tmp/monitor-build.log`，本地只读取并做 `ascii` 安全降级输出，不让编码问题中断部署流程。
+- 部署偏离点：`docker compose up -d --build` 完成后，容器刚重建切换的短时间内，`curl http://127.0.0.1:8899/api/health` 可能返回 `Connection reset by peer`。
+- 部署处理：把健康检查改为短间隔重试，等容器真正进入稳定监听态后再继续做登录和版本验收。
 
 ### 验证
 
