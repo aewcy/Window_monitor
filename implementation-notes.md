@@ -76,3 +76,63 @@
 - 仓库根目录只保留项目本体、正式文档、构建/发布链路相关内容。
 - `agent/` 不再混入“源码双击启动”入口，职责更聚焦在源码、打包和安装更新脚本。
 - `server/static/` 收敛为“当前构建产物 + 保留一个旧版回退页”的结构。
+
+## 2026-07-07 特殊名单截图策略
+
+### 目标
+
+- 保持普通程序/网页的历史截图保存逻辑不变。
+- 对“低价值长驻前台内容”增加特殊名单：
+  - 切到前台后的前 10 秒仍按原策略正常保存。
+  - 超过 10 秒后，只保留 Live，不再持续写入历史。
+  - 同一前台会话每 5 分钟补 1 张历史截图，避免完全断档。
+- 特殊名单只影响历史保存，不影响 Live。
+
+### 实现方案
+
+- Server 新增 `screenshot_rules` 表，支持两类规则：
+  - `process`：按前台程序名精确匹配
+  - `url_contains`：按前台完整 URL 连续模糊匹配
+- Agent 在 `/api/config` 中拉取特殊名单、预热时长、补帧时长。
+- Agent 新增 `ForegroundSavePolicy`：
+  - 非名单对象：`store_history=true`
+  - 名单对象前 10 秒：`save_policy_phase=warmup`
+  - 超过 10 秒：`save_policy_phase=suppressed`
+  - 满 5 分钟：`save_policy_phase=keepalive`
+- `/api/screenshot` 继续先写 Live 内存帧，再根据 `store_history` 决定是否调用 `save_screenshot(...)`。
+- 截图索引额外记录：
+  - `foreground_process_name`
+  - `foreground_window_title`
+  - `foreground_url`
+  - `matched_rule_type`
+  - `matched_rule_pattern`
+  - `save_policy_phase`
+- Dashboard 顶部 Header 增加“特殊名单”面板，可直接维护程序和网页规则。
+
+### 涉及文件
+
+- `agent/foreground_context.py`
+- `agent/main.py`
+- `agent/tests/test_foreground_policy.py`
+- `server/models.py`
+- `server/routes.py`
+- `server/tests/test_api.py`
+- `server/dashboard/src/api.js`
+- `server/dashboard/src/App.vue`
+- `server/dashboard/src/components/AppHeader.vue`
+- `server/dashboard/src/components/ScreenshotRulePanel.vue`
+- `server/dashboard/src/stores/screenshot.js`
+
+### 边缘情况与偏离说明
+
+- 偏离点：当前仓库原本只具备“浏览器历史采集”，没有“当前最前台标签页完整 URL”能力。
+- 当前处理：新增前台 URL 最佳努力解析，基于浏览器近期历史 + 当前窗口标题做匹配推断。
+- 影响：网页规则不是浏览器内核级精确读当前标签页，极端场景下可能拿不到 URL，此时网页规则不会命中，历史保存回到普通策略。
+- 明确保留：没有把 URL 获取失败退化成窗口标题规则，避免误杀正常历史保存。
+
+### 验证
+
+- `D:\python\python.exe -m pytest server\tests\test_api.py -q`
+- `D:\python\python.exe -m pytest agent\tests\test_foreground_policy.py -q`
+- `D:\python\python.exe -m py_compile agent\main.py agent\foreground_context.py server\routes.py server\models.py`
+- `npm run build`

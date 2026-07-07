@@ -33,6 +33,8 @@ from models import (
     claim_next_update_job, update_job_heartbeat, finish_update_job,
     cancel_update_job, retry_update_job, list_update_events,
     reap_stale_update_jobs,
+    list_screenshot_rules, create_screenshot_rule, update_screenshot_rule,
+    delete_screenshot_rule,
 )
 from logger import log, format_log_entry
 
@@ -50,6 +52,8 @@ _live_frame_buffers: dict[tuple[str, int], deque] = {}
 LIVE_DELAY_SECONDS = float(os.getenv("LIVE_DELAY_SECONDS", "5"))
 LIVE_BUFFER_SECONDS = float(os.getenv("LIVE_BUFFER_SECONDS", "15"))
 LIVE_FRESH_MAX_AGE_SECONDS = float(os.getenv("LIVE_FRESH_MAX_AGE_SECONDS", "30"))
+SPECIAL_RULE_WARMUP_SECONDS = int(os.getenv("SCREENSHOT_RULE_WARMUP_SECONDS", "10"))
+SPECIAL_RULE_KEEPALIVE_SECONDS = int(os.getenv("SCREENSHOT_RULE_KEEPALIVE_SECONDS", "300"))
 
 
 def _parse_iso_datetime(value: str) -> datetime:
@@ -158,6 +162,9 @@ async def agent_config(agent: str = Query("unknown")):
     return {
         "screenshot_interval": screenshot_interval,
         "app_track_interval": 2,
+        "special_screenshot_rules": list_screenshot_rules(enabled_only=True),
+        "special_screenshot_rule_warmup_seconds": SPECIAL_RULE_WARMUP_SECONDS,
+        "special_screenshot_rule_keepalive_seconds": SPECIAL_RULE_KEEPALIVE_SECONDS,
     }
 
 
@@ -327,13 +334,78 @@ async def screenshot(data: dict):
         "monitor_index": monitor_index,
         "monitor_total": monitor_total,
         "capture_interval": capture_interval,
+        "foreground_process_name": data.get("foreground_process_name", ""),
+        "foreground_window_title": data.get("foreground_window_title", ""),
+        "foreground_url": data.get("foreground_url", ""),
+        "matched_rule_type": data.get("matched_rule_type", ""),
+        "matched_rule_pattern": data.get("matched_rule_pattern", ""),
+        "save_policy_phase": data.get("save_policy_phase", ""),
     }
     _store_live_frame(agent_name, int(monitor_index or 0), live_frame)
 
+    store_history = bool(data.get("store_history", True))
+    if not store_history:
+        return {"status": "ok", "id": None}
+
     # 入库存储仍执行 2 秒节流；Live 画面读取上面的内存最新帧，不受节流影响。
     screenshot_id = save_screenshot(agent_name, timestamp, image_b64,
-                                    monitor_index, monitor_total)
+                                    monitor_index, monitor_total, {
+                                        "foreground_process_name": data.get("foreground_process_name", ""),
+                                        "foreground_window_title": data.get("foreground_window_title", ""),
+                                        "foreground_url": data.get("foreground_url", ""),
+                                        "matched_rule_type": data.get("matched_rule_type", ""),
+                                        "matched_rule_pattern": data.get("matched_rule_pattern", ""),
+                                        "save_policy_phase": data.get("save_policy_phase", ""),
+                                    })
     return {"status": "ok", "id": screenshot_id}
+
+
+@router.get("/screenshot-rules")
+async def get_screenshot_rules():
+    return {
+        "items": list_screenshot_rules(enabled_only=False),
+        "warmup_seconds": SPECIAL_RULE_WARMUP_SECONDS,
+        "keepalive_seconds": SPECIAL_RULE_KEEPALIVE_SECONDS,
+    }
+
+
+@router.post("/screenshot-rules")
+async def add_screenshot_rule(data: dict):
+    rule_type = (data.get("rule_type") or "").strip()
+    pattern = (data.get("pattern") or "").strip()
+    enabled = bool(data.get("enabled", True))
+    if rule_type not in {"process", "url_contains"}:
+        raise HTTPException(status_code=400, detail="不支持的规则类型")
+    if not pattern:
+        raise HTTPException(status_code=400, detail="规则内容不能为空")
+    return {"item": create_screenshot_rule(rule_type, pattern, enabled)}
+
+
+@router.patch("/screenshot-rules/{rule_id}")
+async def patch_screenshot_rule(rule_id: int, data: dict):
+    rule_type = data.get("rule_type")
+    pattern = data.get("pattern")
+    enabled = data.get("enabled") if "enabled" in data else None
+    if rule_type is not None and rule_type not in {"process", "url_contains"}:
+        raise HTTPException(status_code=400, detail="不支持的规则类型")
+    if pattern is not None and not str(pattern).strip():
+        raise HTTPException(status_code=400, detail="规则内容不能为空")
+    item = update_screenshot_rule(
+        rule_id,
+        rule_type=str(rule_type).strip() if rule_type is not None else None,
+        pattern=str(pattern).strip() if pattern is not None else None,
+        enabled=bool(enabled) if enabled is not None else None,
+    )
+    if not item:
+        raise HTTPException(status_code=404, detail="规则不存在")
+    return {"item": item}
+
+
+@router.delete("/screenshot-rules/{rule_id}")
+async def remove_screenshot_rule(rule_id: int):
+    if not delete_screenshot_rule(rule_id):
+        raise HTTPException(status_code=404, detail="规则不存在")
+    return {"status": "ok"}
 
 
 @router.post("/app_event")

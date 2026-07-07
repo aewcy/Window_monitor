@@ -194,6 +194,17 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_screenshots_agent_time
             ON screenshots(agent_name, timestamp DESC);
 
+        CREATE TABLE IF NOT EXISTS screenshot_rules (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            rule_type TEXT NOT NULL,
+            pattern TEXT NOT NULL,
+            enabled INTEGER DEFAULT 1,
+            created_at TEXT DEFAULT (datetime('now', 'localtime')),
+            updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_screenshot_rules_enabled
+            ON screenshot_rules(enabled, rule_type, id DESC);
+
         -- 应用使用事件表
         CREATE TABLE IF NOT EXISTS app_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -343,6 +354,36 @@ def init_db():
         pass
     try:
         db.execute("ALTER TABLE screenshots ADD COLUMN monitor_total INTEGER DEFAULT 1")
+        db.commit()
+    except sqlite3.OperationalError:
+        pass
+    try:
+        db.execute("ALTER TABLE screenshots ADD COLUMN foreground_process_name TEXT DEFAULT ''")
+        db.commit()
+    except sqlite3.OperationalError:
+        pass
+    try:
+        db.execute("ALTER TABLE screenshots ADD COLUMN foreground_window_title TEXT DEFAULT ''")
+        db.commit()
+    except sqlite3.OperationalError:
+        pass
+    try:
+        db.execute("ALTER TABLE screenshots ADD COLUMN foreground_url TEXT DEFAULT ''")
+        db.commit()
+    except sqlite3.OperationalError:
+        pass
+    try:
+        db.execute("ALTER TABLE screenshots ADD COLUMN matched_rule_type TEXT DEFAULT ''")
+        db.commit()
+    except sqlite3.OperationalError:
+        pass
+    try:
+        db.execute("ALTER TABLE screenshots ADD COLUMN matched_rule_pattern TEXT DEFAULT ''")
+        db.commit()
+    except sqlite3.OperationalError:
+        pass
+    try:
+        db.execute("ALTER TABLE screenshots ADD COLUMN save_policy_phase TEXT DEFAULT ''")
         db.commit()
     except sqlite3.OperationalError:
         pass
@@ -1070,8 +1111,67 @@ def rename_agent(name: str, display_name: str) -> bool:
 # 截图管理
 # ============================================
 
+def list_screenshot_rules(enabled_only: bool = False) -> list[dict]:
+    db = get_db()
+    if enabled_only:
+        rows = db.execute(
+            """SELECT * FROM screenshot_rules
+               WHERE enabled = 1
+               ORDER BY rule_type ASC, id DESC"""
+        ).fetchall()
+    else:
+        rows = db.execute(
+            """SELECT * FROM screenshot_rules
+               ORDER BY enabled DESC, rule_type ASC, id DESC"""
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def create_screenshot_rule(rule_type: str, pattern: str, enabled: bool = True) -> dict:
+    db = get_db()
+    now = datetime.now().isoformat()
+    cursor = db.execute(
+        """INSERT INTO screenshot_rules (rule_type, pattern, enabled, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?)""",
+        (rule_type, pattern, 1 if enabled else 0, now, now),
+    )
+    db.commit()
+    row = db.execute("SELECT * FROM screenshot_rules WHERE id = ?", (cursor.lastrowid,)).fetchone()
+    return dict(row)
+
+
+def update_screenshot_rule(rule_id: int, rule_type: str | None = None, pattern: str | None = None,
+                           enabled: bool | None = None) -> dict | None:
+    db = get_db()
+    row = db.execute("SELECT * FROM screenshot_rules WHERE id = ?", (rule_id,)).fetchone()
+    if not row:
+        return None
+
+    current = dict(row)
+    new_rule_type = rule_type if rule_type is not None else current["rule_type"]
+    new_pattern = pattern if pattern is not None else current["pattern"]
+    new_enabled = (1 if enabled else 0) if enabled is not None else current["enabled"]
+    db.execute(
+        """UPDATE screenshot_rules
+           SET rule_type = ?, pattern = ?, enabled = ?, updated_at = ?
+           WHERE id = ?""",
+        (new_rule_type, new_pattern, new_enabled, datetime.now().isoformat(), rule_id),
+    )
+    db.commit()
+    updated = db.execute("SELECT * FROM screenshot_rules WHERE id = ?", (rule_id,)).fetchone()
+    return dict(updated) if updated else None
+
+
+def delete_screenshot_rule(rule_id: int) -> bool:
+    db = get_db()
+    cursor = db.execute("DELETE FROM screenshot_rules WHERE id = ?", (rule_id,))
+    db.commit()
+    return cursor.rowcount > 0
+
+
 def save_screenshot(agent_name: str, timestamp: str, image_b64: str,
-                    monitor_index: int = 0, monitor_total: int = 1) -> int | None:
+                    monitor_index: int = 0, monitor_total: int = 1,
+                    metadata: dict | None = None) -> int | None:
     """将截图保存到文件系统，索引写入数据库
 
     节流策略: 每屏 2 秒窗口内已有截图则跳过，保留最早一张 (4fps 采集 → ~0.5fps/屏 存储)
@@ -1120,11 +1220,22 @@ def save_screenshot(agent_name: str, timestamp: str, image_b64: str,
         generate_screenshot_variants(file_path)
 
         # 写入数据库索引
+        meta = metadata or {}
         cursor = db.execute(
             """INSERT INTO screenshots (agent_name, timestamp, file_path, file_size,
-                       monitor_index, monitor_total)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (agent_name, timestamp, file_path, file_size, monitor_index, monitor_total)
+                       monitor_index, monitor_total, foreground_process_name,
+                       foreground_window_title, foreground_url, matched_rule_type,
+                       matched_rule_pattern, save_policy_phase)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                agent_name, timestamp, file_path, file_size, monitor_index, monitor_total,
+                meta.get("foreground_process_name", ""),
+                meta.get("foreground_window_title", ""),
+                meta.get("foreground_url", ""),
+                meta.get("matched_rule_type", ""),
+                meta.get("matched_rule_pattern", ""),
+                meta.get("save_policy_phase", ""),
+            )
         )
         db.commit()
         return cursor.lastrowid

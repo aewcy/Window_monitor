@@ -14,6 +14,7 @@ export const useScreenshotStore = defineStore('screenshot', () => {
   const gridQuery = ref({ monitor: null, dateFrom: null, dateTo: null })
   const liveOpen = ref(false)
   const liveInterval = ref(null)
+  const rulesPanelOpen = ref(false)
 
   // 浏览模式: 'live' | 'timeline' | 'browser'
   const displaySource = ref('live')
@@ -231,6 +232,7 @@ export const useScreenshotStore = defineStore('screenshot', () => {
     liveMode,
     gridMode, gridItems, gridSelected, gridOffset, gridLoading, gridExhausted, gridQuery,
     liveOpen, liveInterval, livePollMs, displaySource, displayItems, displayIndex, currentDisplayItem, BATCH,
+    rulesPanelOpen,
     loadLatest, resetLiveInterval, prev, next,
     browseTimeline, browseBrowser, goLive,
     loadGrid, loadGridComplete, setGridQuery, openGrid, toggleGridItem, setGridItemSelected, selectOnlyGridItem, selectAllGrid, deleteSelected, resetGrid,

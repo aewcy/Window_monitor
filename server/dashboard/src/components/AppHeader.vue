@@ -8,6 +8,10 @@ function toggleGrid() {
   if (ss.gridMode) ss.gridMode = false
   else ss.openGrid()
 }
+
+function toggleRules() {
+  ss.rulesPanelOpen = !ss.rulesPanelOpen
+}
 </script>
 
 <template>
@@ -17,6 +21,9 @@ function toggleGrid() {
     </div>
     <div class="header-right">
       <CalendarPicker />
+      <button class="header-chip" :class="{ active: ss.rulesPanelOpen }" @click="toggleRules">
+        特殊名单
+      </button>
       <button class="header-chip" :class="{ active: ss.gridMode }" @click="toggleGrid">
         网格视图 <span class="shortcut">⌘G</span>
       </button>

@@ -163,6 +163,23 @@ export const getStats = (agent = null) => {
 }
 export const getStorageStats = () => request('/storage/stats')
 
+// Screenshot rules
+export const getScreenshotRules = () => request('/screenshot-rules')
+export const createScreenshotRule = (ruleType, pattern, enabled = true) =>
+  request('/screenshot-rules', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rule_type: ruleType, pattern, enabled }),
+  })
+export const updateScreenshotRule = (id, payload) =>
+  request(`/screenshot-rules/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+export const deleteScreenshotRule = (id) =>
+  request(`/screenshot-rules/${id}`, { method: 'DELETE' })
+
 // Heartbeat
 export const sendHeartbeat = () =>
   authFetch(BASE + '/viewer/heartbeat', { method: 'POST' }).catch(() => {})

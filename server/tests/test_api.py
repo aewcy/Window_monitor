@@ -188,6 +188,47 @@ class TestViewerHeartbeat:
         resp = client.get("/api/config")
         assert resp.json()["app_track_interval"] == 2
 
+    def test_config_includes_special_screenshot_rules(self, client):
+        client.post("/api/screenshot-rules", json={
+            "rule_type": "process",
+            "pattern": "wechat.exe",
+            "enabled": True,
+        })
+        resp = client.get("/api/config")
+        data = resp.json()
+        assert data["special_screenshot_rule_warmup_seconds"] == 10
+        assert data["special_screenshot_rule_keepalive_seconds"] == 300
+        assert data["special_screenshot_rules"][0]["pattern"] == "wechat.exe"
+
+
+class TestScreenshotRules:
+    def test_rule_crud(self, client):
+        create = client.post("/api/screenshot-rules", json={
+            "rule_type": "url_contains",
+            "pattern": "youtube.com/watch",
+            "enabled": True,
+        })
+        assert create.status_code == 200
+        item = create.json()["item"]
+        assert item["rule_type"] == "url_contains"
+
+        listing = client.get("/api/screenshot-rules")
+        assert listing.status_code == 200
+        items = listing.json()["items"]
+        assert any(row["id"] == item["id"] for row in items)
+
+        updated = client.patch(f"/api/screenshot-rules/{item['id']}", json={
+            "enabled": False,
+            "pattern": "youtube.com/live",
+        })
+        assert updated.status_code == 200
+        assert updated.json()["item"]["enabled"] == 0
+        assert updated.json()["item"]["pattern"] == "youtube.com/live"
+
+        deleted = client.delete(f"/api/screenshot-rules/{item['id']}")
+        assert deleted.status_code == 200
+        assert deleted.json()["status"] == "ok"
+
 
 # ============================================================
 # 3. Agent 心跳与状态
@@ -442,6 +483,31 @@ class TestScreenshot:
         assert len(rows) == 2
         assert rows[0]["timestamp"] == ts_late
         assert rows[1]["timestamp"] == ts_early
+
+    def test_screenshot_can_skip_history_but_keep_live(self, client):
+        _register_agent(client, "live-only-agent")
+        ts = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+        resp = client.post("/api/screenshot", json={
+            "agent_name": "live-only-agent",
+            "timestamp": ts,
+            "image_base64": _make_jpeg_b64(),
+            "monitor_index": 0,
+            "monitor_total": 1,
+            "store_history": False,
+            "foreground_process_name": "WeChat.exe",
+            "save_policy_phase": "suppressed",
+        })
+        assert resp.status_code == 200
+        assert resp.json()["id"] is None
+
+        rows = client.get("/api/screenshots?agent=live-only-agent").json()
+        assert rows == []
+
+        live = client.get("/api/screenshots/live/latest?agent=live-only-agent&monitor=0&fresh=true")
+        assert live.status_code == 200
+        live_data = live.json()
+        assert live_data["timestamp"] == ts
+        assert live_data["save_policy_phase"] == "suppressed"
 
     def test_screenshot_image_retrievable(self, client):
         _register_agent(client, "img-agent")

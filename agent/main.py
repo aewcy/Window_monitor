@@ -25,6 +25,7 @@ from auto_update import AutoUpdater
 from screen_capture import ScreenCapture
 from app_tracker import AppTracker
 from browser_history import BrowserHistoryCollector
+from foreground_context import ForegroundSavePolicy
 from keyboard_monitor import KeyboardEnterMonitor
 
 
@@ -229,10 +230,18 @@ class Reporter:
             "monitor_index": mon_idx,
             "monitor_total": mon_total,
             "capture_interval": data.get("capture_interval", 0),
+            "store_history": data.get("store_history", True),
+            "foreground_process_name": data.get("foreground_process_name", ""),
+            "foreground_window_title": data.get("foreground_window_title", ""),
+            "foreground_url": data.get("foreground_url", ""),
+            "matched_rule_type": data.get("matched_rule_type", ""),
+            "matched_rule_pattern": data.get("matched_rule_pattern", ""),
+            "save_policy_phase": data.get("save_policy_phase", ""),
         }, drop_oldest=True)
         if ok:
             mon_tag = f" [屏{mon_idx+1}/{mon_total}]" if mon_total > 1 else ""
-            print(f"  [OK] 截图 {data['timestamp']}{mon_tag}")
+            history_tag = "历史关" if not data.get("store_history", True) else (data.get("save_policy_phase", "") or "历史开")
+            print(f"  [OK] 截图 {data['timestamp']}{mon_tag} [{history_tag}]")
 
     def window(self, data: dict):
         self._enqueue("app_event", {
@@ -908,10 +917,39 @@ def main(stop_event=None):
 
     # 启动采集模块
     screenshot = ScreenCapture(interval=SCREENSHOT_INTERVAL)
+    save_policy = ForegroundSavePolicy()
+    last_policy_timestamp = ""
+    last_policy_decision = None
+
+    def emit_screenshot_with_policy(data, decision: dict | None = None):
+        nonlocal last_policy_timestamp, last_policy_decision
+        timestamp = data.get("timestamp", "")
+        if decision is None:
+            if timestamp != last_policy_timestamp or last_policy_decision is None:
+                last_policy_decision = save_policy.evaluate()
+                last_policy_timestamp = timestamp
+            decision = dict(last_policy_decision or {})
+        else:
+            last_policy_timestamp = timestamp
+            last_policy_decision = dict(decision)
+
+        payload = {
+            **data,
+            "store_history": decision.get("store_history", True),
+            "foreground_process_name": decision.get("process_name", ""),
+            "foreground_window_title": decision.get("window_title", ""),
+            "foreground_url": decision.get("foreground_url", ""),
+            "matched_rule_type": decision.get("matched_rule_type", ""),
+            "matched_rule_pattern": decision.get("matched_rule_pattern", ""),
+            "save_policy_phase": decision.get("save_policy_phase", ""),
+        }
+        reporter.screenshot(payload)
+        if payload["store_history"]:
+            save_policy.mark_saved(decision)
 
     def report_screenshot_if_running(data):
         if not is_capture_paused():
-            reporter.screenshot(data)
+            emit_screenshot_with_policy(data)
 
     screenshot.add_listener(report_screenshot_if_running)
     screenshot.add_diagnostic_listener(reporter.diagnostic)
@@ -923,9 +961,10 @@ def main(stop_event=None):
         if is_capture_paused():
             return
         shots = screenshot.capture_once()
+        decision = save_policy.evaluate(info)
         if shots:
             for shot in shots:
-                reporter.screenshot(shot)
+                emit_screenshot_with_policy(shot, decision)
             info["screenshot_timestamp"] = shots[0]["timestamp"]
         reporter.window(info)
         record_activity()  # 窗口切换也视为活动
@@ -948,9 +987,10 @@ def main(stop_event=None):
         if is_capture_paused():
             return
         shots = screenshot.capture_once()
+        decision = save_policy.evaluate(info)
         if shots:
             for shot in shots:
-                reporter.screenshot(shot)
+                emit_screenshot_with_policy(shot, decision)
             # 嵌入截图时间戳，供服务端精确关联事件与截图
             info["screenshot_timestamp"] = shots[0]["timestamp"]
         reporter.chat_enter(info)
@@ -987,6 +1027,11 @@ def main(stop_event=None):
                 if r.status_code == 200:
                     cfg = r.json()
                     new_interval = cfg.get("screenshot_interval", SCREENSHOT_INTERVAL)
+                    save_policy.update_config(
+                        cfg.get("special_screenshot_rules", []),
+                        cfg.get("special_screenshot_rule_warmup_seconds", 10),
+                        cfg.get("special_screenshot_rule_keepalive_seconds", 300),
+                    )
                     with _state_lock:
                         if new_interval != _server_interval:
                             _server_interval = new_interval

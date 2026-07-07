@@ -16,6 +16,7 @@ import LiveOverlay from './components/LiveOverlay.vue'
 import GridOverlay from './components/GridOverlay.vue'
 import ThemePicker from './components/ThemePicker.vue'
 import ConfirmDialog from './components/ConfirmDialog.vue'
+import ScreenshotRulePanel from './components/ScreenshotRulePanel.vue'
 
 const agent = useAgentStore()
 const ss = useScreenshotStore()
@@ -63,6 +64,8 @@ function onKey(e) {
     } else if (ss.gridMode) {
       ss.gridMode = false
       ss.goLive()
+    } else if (ss.rulesPanelOpen) {
+      ss.rulesPanelOpen = false
     } else {
       theme.closePanel()
     }
@@ -90,6 +93,7 @@ function onKey(e) {
   <StatsBar ref="statsRef" />
   <LiveOverlay />
   <GridOverlay />
+  <ScreenshotRulePanel />
   <ThemePicker />
   <ConfirmDialog />
 </template>
