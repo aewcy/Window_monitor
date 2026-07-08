@@ -289,19 +289,18 @@ async def health():
 
 @router.post("/viewer/heartbeat")
 async def viewer_heartbeat():
-    """Dashboard 每秒 ping 此接口，表示有人正在观看"""
+    """保留旧的观看心跳接口，但不再用它提高截图频率。"""
     _viewer_last_seen["dashboard"] = datetime.now()
     return {"status": "ok"}
 
 
 @router.get("/config")
 async def agent_config(agent: str = Query("unknown")):
-    """Agent 拉取动态配置 - 根据观察者存在与否调整截图间隔"""
-    last_seen = _viewer_last_seen.get("dashboard")
-    if last_seen and (datetime.now() - last_seen).total_seconds() < 10:
-        screenshot_interval = 1   # 有人看 → 1秒
-    else:
-        screenshot_interval = 5   # 没人看 → 5秒
+    """Agent 拉取动态配置。
+
+    Live 只展示 Agent 按本地截图策略上传的帧，不再通过 Web 观看状态强制提频。
+    """
+    screenshot_interval = 5
     return {
         "screenshot_interval": screenshot_interval,
         "app_track_interval": 2,

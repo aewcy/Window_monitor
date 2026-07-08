@@ -184,3 +184,24 @@
 
 - `D:\python\python.exe -m pytest server\tests\test_api.py -q`
 - `D:\python\python.exe -m py_compile server\routes.py server\models.py`
+
+## 2026-07-08 Live 不再强制提高截图频率
+
+### 目标
+
+- Live 只显示 Agent 按截图策略上传来的画面。
+- Web 正在观看 Live 时，不再反向强制 Agent 进入 1 秒截图。
+- 长时间无操作后，截图策略继续按 Agent 空闲阈值降到 10 秒、60 秒、600 秒。
+
+### 实现方案
+
+- `/api/config` 不再根据 `/api/viewer/heartbeat` 返回 1 秒截图间隔，统一返回基础 `5` 秒配置。
+- `/api/viewer/heartbeat` 保留为兼容接口，但不参与截图频率决策。
+- Agent `resolve_screenshot_strategy` 删除 `VIEWER` 覆盖分支，`server_interval` 仅作为兼容入参保留。
+- Dashboard 的 Live 卡片和 Live 放大层停止发送 viewer heartbeat，避免无意义请求。
+
+### 边缘情况与偏离说明
+
+- 偏离点：旧实现把“有人看 Live”当成强制提频信号；现在改为“Live 被动显示当前策略帧”。
+- 影响：长空闲时 Live 刷新会变慢，这是节省存储和按策略截图的预期结果。
+- 兼容：旧 Agent 即使还带 `VIEWER` 分支，只要服务端不再返回 `1` 秒，也不会被 Web 观看拉高频。

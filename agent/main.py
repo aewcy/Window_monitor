@@ -343,12 +343,12 @@ _instance_mutex_handle = None                # Windows 单实例互斥锁句柄
 
 
 def resolve_screenshot_strategy(idle_sec: float, server_interval: float) -> tuple[float, str]:
-    """根据空闲秒数和服务端观察状态，计算目标截图间隔与模式。
+    """根据空闲秒数计算目标截图间隔与模式。
 
     注意：
     - Windows 下 idle_sec 默认来自 GetLastInputInfo，表示系统级最后输入时间，
       Agent 启动前已经发生的空闲也会计入。
-    - 观察者 LIVE 模式只会把空闲态降到 1s，不会覆盖 ACTIVE 的 0.25s。
+    - server_interval 仅保留为兼容入参，Live 不再反向强制提高采集频率。
     """
     ACTIVE_INTERVAL = 0.25
     LIGHT_IDLE_INTERVAL = 10.0
@@ -360,8 +360,6 @@ def resolve_screenshot_strategy(idle_sec: float, server_interval: float) -> tupl
 
     if idle_sec < ACTIVE_THRESHOLD:
         return ACTIVE_INTERVAL, "ACTIVE"
-    if server_interval <= 1.5:
-        return float(server_interval), "VIEWER"
     if idle_sec < LIGHT_IDLE_THRESHOLD:
         return LIGHT_IDLE_INTERVAL, "LIGHT_IDLE"
     if idle_sec < DEEP_IDLE_THRESHOLD:
@@ -1067,10 +1065,7 @@ def main(stop_event=None):
 
             if target != last_interval:
                 screenshot.set_interval(target)
-                if mode_name == "VIEWER":
-                    mode = f"VIEWER (idle={idle_sec:.0f}s, server={srv_interval}s)"
-                else:
-                    mode = f"{mode_name} ({idle_sec:.0f}s 空闲)"
+                mode = f"{mode_name} ({idle_sec:.0f}s 空闲)"
                 print(f"  [Adaptive] {mode}  截图间隔: {target}s")
                 reporter.diagnostic(
                     "screenshot",

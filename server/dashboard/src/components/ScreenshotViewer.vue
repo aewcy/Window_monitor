@@ -3,11 +3,9 @@ import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { useScreenshotStore } from '../stores/screenshot'
 import { useAgentStore } from '../stores/agent'
 import { getLiveScreenshotImage, getScreenshotImage } from '../api'
-import { usePolling } from '../composables/usePolling'
 
 const ss = useScreenshotStore()
 const agent = useAgentStore()
-const { startHeartbeat, stopHeartbeat } = usePolling()
 const imgSrc = ref(null)
 const timestamp = ref('')
 const currentId = ref(null)
@@ -100,7 +98,6 @@ function startLivePolling() {
   if (!shouldPollLive()) return
   load()
   liveTimer = setInterval(load, ss.livePollMs)
-  startHeartbeat()
 }
 
 function stopLivePolling() {
@@ -108,7 +105,6 @@ function stopLivePolling() {
     clearInterval(liveTimer)
     liveTimer = null
   }
-  stopHeartbeat()
 }
 
 watch(() => agent.selectedAgent, () => {

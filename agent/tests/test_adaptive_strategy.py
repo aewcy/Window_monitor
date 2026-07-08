@@ -14,17 +14,17 @@ from main import resolve_screenshot_strategy
 class ResolveScreenshotStrategyTests(unittest.TestCase):
     """覆盖文档中的截图策略阈值。"""
 
-    def test_active_has_priority_over_viewer(self):
-        """活跃态即使有人观看，也保持 0.25 秒。"""
+    def test_active_uses_fast_interval(self):
+        """活跃态保持 0.25 秒。"""
         interval, mode = resolve_screenshot_strategy(5, 1)
         self.assertEqual(interval, 0.25)
         self.assertEqual(mode, "ACTIVE")
 
-    def test_viewer_only_applies_after_active_window(self):
-        """超过 1 分钟且有人观看时，进入 1 秒 LIVE。"""
+    def test_viewer_does_not_override_idle_strategy(self):
+        """Live 只显示当前策略帧，不再把空闲态强制拉到 1 秒。"""
         interval, mode = resolve_screenshot_strategy(90, 1)
-        self.assertEqual(interval, 1.0)
-        self.assertEqual(mode, "VIEWER")
+        self.assertEqual(interval, 10.0)
+        self.assertEqual(mode, "LIGHT_IDLE")
 
     def test_light_idle_threshold(self):
         """1 到 5 分钟空闲属于 LIGHT_IDLE。"""

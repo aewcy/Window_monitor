@@ -3,11 +3,9 @@ import { ref, watch, computed, onUnmounted } from 'vue'
 import { useScreenshotStore } from '../stores/screenshot'
 import { useAgentStore } from '../stores/agent'
 import { getLiveScreenshotImage, getScreenshotImage } from '../api'
-import { usePolling } from '../composables/usePolling'
 
 const ss = useScreenshotStore()
 const agent = useAgentStore()
-const { startHeartbeat, stopHeartbeat } = usePolling()
 const imgSrc = ref(null)
 const currentLiveId = ref(null)
 const placeholderText = ref('等待实时画面')
@@ -120,7 +118,6 @@ function startLivePolling() {
   if (!shouldPollLive()) return
   loadLive()
   liveTimer = setInterval(loadLive, ss.livePollMs)
-  startHeartbeat()
 }
 
 function stopLivePolling() {
@@ -128,7 +125,6 @@ function stopLivePolling() {
     clearInterval(liveTimer)
     liveTimer = null
   }
-  stopHeartbeat()
 }
 
 function loadBrowseItem() {

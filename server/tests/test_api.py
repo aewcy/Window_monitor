@@ -189,12 +189,12 @@ class TestViewerHeartbeat:
         assert resp.status_code == 200
         assert resp.json()["status"] == "ok"
 
-    def test_live_mode_after_heartbeat(self, client):
-        """发送 viewer heartbeat 后，config 应返回 LIVE 模式"""
+    def test_viewer_heartbeat_does_not_raise_capture_frequency(self, client):
+        """发送 viewer heartbeat 后，config 仍按基础策略返回，不强制 LIVE 高频"""
         client.post("/api/viewer/heartbeat")
         resp = client.get("/api/config")
         data = resp.json()
-        assert data["screenshot_interval"] == 1
+        assert data["screenshot_interval"] == 5
 
     def test_normal_mode_without_heartbeat(self, client):
         """无 viewer heartbeat 时，config 应返回正常模式"""
