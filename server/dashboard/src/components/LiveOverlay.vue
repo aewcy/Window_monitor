@@ -8,6 +8,7 @@ const ss = useScreenshotStore()
 const agent = useAgentStore()
 const imgSrc = ref(null)
 const currentLiveId = ref(null)
+const currentLiveData = ref(null)
 const placeholderText = ref('等待实时画面')
 let liveTimer = null
 let liveRequestSeq = 0
@@ -17,6 +18,7 @@ const panX = ref(0)
 const panY = ref(0)
 const imageStageEl = ref(null)
 const dragging = ref(false)
+const imageMetaOpen = ref(false)
 let dragStart = null
 
 const currentItem = computed(() => ss.currentDisplayItem)
@@ -43,6 +45,36 @@ const itemTitle = computed(() => {
   }
   return ''
 })
+
+const imageMetaSource = computed(() => {
+  if (isBrowse.value) return currentItem.value || {}
+  return currentLiveData.value || {}
+})
+
+const imageMetaRows = computed(() => {
+  const item = imageMetaSource.value || {}
+  const rows = [
+    ['网址', item.foreground_url || item.url || ''],
+    ['程序', item.foreground_process_name || item.process_name || ''],
+    ['标题', item.foreground_window_title || item.window_title || item.title || ''],
+    ['规则', item.matched_rule_type ? `${item.matched_rule_type}: ${item.matched_rule_pattern || ''}` : ''],
+    ['策略', item.save_policy_phase || ''],
+    ['被控机', item.agent_name || agent.selectedAgent || ''],
+    ['屏幕', item.monitor_total > 1 ? `屏${Number(item.monitor_index || 0) + 1}/${item.monitor_total}` : ''],
+    ['时间', (item.timestamp || item.screenshot_time || '').replace('T', ' ')],
+  ]
+  return rows.filter(([, value]) => String(value || '').trim())
+})
+
+const imagePrimaryUrl = computed(() => {
+  const item = imageMetaSource.value || {}
+  return item.foreground_url || item.url || ''
+})
+
+function copyImageUrl() {
+  if (!imagePrimaryUrl.value) return
+  navigator.clipboard?.writeText(imagePrimaryUrl.value).catch(() => {})
+}
 
 async function loadLive() {
   const snapshot = {
@@ -93,6 +125,7 @@ async function loadLive() {
       currentLiveId.value = data.id
       imgSrc.value = getLiveScreenshotImage(data) || getScreenshotImage(data.id)
     }
+    currentLiveData.value = data
     placeholderText.value = '等待实时画面'
     if (String(data.id || '').startsWith('live:')) preferFreshLive.value = false
   } else if (!imgSrc.value) {
@@ -103,9 +136,11 @@ async function loadLive() {
 function resetLiveView(message = '正在切换...') {
   liveRequestSeq += 1
   currentLiveId.value = null
+  currentLiveData.value = null
   imgSrc.value = null
   placeholderText.value = message
   preferFreshLive.value = true
+  imageMetaOpen.value = false
   resetImageTransform()
 }
 
@@ -132,9 +167,12 @@ function loadBrowseItem() {
   const item = currentItem.value
   if (item && item.screenshot_id) {
     imgSrc.value = getScreenshotImage(item.screenshot_id)
+    currentLiveData.value = null
+    imageMetaOpen.value = false
     resetImageTransform()
   } else {
     imgSrc.value = null
+    currentLiveData.value = null
     placeholderText.value = '暂无截图'
   }
 }
@@ -292,6 +330,25 @@ function stopDrag(e) {
             draggable="false"
             :style="{ transform: `translate(${panX}px, ${panY}px) scale(${zoom})` }" />
           <div v-else class="placeholder"><span class="big">[ ]</span>{{ placeholderText }}</div>
+          <div class="image-meta" v-if="imgSrc && imageMetaRows.length" @pointerdown.stop @click.stop>
+            <button
+              class="meta-corner"
+              :class="{ open: imageMetaOpen }"
+              title="查看图片网址和程序信息"
+              @click="imageMetaOpen = !imageMetaOpen">
+              <span></span>
+            </button>
+            <div class="meta-panel" v-if="imageMetaOpen">
+              <div class="meta-head">
+                <span>图片信息</span>
+                <button v-if="imagePrimaryUrl" class="copy-url" @click="copyImageUrl">复制 URL</button>
+              </div>
+              <div class="meta-row" v-for="[label, value] in imageMetaRows" :key="label">
+                <span class="meta-label">{{ label }}</span>
+                <span class="meta-value" :title="value">{{ value }}</span>
+              </div>
+            </div>
+          </div>
         </div>
         <div class="mon-chips" v-if="agent.monitorTotal > 1 && !showUI">
           <button v-for="i in agent.monitorTotal" :key="i"
@@ -370,6 +427,41 @@ function stopDrag(e) {
   transition: transform .12s; pointer-events: none;
 }
 .image-stage.dragging .live-img { transition: none; }
+.image-meta {
+  position: absolute; right: 14px; bottom: 14px; z-index: 5;
+  display: flex; align-items: flex-end; justify-content: flex-end;
+}
+.meta-corner {
+  width: 28px; height: 28px; border: 1px solid rgba(255,255,255,.2);
+  border-radius: 8px; background: rgba(0,0,0,.64); color: var(--text-secondary);
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(8px); transition: all .15s;
+}
+.meta-corner:hover, .meta-corner.open { border-color: var(--blue); color: var(--blue); background: rgba(15,23,42,.86); }
+.meta-corner span {
+  width: 0; height: 0; border-left: 8px solid currentColor; border-top: 8px solid transparent;
+  transform: rotate(45deg); transform-origin: center;
+}
+.meta-panel {
+  position: absolute; right: 0; bottom: 36px;
+  width: min(460px, calc(70vw - 48px)); max-height: min(42vh, 360px); overflow: auto;
+  padding: 12px; border: 1px solid rgba(255,255,255,.14); border-radius: 12px;
+  background: rgba(10,14,22,.92); box-shadow: 0 18px 50px rgba(0,0,0,.45);
+  backdrop-filter: blur(12px);
+}
+.meta-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; color: var(--text); font-size: 12px; font-weight: 700; }
+.copy-url {
+  border: 1px solid var(--hairline); border-radius: 6px; background: rgba(255,255,255,.06);
+  color: var(--text-secondary); cursor: pointer; font-family: var(--font-mono); font-size: 10px; padding: 3px 8px;
+}
+.copy-url:hover { border-color: var(--blue); color: var(--blue); }
+.meta-row {
+  display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 10px;
+  padding: 6px 0; border-top: 1px solid rgba(255,255,255,.06);
+  font-size: 11px; line-height: 1.35;
+}
+.meta-label { color: var(--muted); font-family: var(--font-mono); }
+.meta-value { color: var(--text-secondary); overflow-wrap: anywhere; word-break: break-word; }
 .placeholder { text-align: center; color: var(--muted); }
 .placeholder .big { font-size: 64px; opacity: 0.1; display: block; margin-bottom: 12px; }
 .mon-chips { position: absolute; top: 12px; left: 16px; display: flex; gap: 6px; }

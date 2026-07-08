@@ -19,6 +19,7 @@ const savedGridScrollTop = ref(0)
 const modifierSelecting = ref(false)
 const previewLoadingNext = ref(false)
 const previewPendingNext = ref(false)
+const previewMetaOpen = ref(false)
 const gridView = ref('screenshots')
 const activityEl = ref(null)
 const activityEvents = ref([])
@@ -150,6 +151,31 @@ function resetPreviewTransform() {
   previewDragStart = null
 }
 
+const previewMetaRows = computed(() => {
+  const item = previewItem.value || {}
+  const rows = [
+    ['网址', item.foreground_url || item.url || ''],
+    ['程序', item.foreground_process_name || item.process_name || ''],
+    ['标题', item.foreground_window_title || item.window_title || item.title || ''],
+    ['规则', item.matched_rule_type ? `${item.matched_rule_type}: ${item.matched_rule_pattern || ''}` : ''],
+    ['策略', item.save_policy_phase || ''],
+    ['被控机', item.agent_name || agent.selectedAgent || ''],
+    ['屏幕', item.monitor_total > 1 ? `屏${Number(item.monitor_index || 0) + 1}/${item.monitor_total}` : ''],
+    ['时间', (item.timestamp || item.screenshot_time || '').replace('T', ' ')],
+  ]
+  return rows.filter(([, value]) => String(value || '').trim())
+})
+
+const previewPrimaryUrl = computed(() => {
+  const item = previewItem.value || {}
+  return item.foreground_url || item.url || ''
+})
+
+function copyPreviewUrl() {
+  if (!previewPrimaryUrl.value) return
+  navigator.clipboard?.writeText(previewPrimaryUrl.value).catch(() => {})
+}
+
 function isActiveViewportRow(rowIndex) {
   return rowIndex >= activeStartRow.value && rowIndex < activeEndRow.value
 }
@@ -270,6 +296,7 @@ function onDblClick(s) {
   clearGridClickTimer()
   savedGridScrollTop.value = scrollEl.value?.scrollTop || 0
   previewItem.value = s
+  previewMetaOpen.value = false
   resetPreviewTransform()
   preloadPreviewNeighbors()
 }
@@ -287,6 +314,7 @@ function selectOnlyPreviewItem() {
 function closePreview() {
   const targetId = previewItem.value?.id
   previewItem.value = null
+  previewMetaOpen.value = false
   resetPreviewTransform()
   nextTick(() => {
     observeGridBody()
@@ -425,9 +453,12 @@ function onActivityClick(event) {
     previewItem.value = existingItem || {
       id: event.screenshot_id,
       timestamp: event.screenshot_time || event.timestamp,
+      foreground_process_name: event.process_name || '',
+      foreground_window_title: event.window_title || '',
       monitor_total: agent.monitorTotal || 1,
       monitor_index: ss.gridQuery.monitor ?? 0,
     }
+    previewMetaOpen.value = false
     resetPreviewTransform()
     preloadPreviewNeighbors()
     return
@@ -781,6 +812,25 @@ function scrollTo(date) {
             decoding="async"
             draggable="false"
             :style="{ transform: `translate(${previewPanX}px, ${previewPanY}px) scale(${previewZoom})` }">
+          <div class="image-meta" v-if="previewMetaRows.length" @pointerdown.stop @click.stop>
+            <button
+              class="meta-corner"
+              :class="{ open: previewMetaOpen }"
+              title="查看图片网址和程序信息"
+              @click="previewMetaOpen = !previewMetaOpen">
+              <span></span>
+            </button>
+            <div class="meta-panel" v-if="previewMetaOpen">
+              <div class="meta-head">
+                <span>图片信息</span>
+                <button v-if="previewPrimaryUrl" class="copy-url" @click="copyPreviewUrl">复制 URL</button>
+              </div>
+              <div class="meta-row" v-for="[label, value] in previewMetaRows" :key="label">
+                <span class="meta-label">{{ label }}</span>
+                <span class="meta-value" :title="value">{{ value }}</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       <div v-else-if="gridView === 'screenshots'" class="grid-body" @scroll="onScroll" ref="scrollEl">
@@ -988,6 +1038,41 @@ function scrollTo(date) {
   transition: transform .12s; pointer-events: none;
 }
 .preview-stage.dragging img { transition: none; }
+.image-meta {
+  position: absolute; right: 14px; bottom: 14px; z-index: 5;
+  display: flex; align-items: flex-end; justify-content: flex-end;
+}
+.meta-corner {
+  width: 28px; height: 28px; border: 1px solid rgba(255,255,255,.2);
+  border-radius: 8px; background: rgba(0,0,0,.64); color: var(--text-secondary);
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(8px); transition: all .15s;
+}
+.meta-corner:hover, .meta-corner.open { border-color: var(--blue); color: var(--blue); background: rgba(15,23,42,.86); }
+.meta-corner span {
+  width: 0; height: 0; border-left: 8px solid currentColor; border-top: 8px solid transparent;
+  transform: rotate(45deg); transform-origin: center;
+}
+.meta-panel {
+  position: absolute; right: 0; bottom: 36px;
+  width: min(460px, calc(80vw - 48px)); max-height: min(42vh, 360px); overflow: auto;
+  padding: 12px; border: 1px solid rgba(255,255,255,.14); border-radius: 12px;
+  background: rgba(10,14,22,.92); box-shadow: 0 18px 50px rgba(0,0,0,.45);
+  backdrop-filter: blur(12px);
+}
+.meta-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; color: var(--text); font-size: 12px; font-weight: 700; }
+.copy-url {
+  border: 1px solid var(--hairline); border-radius: 6px; background: rgba(255,255,255,.06);
+  color: var(--text-secondary); cursor: pointer; font-family: var(--font-mono); font-size: 10px; padding: 3px 8px;
+}
+.copy-url:hover { border-color: var(--blue); color: var(--blue); }
+.meta-row {
+  display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 10px;
+  padding: 6px 0; border-top: 1px solid rgba(255,255,255,.06);
+  font-size: 11px; line-height: 1.35;
+}
+.meta-label { color: var(--muted); font-family: var(--font-mono); }
+.meta-value { color: var(--text-secondary); overflow-wrap: anywhere; word-break: break-word; }
 .grid-date-label {
   display: flex; align-items: center; gap: 8px; padding: 12px 12px 4px;
   position: sticky; top: 0; z-index: 2; background: var(--ground);

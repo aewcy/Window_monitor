@@ -214,3 +214,21 @@
 - `WindowsMonitorSetup.exe` size：`58020316`
 - `WindowsMonitorSetup.exe` sha256：`CAA063AB95A05CE82C7DFE1D7E0D6906ED77D6F8D187EE81B4B21C92344A4B8C`
 - 发布目的：让后台推送更新后的客户端也删除 `VIEWER` 强制提频分支。
+
+## 2026-07-08 图片上下文信息角
+
+### 目标
+
+- 在单张大图查看时，能直接查看该截图对应的网页 URL、前台程序、窗口标题和保存策略信息。
+- 默认不遮挡图片，只在右下角显示一个小三角，点击后展开信息卡。
+
+### 实现方案
+
+- 网格单图预览读取 `previewItem` 中的 `foreground_url`、`foreground_process_name`、`foreground_window_title`、`matched_rule_*`、`save_policy_phase` 字段。
+- Live 放大层读取当前 live 帧字段；历史浏览模式回退读取活动/浏览器历史条目中的标题和 URL。
+- URL 支持一键复制，长 URL 自动换行，避免撑破面板。
+
+### 边缘情况与偏离说明
+
+- 旧截图没有 URL 或前台字段时，信息卡只显示已有字段，不额外伪造。
+- 活动记录进入大图时，如果只拿到 `process_name/window_title`，会先显示这些字段；完整截图字段以后可通过详情接口补强。
