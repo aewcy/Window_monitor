@@ -1,5 +1,5 @@
 #define AppName "GameFrameRateViewer"
-#define AppVersion "0.59.0"
+#define AppVersion "0.59.1"
 #define Publisher "Microsoft Game Viewed"
 #define SourceRoot ".."
 

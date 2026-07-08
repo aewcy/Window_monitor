@@ -205,3 +205,12 @@
 - 偏离点：旧实现把“有人看 Live”当成强制提频信号；现在改为“Live 被动显示当前策略帧”。
 - 影响：长空闲时 Live 刷新会变慢，这是节省存储和按策略截图的预期结果。
 - 兼容：旧 Agent 即使还带 `VIEWER` 分支，只要服务端不再返回 `1` 秒，也不会被 Web 观看拉高频。
+
+### 0.59.1 Agent 发布包
+
+- 版本：`0.59.1`
+- `monitor-agent.exe` size：`56658809`
+- `monitor-agent.exe` sha256：`30D92E546C88780887F58EA8CD667067AE4BA8C7DF9DAC525B7ADC074813DDA4`
+- `WindowsMonitorSetup.exe` size：`58020316`
+- `WindowsMonitorSetup.exe` sha256：`CAA063AB95A05CE82C7DFE1D7E0D6906ED77D6F8D187EE81B4B21C92344A4B8C`
+- 发布目的：让后台推送更新后的客户端也删除 `VIEWER` 强制提频分支。
