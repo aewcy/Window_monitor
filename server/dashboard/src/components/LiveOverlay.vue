@@ -19,6 +19,7 @@ const panY = ref(0)
 const imageStageEl = ref(null)
 const dragging = ref(false)
 const imageMetaOpen = ref(false)
+const imageCopiedKey = ref('')
 let dragStart = null
 
 const currentItem = computed(() => ss.currentDisplayItem)
@@ -71,9 +72,42 @@ const imagePrimaryUrl = computed(() => {
   return item.foreground_url || item.url || ''
 })
 
-function copyImageUrl() {
-  if (!imagePrimaryUrl.value) return
-  navigator.clipboard?.writeText(imagePrimaryUrl.value).catch(() => {})
+async function copyTextToClipboard(text) {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text)
+      return true
+    } catch {}
+  }
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.setAttribute('readonly', '')
+  textarea.style.position = 'fixed'
+  textarea.style.left = '-9999px'
+  textarea.style.top = '0'
+  document.body.appendChild(textarea)
+  textarea.focus()
+  textarea.select()
+  let ok = false
+  try {
+    ok = document.execCommand('copy')
+  } catch {
+    ok = false
+  }
+  document.body.removeChild(textarea)
+  return ok
+}
+
+async function copyImageValue(value, key = 'value') {
+  const text = String(value || '').trim()
+  if (!text) return
+  const ok = await copyTextToClipboard(text)
+  imageCopiedKey.value = ok ? key : `failed:${key}`
+  window.setTimeout(() => {
+    if (imageCopiedKey.value === key || imageCopiedKey.value === `failed:${key}`) {
+      imageCopiedKey.value = ''
+    }
+  }, 1400)
 }
 
 async function loadLive() {
@@ -330,7 +364,15 @@ function stopDrag(e) {
             draggable="false"
             :style="{ transform: `translate(${panX}px, ${panY}px) scale(${zoom})` }" />
           <div v-else class="placeholder"><span class="big">[ ]</span>{{ placeholderText }}</div>
-          <div class="image-meta" v-if="imgSrc && imageMetaRows.length" @pointerdown.stop @click.stop>
+          <div
+            class="image-meta"
+            v-if="imgSrc && imageMetaRows.length"
+            @pointerdown.stop
+            @pointermove.stop
+            @pointerup.stop
+            @pointercancel.stop
+            @wheel.stop
+            @click.stop>
             <button
               class="meta-corner"
               :class="{ open: imageMetaOpen }"
@@ -341,11 +383,16 @@ function stopDrag(e) {
             <div class="meta-panel" v-if="imageMetaOpen">
               <div class="meta-head">
                 <span>图片信息</span>
-                <button v-if="imagePrimaryUrl" class="copy-url" @click="copyImageUrl">复制 URL</button>
+                <button v-if="imagePrimaryUrl" class="copy-url" @click="copyImageValue(imagePrimaryUrl, 'url')">
+                  {{ imageCopiedKey === 'url' ? '已复制' : imageCopiedKey === 'failed:url' ? '复制失败' : '复制 URL' }}
+                </button>
               </div>
               <div class="meta-row" v-for="[label, value] in imageMetaRows" :key="label">
                 <span class="meta-label">{{ label }}</span>
                 <span class="meta-value" :title="value">{{ value }}</span>
+                <button class="copy-field" title="复制此项" @click="copyImageValue(value, label)">
+                  {{ imageCopiedKey === label ? '已复制' : imageCopiedKey === `failed:${label}` ? '失败' : '复制' }}
+                </button>
               </div>
             </div>
           </div>
@@ -430,6 +477,7 @@ function stopDrag(e) {
 .image-meta {
   position: absolute; right: 14px; bottom: 14px; z-index: 5;
   display: flex; align-items: flex-end; justify-content: flex-end;
+  cursor: default; user-select: text;
 }
 .meta-corner {
   width: 28px; height: 28px; border: 1px solid rgba(255,255,255,.2);
@@ -447,7 +495,7 @@ function stopDrag(e) {
   width: min(460px, calc(70vw - 48px)); max-height: min(42vh, 360px); overflow: auto;
   padding: 12px; border: 1px solid rgba(255,255,255,.14); border-radius: 12px;
   background: rgba(10,14,22,.92); box-shadow: 0 18px 50px rgba(0,0,0,.45);
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px); cursor: default; user-select: text;
 }
 .meta-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; color: var(--text); font-size: 12px; font-weight: 700; }
 .copy-url {
@@ -456,12 +504,17 @@ function stopDrag(e) {
 }
 .copy-url:hover { border-color: var(--blue); color: var(--blue); }
 .meta-row {
-  display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 10px;
+  display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; gap: 10px;
   padding: 6px 0; border-top: 1px solid rgba(255,255,255,.06);
   font-size: 11px; line-height: 1.35;
 }
 .meta-label { color: var(--muted); font-family: var(--font-mono); }
-.meta-value { color: var(--text-secondary); overflow-wrap: anywhere; word-break: break-word; }
+.meta-value { color: var(--text-secondary); overflow-wrap: anywhere; word-break: break-word; cursor: text; }
+.copy-field {
+  align-self: start; border: 1px solid transparent; border-radius: 5px; background: transparent;
+  color: var(--muted); cursor: pointer; font-family: var(--font-mono); font-size: 9px; padding: 1px 5px;
+}
+.copy-field:hover { border-color: var(--hairline); color: var(--blue); background: rgba(96,165,250,.08); }
 .placeholder { text-align: center; color: var(--muted); }
 .placeholder .big { font-size: 64px; opacity: 0.1; display: block; margin-bottom: 12px; }
 .mon-chips { position: absolute; top: 12px; left: 16px; display: flex; gap: 6px; }

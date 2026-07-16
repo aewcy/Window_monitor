@@ -20,6 +20,7 @@ const modifierSelecting = ref(false)
 const previewLoadingNext = ref(false)
 const previewPendingNext = ref(false)
 const previewMetaOpen = ref(false)
+const previewCopiedKey = ref('')
 const gridView = ref('screenshots')
 const activityEl = ref(null)
 const activityEvents = ref([])
@@ -171,9 +172,42 @@ const previewPrimaryUrl = computed(() => {
   return item.foreground_url || item.url || ''
 })
 
-function copyPreviewUrl() {
-  if (!previewPrimaryUrl.value) return
-  navigator.clipboard?.writeText(previewPrimaryUrl.value).catch(() => {})
+async function copyTextToClipboard(text) {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text)
+      return true
+    } catch {}
+  }
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.setAttribute('readonly', '')
+  textarea.style.position = 'fixed'
+  textarea.style.left = '-9999px'
+  textarea.style.top = '0'
+  document.body.appendChild(textarea)
+  textarea.focus()
+  textarea.select()
+  let ok = false
+  try {
+    ok = document.execCommand('copy')
+  } catch {
+    ok = false
+  }
+  document.body.removeChild(textarea)
+  return ok
+}
+
+async function copyPreviewValue(value, key = 'value') {
+  const text = String(value || '').trim()
+  if (!text) return
+  const ok = await copyTextToClipboard(text)
+  previewCopiedKey.value = ok ? key : `failed:${key}`
+  window.setTimeout(() => {
+    if (previewCopiedKey.value === key || previewCopiedKey.value === `failed:${key}`) {
+      previewCopiedKey.value = ''
+    }
+  }, 1400)
 }
 
 function isActiveViewportRow(rowIndex) {
@@ -812,7 +846,15 @@ function scrollTo(date) {
             decoding="async"
             draggable="false"
             :style="{ transform: `translate(${previewPanX}px, ${previewPanY}px) scale(${previewZoom})` }">
-          <div class="image-meta" v-if="previewMetaRows.length" @pointerdown.stop @click.stop>
+          <div
+            class="image-meta"
+            v-if="previewMetaRows.length"
+            @pointerdown.stop
+            @pointermove.stop
+            @pointerup.stop
+            @pointercancel.stop
+            @wheel.stop
+            @click.stop>
             <button
               class="meta-corner"
               :class="{ open: previewMetaOpen }"
@@ -823,11 +865,16 @@ function scrollTo(date) {
             <div class="meta-panel" v-if="previewMetaOpen">
               <div class="meta-head">
                 <span>图片信息</span>
-                <button v-if="previewPrimaryUrl" class="copy-url" @click="copyPreviewUrl">复制 URL</button>
+                <button v-if="previewPrimaryUrl" class="copy-url" @click="copyPreviewValue(previewPrimaryUrl, 'url')">
+                  {{ previewCopiedKey === 'url' ? '已复制' : previewCopiedKey === 'failed:url' ? '复制失败' : '复制 URL' }}
+                </button>
               </div>
               <div class="meta-row" v-for="[label, value] in previewMetaRows" :key="label">
                 <span class="meta-label">{{ label }}</span>
                 <span class="meta-value" :title="value">{{ value }}</span>
+                <button class="copy-field" title="复制此项" @click="copyPreviewValue(value, label)">
+                  {{ previewCopiedKey === label ? '已复制' : previewCopiedKey === `failed:${label}` ? '失败' : '复制' }}
+                </button>
               </div>
             </div>
           </div>
@@ -1041,6 +1088,7 @@ function scrollTo(date) {
 .image-meta {
   position: absolute; right: 14px; bottom: 14px; z-index: 5;
   display: flex; align-items: flex-end; justify-content: flex-end;
+  cursor: default; user-select: text;
 }
 .meta-corner {
   width: 28px; height: 28px; border: 1px solid rgba(255,255,255,.2);
@@ -1058,7 +1106,7 @@ function scrollTo(date) {
   width: min(460px, calc(80vw - 48px)); max-height: min(42vh, 360px); overflow: auto;
   padding: 12px; border: 1px solid rgba(255,255,255,.14); border-radius: 12px;
   background: rgba(10,14,22,.92); box-shadow: 0 18px 50px rgba(0,0,0,.45);
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px); cursor: default; user-select: text;
 }
 .meta-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; color: var(--text); font-size: 12px; font-weight: 700; }
 .copy-url {
@@ -1067,12 +1115,17 @@ function scrollTo(date) {
 }
 .copy-url:hover { border-color: var(--blue); color: var(--blue); }
 .meta-row {
-  display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 10px;
+  display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; gap: 10px;
   padding: 6px 0; border-top: 1px solid rgba(255,255,255,.06);
   font-size: 11px; line-height: 1.35;
 }
 .meta-label { color: var(--muted); font-family: var(--font-mono); }
-.meta-value { color: var(--text-secondary); overflow-wrap: anywhere; word-break: break-word; }
+.meta-value { color: var(--text-secondary); overflow-wrap: anywhere; word-break: break-word; cursor: text; }
+.copy-field {
+  align-self: start; border: 1px solid transparent; border-radius: 5px; background: transparent;
+  color: var(--muted); cursor: pointer; font-family: var(--font-mono); font-size: 9px; padding: 1px 5px;
+}
+.copy-field:hover { border-color: var(--hairline); color: var(--blue); background: rgba(96,165,250,.08); }
 .grid-date-label {
   display: flex; align-items: center; gap: 8px; padding: 12px 12px 4px;
   position: sticky; top: 0; z-index: 2; background: var(--ground);
