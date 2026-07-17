@@ -502,11 +502,12 @@ class TestScreenshot:
         assert rows[0]["timestamp"] == ts_late
         assert rows[1]["timestamp"] == ts_early
 
-    def test_screenshot_can_skip_history_but_keep_live(self, client):
-        _register_agent(client, "live-only-agent")
+    def test_server_policy_overrides_agent_history_flag(self, client):
+        """旧 Agent 的本地保存标记不能覆盖 Server 的默认保存决策。"""
+        _register_agent(client, "server-authority-agent")
         ts = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
         resp = client.post("/api/screenshot", json={
-            "agent_name": "live-only-agent",
+            "agent_name": "server-authority-agent",
             "timestamp": ts,
             "image_base64": _make_jpeg_b64(),
             "monitor_index": 0,
@@ -516,16 +517,17 @@ class TestScreenshot:
             "save_policy_phase": "suppressed",
         })
         assert resp.status_code == 200
-        assert resp.json()["id"] is None
+        assert resp.json()["id"] is not None
 
-        rows = client.get("/api/screenshots?agent=live-only-agent").json()
-        assert rows == []
+        rows = client.get("/api/screenshots?agent=server-authority-agent").json()
+        assert len(rows) == 1
+        assert rows[0]["save_policy_phase"] == "default"
 
-        live = client.get("/api/screenshots/live/latest?agent=live-only-agent&monitor=0&fresh=true")
+        live = client.get("/api/screenshots/live/latest?agent=server-authority-agent&monitor=0&fresh=true")
         assert live.status_code == 200
         live_data = live.json()
         assert live_data["timestamp"] == ts
-        assert live_data["save_policy_phase"] == "suppressed"
+        assert live_data["save_policy_phase"] == "default"
 
     def test_server_policy_uses_recent_app_event_for_old_agent(self, client):
         _register_agent(client, "server-policy-agent")

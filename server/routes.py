@@ -251,9 +251,9 @@ def _history_policy_decision(agent_name: str, monitor_index: int, timestamp: str
         return {
             **context,
             "store_history": True,
-            "matched_rule_type": data.get("matched_rule_type", "") or "",
-            "matched_rule_pattern": data.get("matched_rule_pattern", "") or "",
-            "save_policy_phase": data.get("save_policy_phase", "") or "default",
+            "matched_rule_type": "",
+            "matched_rule_pattern": "",
+            "save_policy_phase": "default",
         }
 
     captured_at = _parse_iso_datetime(timestamp)
@@ -514,9 +514,8 @@ async def screenshot(data: dict):
     }
     _store_live_frame(agent_name, int(monitor_index or 0), live_frame)
 
-    agent_allows_history = bool(data.get("store_history", True))
-    store_history = agent_allows_history and bool(server_decision.get("store_history", True))
-    if not store_history:
+    # 历史保存由 Server 唯一裁决，忽略旧 Agent 可能上报的 store_history。
+    if not bool(server_decision.get("store_history", True)):
         return {"status": "ok", "id": None}
 
     # 入库存储仍执行 2 秒节流；Live 画面读取上面的内存最新帧，不受节流影响。

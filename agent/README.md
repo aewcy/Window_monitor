@@ -61,15 +61,14 @@ MONITOR_SERVER_HOST=<IP> python main.py
 |------|------|----------|
 | ACTIVE | 0.25s | 用户 1 分钟内有操作，或窗口切换、聊天应用 Enter 触发活动 |
 | VIEWER | 1s | Dashboard 有人正在查看，且本机已空闲超过 1 分钟 |
-| LIGHT_IDLE | 10s | 无人查看，且本机空闲 1-5 分钟 |
-| DEEP_IDLE | 60s | 无人查看，且本机空闲 5-30 分钟 |
-| VERY_DEEP_IDLE | 600s | 无人查看，且本机空闲 30 分钟以上 |
+| LIGHT_IDLE | 10s | 本机空闲 1-3 分钟 |
+| LONG_IDLE | 600s | 本机空闲 3 分钟以上 |
 
-Dashboard 每秒向服务端发送观察者心跳。服务端在 10 秒内收到心跳时，`/api/config` 会向 Agent 下发 `screenshot_interval=1`，Agent 轮询配置后进入 VIEWER/LIVE 策略。
+Live 只展示 Agent 按本地空闲策略上传的画面，不会反向强制提高截图频率。
 
-Windows 下空闲时间使用 `GetLastInputInfo` 读取系统级“最后一次键鼠输入”时间，不是从 Agent 启动时重新计时。也就是说，如果桌面在启动 Agent 前已经闲置了 2 分钟，Agent 启动后会直接按 `LIGHT_IDLE` 甚至更深的空闲策略运行，这属于预期行为。
+Windows 下空闲时间使用 `GetLastInputInfo` 读取系统级“最后一次键鼠输入”时间，不是从 Agent 启动时重新计时。也就是说，如果桌面在启动 Agent 前已经闲置了 2 分钟，Agent 启动后会直接按 `LIGHT_IDLE` 策略运行，这属于预期行为。
 
-Live 画面跟随 Agent 实际上传频率刷新：ACTIVE 时约 1 秒 4 张，VIEWER 时约 1 秒 1 张，LIGHT_IDLE 后按 10 秒、60 秒、600 秒递减。
+Live 画面跟随 Agent 实际上传频率刷新：ACTIVE 时约 1 秒 4 张，LIGHT_IDLE 为每 10 秒一张，LONG_IDLE 为每 10 分钟一张。
 
 截图存储是独立策略：服务端保存截图时才做节流，同一 Agent、同一显示器在 2 秒窗口内只保留最早的一张截图。因此 ACTIVE 模式下 Live 仍能看到高频画面，但数据库和截图文件不会把 0.25 秒的每一帧都保存下来。10 秒及以上的空闲策略本身慢于 2 秒，不受该节流影响。
 

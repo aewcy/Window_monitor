@@ -212,7 +212,7 @@ function Write-AgentConfig {
         install_id = $installId
         machine_id = $machineId
         product_publisher = $script:ProductPublisher
-        updater_version = "0.59.1"
+        updater_version = "0.59.2"
         update_enabled = $true
         update_check_interval = 300
         installed_at = (Get-Date).ToString("s")
@@ -227,7 +227,7 @@ function Write-AgentConfig {
         install_dir = $script:InstallDir
         install_id = $installId
         machine_id = $machineId
-        updater_version = "0.59.1"
+        updater_version = "0.59.2"
     }
     $updaterConfig | ConvertTo-Json | Set-Content -Path $script:UpdaterConfigPath -Encoding UTF8
 }
@@ -242,10 +242,10 @@ function Sync-UninstallRegistry {
             try {
                 $item = Get-ItemProperty -LiteralPath $_.PSPath -ErrorAction Stop
                 if ($item.DisplayName -eq $script:ProductName) {
-                    Set-ItemProperty -LiteralPath $_.PSPath -Name "DisplayVersion" -Value "0.59.1" -ErrorAction Stop
+                    Set-ItemProperty -LiteralPath $_.PSPath -Name "DisplayVersion" -Value "0.59.2" -ErrorAction Stop
                     Set-ItemProperty -LiteralPath $_.PSPath -Name "Publisher" -Value $script:ProductPublisher -ErrorAction Stop
                     Set-ItemProperty -LiteralPath $_.PSPath -Name "DisplayIcon" -Value $script:InstallExe -ErrorAction Stop
-                    Write-InstallLog "Updated uninstall registry version=0.59.1 publisher=$script:ProductPublisher"
+                    Write-InstallLog "Updated uninstall registry version=0.59.2 publisher=$script:ProductPublisher"
                 }
             } catch {
                 Write-InstallLog "Failed to update uninstall registry $($_.PSPath): $($_.Exception.Message)"

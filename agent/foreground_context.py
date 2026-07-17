@@ -1,10 +1,11 @@
 """
-前台上下文与截图保存策略
+前台上下文采集
 
 职责：
 1. 获取当前前台程序上下文
 2. 尝试为前台浏览器解析当前完整 URL（最佳努力）
-3. 根据服务端下发的特殊名单决定历史截图是否保存
+
+历史截图是否保存由 Server 统一决定，Agent 只上报原始前台上下文。
 """
 from __future__ import annotations
 
@@ -13,9 +14,7 @@ import sqlite3
 import shutil
 import tempfile
 import threading
-from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from urllib.parse import urlsplit
 
 from app_tracker import get_active_window
 from browser_history import _chromium_time_to_local_naive
@@ -66,23 +65,6 @@ def _normalize_window_title(browser_name: str, title: str) -> str:
         if title.endswith(suffix):
             return title[: -len(suffix)].strip()
     return title
-
-
-def _extract_domain(url: str) -> str:
-    if not url:
-        return ""
-    try:
-        return (urlsplit(url).hostname or "").lower()
-    except Exception:
-        return ""
-
-
-@dataclass
-class MatchRule:
-    id: int
-    rule_type: str
-    pattern: str
-    enabled: bool = True
 
 
 class ForegroundUrlResolver:
@@ -230,145 +212,17 @@ class ForegroundUrlResolver:
         return ""
 
 
-class ForegroundSavePolicy:
-    """前台名单策略：
+_foreground_url_resolver = ForegroundUrlResolver()
 
-    - 非名单对象：正常保存历史截图
-    - 名单对象：前 10 秒正常保存，之后仅 5 分钟补一张
-    - 切走/切回视为新前台会话
-    """
 
-    def __init__(self):
-        self._lock = threading.Lock()
-        self._resolver = ForegroundUrlResolver()
-        self._rules: list[MatchRule] = []
-        self._warmup_seconds = 10
-        self._keepalive_seconds = 300
-        self._session_key = ""
-        self._session_started_at: datetime | None = None
-        self._last_history_saved_at: datetime | None = None
-
-    def update_config(self, rules: list[dict] | None, warmup_seconds: int | float = 10,
-                      keepalive_seconds: int | float = 300):
-        normalized_rules: list[MatchRule] = []
-        for item in rules or []:
-            pattern = (item.get("pattern") or "").strip()
-            rule_type = (item.get("rule_type") or "").strip()
-            if not pattern or rule_type not in {"process", "url_contains"}:
-                continue
-            normalized_rules.append(
-                MatchRule(
-                    id=int(item.get("id") or 0),
-                    rule_type=rule_type,
-                    pattern=pattern,
-                    enabled=bool(item.get("enabled", True)),
-                )
-            )
-
-        with self._lock:
-            self._rules = normalized_rules
-            self._warmup_seconds = max(0, int(warmup_seconds or 0))
-            self._keepalive_seconds = max(1, int(keepalive_seconds or 300))
-
-    def evaluate(self, window_info: dict | None = None, now: datetime | None = None) -> dict:
-        current_time = now or datetime.now()
-        info = dict(window_info or get_active_window() or {})
-        process_name = info.get("process_name", "")
-        window_title = info.get("window_title", "")
-        foreground_url = info.get("foreground_url") or self._resolver.resolve(process_name, window_title)
-        context = {
-            "process_name": process_name,
-            "window_title": window_title,
-            "foreground_url": foreground_url,
-            "foreground_domain": _extract_domain(foreground_url),
-        }
-
-        with self._lock:
-            matched = self._match_rule(context)
-            if not matched:
-                self._reset_session_locked()
-                return {
-                    **context,
-                    "store_history": True,
-                    "save_policy_phase": "default",
-                    "matched_rule_type": "",
-                    "matched_rule_pattern": "",
-                }
-
-            session_key = self._build_session_key(context, matched)
-            if session_key != self._session_key:
-                self._session_key = session_key
-                self._session_started_at = current_time
-                self._last_history_saved_at = None
-
-            elapsed = (current_time - (self._session_started_at or current_time)).total_seconds()
-            if elapsed < self._warmup_seconds:
-                return {
-                    **context,
-                    "store_history": True,
-                    "save_policy_phase": "warmup",
-                    "matched_rule_type": matched.rule_type,
-                    "matched_rule_pattern": matched.pattern,
-                }
-
-            if self._last_history_saved_at is None:
-                return {
-                    **context,
-                    "store_history": True,
-                    "save_policy_phase": "post_warmup_first",
-                    "matched_rule_type": matched.rule_type,
-                    "matched_rule_pattern": matched.pattern,
-                }
-
-            since_last = (current_time - self._last_history_saved_at).total_seconds()
-            if since_last >= self._keepalive_seconds:
-                return {
-                    **context,
-                    "store_history": True,
-                    "save_policy_phase": "keepalive",
-                    "matched_rule_type": matched.rule_type,
-                    "matched_rule_pattern": matched.pattern,
-                }
-
-            return {
-                **context,
-                "store_history": False,
-                "save_policy_phase": "suppressed",
-                "matched_rule_type": matched.rule_type,
-                "matched_rule_pattern": matched.pattern,
-            }
-
-    def mark_saved(self, decision: dict, when: datetime | None = None):
-        if not decision.get("store_history"):
-            return
-        with self._lock:
-            if decision.get("matched_rule_type"):
-                self._last_history_saved_at = when or datetime.now()
-            else:
-                self._reset_session_locked()
-
-    def _match_rule(self, context: dict) -> MatchRule | None:
-        process_name = _normalize_process_name(context.get("process_name", ""))
-        foreground_url = (context.get("foreground_url") or "").strip().lower()
-
-        for rule in self._rules:
-            if not rule.enabled:
-                continue
-            if rule.rule_type == "url_contains" and foreground_url and rule.pattern.lower() in foreground_url:
-                return rule
-        for rule in self._rules:
-            if not rule.enabled:
-                continue
-            if rule.rule_type == "process" and process_name == rule.pattern.lower():
-                return rule
-        return None
-
-    def _build_session_key(self, context: dict, rule: MatchRule) -> str:
-        if rule.rule_type == "url_contains":
-            return f"url:{rule.id}:{context.get('foreground_url', '')}"
-        return f"process:{rule.id}:{_normalize_process_name(context.get('process_name', ''))}"
-
-    def _reset_session_locked(self):
-        self._session_key = ""
-        self._session_started_at = None
-        self._last_history_saved_at = None
+def get_foreground_context(window_info: dict | None = None) -> dict:
+    """采集截图对应的前台原始信息，不参与历史保存决策。"""
+    info = dict(window_info or get_active_window() or {})
+    process_name = info.get("process_name", "")
+    window_title = info.get("window_title", "")
+    foreground_url = info.get("foreground_url") or _foreground_url_resolver.resolve(process_name, window_title)
+    return {
+        "process_name": process_name,
+        "window_title": window_title,
+        "foreground_url": foreground_url,
+    }

@@ -27,28 +27,22 @@ class ResolveScreenshotStrategyTests(unittest.TestCase):
         self.assertEqual(mode, "LIGHT_IDLE")
 
     def test_light_idle_threshold(self):
-        """1 到 5 分钟空闲属于 LIGHT_IDLE。"""
+        """1 到 3 分钟空闲属于 LIGHT_IDLE。"""
         interval, mode = resolve_screenshot_strategy(150, 5)
         self.assertEqual(interval, 10.0)
         self.assertEqual(mode, "LIGHT_IDLE")
 
-    def test_deep_idle_threshold(self):
-        """5 到 30 分钟空闲属于 DEEP_IDLE。"""
-        interval, mode = resolve_screenshot_strategy(450, 5)
-        self.assertEqual(interval, 60.0)
-        self.assertEqual(mode, "DEEP_IDLE")
-
-    def test_very_deep_idle_threshold(self):
-        """30 分钟以上空闲属于 VERY_DEEP_IDLE。"""
-        interval, mode = resolve_screenshot_strategy(2400, 5)
+    def test_long_idle_starts_at_three_minutes(self):
+        """3 分钟及以上空闲直接降到每 10 分钟一张。"""
+        interval, mode = resolve_screenshot_strategy(180, 5)
         self.assertEqual(interval, 600.0)
-        self.assertEqual(mode, "VERY_DEEP_IDLE")
+        self.assertEqual(mode, "LONG_IDLE")
 
     def test_startup_can_enter_idle_immediately_when_desktop_was_already_idle(self):
-        """Agent 启动前已闲置时，启动后直接进入空闲态。"""
+        """Agent 启动前已闲置 3 分钟以上时，直接进入长空闲态。"""
         interval, mode = resolve_screenshot_strategy(320, 5)
-        self.assertEqual(interval, 60.0)
-        self.assertEqual(mode, "DEEP_IDLE")
+        self.assertEqual(interval, 600.0)
+        self.assertEqual(mode, "LONG_IDLE")
 
 
 if __name__ == "__main__":
