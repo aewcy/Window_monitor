@@ -269,6 +269,7 @@
 - Server 重启会清空内存中的名单会话计时；同一对象下一张图会重新进入最多 10 秒预热，偏向少漏图而非少存图。
 - 旧 Agent 即使继续上传 `store_history=false` 或 `suppressed`，Server 也不再接受其裁决，避免新旧双重状态相互冲突。
 - 测试必须分别从 `agent`、`server` 目录执行；若在仓库根目录把两套测试合并运行，Python 会将 `agent/main.py` 误解析为 Server 的 FastAPI `main`，属于测试导入路径冲突，不是功能错误。
+- 发布辅助脚本调用 `/api/agents` 时应按 JSON 数组解析，而不是假设 `{ "agents": [...] }` 包装；接口本身正常，已按实际格式完成在线机器更新任务创建。
 
 ### 0.59.2 Agent 发布包
 
