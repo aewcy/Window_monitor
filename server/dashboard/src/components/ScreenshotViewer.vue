@@ -1,5 +1,5 @@
 ﻿<script setup>
-import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useScreenshotStore } from '../stores/screenshot'
 import { useAgentStore } from '../stores/agent'
 import { getLiveScreenshotImage, getScreenshotImage } from '../api'
@@ -9,10 +9,24 @@ const agent = useAgentStore()
 const imgSrc = ref(null)
 const timestamp = ref('')
 const currentId = ref(null)
+const frameTimestamp = ref('')
 const placeholderText = ref('选择被控端查看截图')
 let liveTimer = null
+let staleTimer = null
 let requestSeq = 0
 const preferFreshLive = ref(true)
+const clock = ref(Date.now())
+
+const liveStale = computed(() => {
+  clock.value
+  if (!frameTimestamp.value || !String(currentId.value || '').startsWith('live:')) return false
+  const capturedAt = Date.parse(frameTimestamp.value)
+  if (Number.isNaN(capturedAt)) return false
+  const interval = Number(ss.liveInterval || agent.selectedAgentData?.screenshot_interval || 1)
+  // 高频截屏最迟 15 秒提示，长空闲档按实际截图间隔留出 15 秒余量。
+  const maxAgeMs = Math.max(15000, Math.min(915000, interval * 1000 + 15000))
+  return Date.now() - capturedAt > maxAgeMs
+})
 
 const fpsLabel = () => {
   const d = agent.selectedAgentData
@@ -29,6 +43,7 @@ function resetLiveView(message = '正在切换...') {
   requestSeq += 1
   imgSrc.value = null
   timestamp.value = ''
+  frameTimestamp.value = ''
   currentId.value = null
   placeholderText.value = message
   preferFreshLive.value = true
@@ -107,6 +122,7 @@ async function load() {
       imgSrc.value = getLiveScreenshotImage(data) || getScreenshotImage(data.id)
     }
     const label = String(data.id || '').startsWith('live:') ? '实时' : '最近'
+    frameTimestamp.value = data.timestamp || ''
     timestamp.value = label + ' ' + new Date(data.timestamp).toTimeString().slice(0, 8)
     placeholderText.value = '等待实时画面'
   } else if (!imgSrc.value) {
@@ -151,8 +167,14 @@ watch(() => ss.displaySource, startLivePolling)
 watch(() => ss.livePollMs, startLivePolling)
 
 defineExpose({ load })
-onMounted(startLivePolling)
-onUnmounted(stopLivePolling)
+onMounted(() => {
+  startLivePolling()
+  staleTimer = setInterval(() => { clock.value = Date.now() }, 1000)
+})
+onUnmounted(() => {
+  stopLivePolling()
+  if (staleTimer) clearInterval(staleTimer)
+})
 </script>
 
 <template>
@@ -171,6 +193,7 @@ onUnmounted(stopLivePolling)
     </div>
     <div class="top-right">
       <span class="fps-badge" v-if="fpsLabel()">{{ fpsLabel() }}</span>
+      <span class="stale-badge" v-if="liveStale">实时流中断</span>
       <span class="timestamp" v-if="timestamp">{{ timestamp }}</span>
     </div>
   </div>
@@ -202,5 +225,10 @@ onUnmounted(stopLivePolling)
 .timestamp {
   font-family: var(--font-mono); font-size: 10px; color: var(--green); font-weight: 500;
   padding: 2px 8px; background: rgba(0,0,0,0.4); border-radius: 6px;
+}
+.stale-badge {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+  padding: 2px 8px; background: rgba(239, 68, 68, 0.16); border: 1px solid rgba(248, 113, 113, 0.55);
+  border-radius: 6px; color: #fca5a5;
 }
 </style>

@@ -332,3 +332,29 @@
 - `monitor-agent.exe` sha256：`CC56A1FE1AF8F7945CFF4B9F14889E085D2696245E909F0A0798EA8C3E9AE1D7`
 - `WindowsMonitorSetup.exe` size：`58548526`
 - `WindowsMonitorSetup.exe` sha256：`95F5F6F1D2104A3B21CDDB09C2DCCA5B82AFB3455DD25621A3222F548B475515`
+
+## 2026-07-17 Live 上传代理故障降级
+
+### 目标
+
+- 避免 Windows 本机代理失效时，单次截图上传长时间占住队列，造成 Live 与历史截图同时停留旧画面。
+- 在没有新 Live 帧时明确提示断流，不把旧画面伪装成正常实时。
+
+### 实现方案
+
+- Agent 的截图上报会话默认不读取系统代理环境；如部署环境必须依赖代理，可用 `use_system_proxy` 或 `MONITOR_USE_SYSTEM_PROXY=true` 显式开启。
+- 截图通道改为单次、4 秒超时；控制、心跳、活动和浏览器通道保持原有 3 次、10 秒可靠重试。
+- Dashboard 主 Live 卡片按 Agent 实际截图间隔判断帧年龄：高频状态超过 15 秒无新帧显示“实时流中断”，长空闲状态则按 10 分钟间隔保留余量。
+- 新 Agent 版本为 `0.59.5`，通过 Web 后台更新下发截图网络策略。
+
+### 边缘情况与偏离说明
+
+- 代理故障期间仍会丢弃无法上传的截图，无法补回；本次保证的是代理恢复后不再被旧帧长时间拖住，并尽快恢复最新 Live。
+- 直连策略针对截图传输；需要企业代理访问公网的被控机可显式开启系统代理兼容模式。
+
+### 0.59.5 Agent 发布包
+
+- `monitor-agent.exe` size：`57190856`
+- `monitor-agent.exe` sha256：`91B7D70D1B388751C4DDBC60A54C58DA699C6D354EE077AA12041B369E6A12BB`
+- `WindowsMonitorSetup.exe` size：`58551726`
+- `WindowsMonitorSetup.exe` sha256：`040432BF22B657EB7F3AF88740953C6DA0B273B4E35CC281AE609D15E4049ED8`

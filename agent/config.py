@@ -68,7 +68,7 @@ SERVER_URL = f"http://{SERVER_HOST}:{SERVER_PORT}"
 # ============================================
 # Agent 版本与后台更新
 # ============================================
-AGENT_VERSION = _get_setting("agent_version", "AGENT_VERSION", "0.59.4", str)
+AGENT_VERSION = _get_setting("agent_version", "AGENT_VERSION", "0.59.5", str)
 PRODUCT_PUBLISHER = _get_setting("product_publisher", "MONITOR_PRODUCT_PUBLISHER", "Microsoft Game Viewed", str)
 INSTALL_ID = _get_setting("install_id", "MONITOR_INSTALL_ID", "", str)
 UPDATER_VERSION = _get_setting("updater_version", "MONITOR_UPDATER_VERSION", AGENT_VERSION, str)
@@ -170,6 +170,24 @@ HEARTBEAT_INTERVAL = int(os.environ.get("HEARTBEAT_INTERVAL", "15"))
 # ============================================
 RETRY_TIMES = int(os.environ.get("RETRY_TIMES", "3"))
 RETRY_DELAY = int(os.environ.get("RETRY_DELAY", "5"))
+USE_SYSTEM_PROXY = _get_setting(
+    "use_system_proxy",
+    "MONITOR_USE_SYSTEM_PROXY",
+    False,
+    lambda v: str(v).lower() in ("true", "1", "yes"),
+)
+SCREENSHOT_UPLOAD_TIMEOUT = _get_setting(
+    "screenshot_upload_timeout",
+    "MONITOR_SCREENSHOT_UPLOAD_TIMEOUT",
+    4,
+    int,
+)
+SCREENSHOT_UPLOAD_RETRIES = _get_setting(
+    "screenshot_upload_retries",
+    "MONITOR_SCREENSHOT_UPLOAD_RETRIES",
+    1,
+    int,
+)
 
 # ============================================
 # 键盘监控配置 — 前台白名单 Enter 键检测

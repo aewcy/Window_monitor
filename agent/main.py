@@ -18,6 +18,7 @@ from config import (
     SCREENSHOT_UPLOAD_QUEUE_SIZE, APP_EVENT_UPLOAD_QUEUE_SIZE,
     BROWSER_UPLOAD_QUEUE_SIZE, CONTROL_UPLOAD_QUEUE_SIZE,
     SCREENSHOT_DROP_REPORT_INTERVAL,
+    USE_SYSTEM_PROXY, SCREENSHOT_UPLOAD_TIMEOUT, SCREENSHOT_UPLOAD_RETRIES,
     AGENT_VERSION, PRODUCT_PUBLISHER, INSTALL_ID, UPDATER_VERSION, UPDATE_JOB_ID,
     get_machine_id,
 )
@@ -59,29 +60,38 @@ class Reporter:
 
     def _make_session(self) -> requests.Session:
         sess = requests.Session()
+        # 默认绕开 Windows 本机代理，防止代理卡死把 Live 截图上传队列堵满。
+        sess.trust_env = USE_SYSTEM_PROXY
         sess.headers["Content-Type"] = "application/json"
         return sess
 
+    def _request_policy(self, endpoint: str) -> tuple[int, int]:
+        """截图优先新鲜度，其他控制数据保持原有可靠重试。"""
+        if endpoint == "screenshot":
+            return max(1, int(SCREENSHOT_UPLOAD_RETRIES)), max(1, int(SCREENSHOT_UPLOAD_TIMEOUT))
+        return max(1, int(RETRY_TIMES)), 10
+
     def _post_sync(self, endpoint: str, data: dict, session: requests.Session | None = None) -> bool:
         sess = session or self._make_session()
-        for i in range(RETRY_TIMES):
+        retry_times, timeout = self._request_policy(endpoint)
+        for i in range(retry_times):
             try:
                 r = sess.post(
                     f"{self.url}/api/{endpoint}",
-                    json=data, timeout=10
+                    json=data, timeout=timeout
                 )
                 if r.status_code == 200:
                     return True
                 print(f"  [!] {endpoint} -> {r.status_code}")
             except requests.exceptions.ConnectionError:
-                print(f"  [!] 连接失败 ({endpoint}), 重试 {i+1}/{RETRY_TIMES}")
-                if i == RETRY_TIMES - 1:
+                print(f"  [!] 连接失败 ({endpoint}), 重试 {i+1}/{retry_times}")
+                if i == retry_times - 1:
                     self.diagnostic("network", "ERROR",
-                        f"连接失败 ({endpoint})，已重试{RETRY_TIMES}次仍失败")
+                        f"连接失败 ({endpoint})，已重试{retry_times}次仍失败")
             except Exception as e:
                 print(f"  [!] 异常: {e}")
                 self.diagnostic("system", "ERROR", f"上报异常 ({endpoint}): {e}")
-            if i < RETRY_TIMES - 1:
+            if i < retry_times - 1:
                 time.sleep(RETRY_DELAY)
         return False
 
