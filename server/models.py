@@ -1239,6 +1239,55 @@ def find_recent_browser_record_matching_url(agent_name: str, timestamp: str, pat
     return None
 
 
+def find_recent_browser_record_by_title(agent_name: str, timestamp: str, title: str,
+                                        browser: str = "", max_age_seconds: int = 21600) -> dict | None:
+    """按窗口标题在较长历史窗口里找 URL，服务浏览器前台截图的信息展示。"""
+    normalized_title = " ".join(str(title or "").strip().lower().split())
+    if not normalized_title:
+        return None
+    db = get_db()
+    try:
+        shot_time = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00")).replace(tzinfo=None)
+    except (TypeError, ValueError):
+        shot_time = datetime.now()
+    start = (shot_time - timedelta(seconds=max_age_seconds)).isoformat()
+    end = (shot_time + timedelta(seconds=60)).isoformat()
+    conditions = ["agent_name = ?", "last_visit >= ?", "last_visit <= ?"]
+    params: list = [agent_name, start, end]
+    if browser:
+        conditions.append("browser = ?")
+        params.append(browser)
+    where = " AND ".join(conditions)
+    rows = db.execute(
+        f"""SELECT * FROM browser_history
+            WHERE {where}
+            ORDER BY last_visit DESC
+            LIMIT 500""",
+        params,
+    ).fetchall()
+    best: tuple[int, dict] | None = None
+    title_words = {word for word in normalized_title.split() if len(word) >= 2}
+    for row in rows:
+        row_title = " ".join(str(row["title"] or "").strip().lower().split())
+        if not row_title:
+            continue
+        score = 0
+        if row_title == normalized_title:
+            score = 100
+        elif row_title in normalized_title or normalized_title in row_title:
+            score = 80
+        else:
+            row_words = {word for word in row_title.split() if len(word) >= 2}
+            if title_words and row_words:
+                overlap = len(title_words & row_words)
+                score = int(overlap * 100 / max(len(title_words), len(row_words)))
+        if score >= 45 and (best is None or score > best[0]):
+            best = (score, dict(row))
+            if score >= 100:
+                break
+    return best[1] if best else None
+
+
 def create_screenshot_rule(rule_type: str, pattern: str, enabled: bool = True) -> dict:
     db = get_db()
     now = datetime.now().isoformat()

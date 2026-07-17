@@ -20,7 +20,7 @@ from models import (
     delete_screenshot, delete_screenshots_batch, delete_screenshots_range,
     save_app_event, get_app_usage_summary,
     get_recent_foreground_event, get_recent_browser_record,
-    find_recent_browser_record_matching_url,
+    find_recent_browser_record_matching_url, find_recent_browser_record_by_title,
     save_browser_history, get_browser_history,
     get_browser_history_with_screenshots,
     get_app_events, get_app_events_with_screenshots,
@@ -61,6 +61,7 @@ SPECIAL_RULE_KEEPALIVE_SECONDS = int(os.getenv("SCREENSHOT_RULE_KEEPALIVE_SECOND
 SERVER_POLICY_CONTEXT_MAX_AGE_SECONDS = int(os.getenv("SCREENSHOT_RULE_CONTEXT_MAX_AGE_SECONDS", "30"))
 SERVER_POLICY_BROWSER_MAX_AGE_SECONDS = int(os.getenv("SCREENSHOT_RULE_BROWSER_MAX_AGE_SECONDS", "120"))
 SERVER_POLICY_BROWSER_RULE_LOOKBACK_SECONDS = int(os.getenv("SCREENSHOT_RULE_BROWSER_LOOKBACK_SECONDS", str(6 * 60 * 60)))
+SERVER_POLICY_BROWSER_TITLE_LOOKBACK_SECONDS = int(os.getenv("SCREENSHOT_RULE_BROWSER_TITLE_LOOKBACK_SECONDS", str(6 * 60 * 60)))
 
 _PROCESS_TO_BROWSER = {
     "chrome.exe": "chrome",
@@ -68,6 +69,14 @@ _PROCESS_TO_BROWSER = {
     "firefox.exe": "firefox",
     "brave.exe": "brave",
     "chromium.exe": "chromium",
+}
+
+_BROWSER_TITLE_SUFFIXES = {
+    "chrome": [" - Google Chrome", " - Chrome"],
+    "edge": [" - Microsoft Edge", " - Edge"],
+    "firefox": [" - Mozilla Firefox", " - Firefox"],
+    "brave": [" - Brave", " - Brave Browser"],
+    "chromium": [" - Chromium"],
 }
 
 
@@ -161,6 +170,14 @@ def _url_matches_any_rule(url: str, rules: list[dict]) -> bool:
     return any(pattern.lower() in text for pattern in _url_rule_patterns(rules))
 
 
+def _normalize_browser_window_title(browser_name: str, title: str) -> str:
+    text = (title or "").strip()
+    for suffix in _BROWSER_TITLE_SUFFIXES.get(browser_name, []):
+        if text.endswith(suffix):
+            return text[: -len(suffix)].strip()
+    return text
+
+
 def _history_policy_context(agent_name: str, timestamp: str, data: dict, rules: list[dict]) -> dict:
     process_name = data.get("foreground_process_name", "") or ""
     window_title = data.get("foreground_window_title", "") or ""
@@ -173,13 +190,23 @@ def _history_policy_context(agent_name: str, timestamp: str, data: dict, rules: 
             window_title = event.get("window_title", "") or ""
 
     browser_record = None
+    browser_name = _PROCESS_TO_BROWSER.get((process_name or "").strip().lower(), "")
     if not foreground_url:
         browser_record = get_recent_browser_record(agent_name, timestamp, SERVER_POLICY_BROWSER_MAX_AGE_SECONDS)
         if browser_record:
             foreground_url = browser_record.get("url", "") or ""
+    if not foreground_url and browser_name and window_title:
+        browser_record = find_recent_browser_record_by_title(
+            agent_name,
+            timestamp,
+            _normalize_browser_window_title(browser_name, window_title),
+            browser=browser_name,
+            max_age_seconds=SERVER_POLICY_BROWSER_TITLE_LOOKBACK_SECONDS,
+        )
+        if browser_record:
+            foreground_url = browser_record.get("url", "") or ""
 
     if _url_rule_patterns(rules) and not _url_matches_any_rule(foreground_url, rules):
-        browser_name = _PROCESS_TO_BROWSER.get((process_name or "").strip().lower(), "")
         matched_record = find_recent_browser_record_matching_url(
             agent_name,
             timestamp,

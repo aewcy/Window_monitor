@@ -650,6 +650,37 @@ class TestScreenshot:
         assert rows[0]["matched_rule_type"] == "url_contains"
         assert "cn.tradingview.com" in rows[0]["foreground_url"]
 
+    def test_browser_foreground_title_backfills_url_without_rule(self, client):
+        _register_agent(client, "browser-title-url-agent")
+        base = datetime.now()
+        client.post("/api/app_event", json={
+            "agent_name": "browser-title-url-agent",
+            "type": "app_switch",
+            "process_name": "chrome.exe",
+            "window_title": "罗小黑战记2-电影-高清在线观看-bilibili-哔哩哔哩 - Google Chrome",
+            "timestamp": base.strftime("%Y-%m-%dT%H:%M:%S"),
+        })
+        client.post("/api/browser_history", json={
+            "agent_name": "browser-title-url-agent",
+            "records": [{
+                "url": "https://www.bilibili.com/bangumi/play/ss12345",
+                "title": "罗小黑战记2-电影-高清在线观看-bilibili-哔哩哔哩",
+                "last_visit": (base - timedelta(minutes=10)).strftime("%Y-%m-%dT%H:%M:%S"),
+                "browser": "chrome",
+            }],
+        })
+
+        sid, _ = _upload_screenshot(
+            client,
+            "browser-title-url-agent",
+            (base + timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%S"),
+        )
+
+        assert sid is not None
+        rows = client.get("/api/screenshots?agent=browser-title-url-agent").json()
+        assert rows[0]["foreground_process_name"] == "chrome.exe"
+        assert rows[0]["foreground_url"] == "https://www.bilibili.com/bangumi/play/ss12345"
+
     def test_screenshot_image_retrievable(self, client):
         _register_agent(client, "img-agent")
         sid, _ = _upload_screenshot(client, "img-agent")
