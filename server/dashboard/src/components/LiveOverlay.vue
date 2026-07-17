@@ -119,12 +119,51 @@ async function loadLive() {
     open: ss.liveOpen,
   }
   liveRequestSeq = snapshot.seq
-  const data = await ss.loadLatest({
-    agentName: snapshot.agentName,
-    monitor: snapshot.monitor,
-    allowStoredFallback: true,
-    preferFresh: preferFreshLive.value,
-  })
+  let data
+  if (preferFreshLive.value) {
+    // 放大 Live 与主卡片保持一致：目标屏延迟流就绪前持续使用 fresh 帧。
+    const freshData = await ss.loadLatest({
+      agentName: snapshot.agentName,
+      monitor: snapshot.monitor,
+      allowStoredFallback: false,
+      preferFresh: true,
+    })
+    if (
+      snapshot.seq !== liveRequestSeq
+      || !snapshot.open
+      || !ss.liveOpen
+      || ss.displaySource !== snapshot.source
+      || agent.selectedAgent !== snapshot.agentName
+      || agent.selectedMonitor !== snapshot.monitor
+    ) {
+      return
+    }
+    const delayedData = await ss.loadLatest({
+      agentName: snapshot.agentName,
+      monitor: snapshot.monitor,
+      allowStoredFallback: false,
+      preferFresh: false,
+    })
+    if (
+      snapshot.seq !== liveRequestSeq
+      || !snapshot.open
+      || !ss.liveOpen
+      || ss.displaySource !== snapshot.source
+      || agent.selectedAgent !== snapshot.agentName
+      || agent.selectedMonitor !== snapshot.monitor
+    ) {
+      return
+    }
+    data = delayedData || freshData
+    if (delayedData) preferFreshLive.value = false
+  } else {
+    data = await ss.loadLatest({
+      agentName: snapshot.agentName,
+      monitor: snapshot.monitor,
+      allowStoredFallback: true,
+      preferFresh: false,
+    })
+  }
   if (
     snapshot.seq !== liveRequestSeq
     || !snapshot.open
@@ -161,7 +200,6 @@ async function loadLive() {
     }
     currentLiveData.value = data
     placeholderText.value = '等待实时画面'
-    if (String(data.id || '').startsWith('live:')) preferFreshLive.value = false
   } else if (!imgSrc.value) {
     placeholderText.value = '等待实时画面'
   }

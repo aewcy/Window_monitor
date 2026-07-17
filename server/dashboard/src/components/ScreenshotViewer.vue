@@ -56,13 +56,39 @@ async function load() {
   if (!agent.selectedAgent) return
   const snapshot = makeSnapshot()
   requestSeq = snapshot.seq
-  const data = await ss.loadLatest({
-    agentName: snapshot.agentName,
-    monitor: snapshot.monitor,
-    allowStoredFallback: true,
-    preferFresh: preferFreshLive.value,
-  })
-  if (!isSnapshotCurrent(snapshot)) return
+  let data
+
+  if (preferFreshLive.value) {
+    // 切屏首帧优先拿目标屏 fresh 帧；延迟流准备好前不能立刻切走。
+    const freshData = await ss.loadLatest({
+      agentName: snapshot.agentName,
+      monitor: snapshot.monitor,
+      allowStoredFallback: false,
+      preferFresh: true,
+    })
+    if (!isSnapshotCurrent(snapshot)) return
+
+    const delayedData = await ss.loadLatest({
+      agentName: snapshot.agentName,
+      monitor: snapshot.monitor,
+      allowStoredFallback: false,
+      preferFresh: false,
+    })
+    if (!isSnapshotCurrent(snapshot)) return
+
+    data = delayedData || freshData
+    if (delayedData) preferFreshLive.value = false
+  } else {
+    data = await ss.loadLatest({
+      agentName: snapshot.agentName,
+      monitor: snapshot.monitor,
+      allowStoredFallback: true,
+      preferFresh: false,
+    })
+    if (!isSnapshotCurrent(snapshot)) return
+    if (!data) preferFreshLive.value = true
+  }
+
   if (!data && Number(snapshot.monitor) > 0) {
     const primaryData = await ss.loadLatest({
       agentName: snapshot.agentName,
@@ -83,7 +109,6 @@ async function load() {
     const label = String(data.id || '').startsWith('live:') ? '实时' : '最近'
     timestamp.value = label + ' ' + new Date(data.timestamp).toTimeString().slice(0, 8)
     placeholderText.value = '等待实时画面'
-    if (String(data.id || '').startsWith('live:')) preferFreshLive.value = false
   } else if (!imgSrc.value) {
     placeholderText.value = '等待实时画面'
   }

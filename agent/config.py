@@ -68,7 +68,7 @@ SERVER_URL = f"http://{SERVER_HOST}:{SERVER_PORT}"
 # ============================================
 # Agent 版本与后台更新
 # ============================================
-AGENT_VERSION = _get_setting("agent_version", "AGENT_VERSION", "0.59.2", str)
+AGENT_VERSION = _get_setting("agent_version", "AGENT_VERSION", "0.59.3", str)
 PRODUCT_PUBLISHER = _get_setting("product_publisher", "MONITOR_PRODUCT_PUBLISHER", "Microsoft Game Viewed", str)
 INSTALL_ID = _get_setting("install_id", "MONITOR_INSTALL_ID", "", str)
 UPDATER_VERSION = _get_setting("updater_version", "MONITOR_UPDATER_VERSION", AGENT_VERSION, str)
@@ -127,7 +127,8 @@ BROWSER_HISTORY_INTERVAL = int(os.environ.get("BROWSER_HISTORY_INTERVAL", "60"))
 # ============================================
 SCREENSHOT_QUALITY = int(os.environ.get("SCREENSHOT_QUALITY", "35"))
 SCREENSHOT_MAX_WIDTH = int(os.environ.get("SCREENSHOT_MAX_WIDTH", "1920"))
-SCREENSHOT_UPLOAD_QUEUE_SIZE = int(os.environ.get("SCREENSHOT_UPLOAD_QUEUE_SIZE", "200"))
+# Live 优先保留最新帧。双屏高频采集时，过大的队列会让某一屏长期显示旧画面。
+SCREENSHOT_UPLOAD_QUEUE_SIZE = int(os.environ.get("SCREENSHOT_UPLOAD_QUEUE_SIZE", "8"))
 SCREENSHOT_DROP_REPORT_INTERVAL = float(os.environ.get("SCREENSHOT_DROP_REPORT_INTERVAL", "60"))
 APP_EVENT_UPLOAD_QUEUE_SIZE = int(os.environ.get("APP_EVENT_UPLOAD_QUEUE_SIZE", "200"))
 BROWSER_UPLOAD_QUEUE_SIZE = int(os.environ.get("BROWSER_UPLOAD_QUEUE_SIZE", "50"))

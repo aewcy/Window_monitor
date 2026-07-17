@@ -277,3 +277,29 @@
 - `monitor-agent.exe` sha256：`296B466930C5F0C870C94E040CED45AE40771131FCE8A338ADF6065F4A339111`
 - `WindowsMonitorSetup.exe` size：`58550732`
 - `WindowsMonitorSetup.exe` sha256：`36C7DCD8106C81EBF79245179CD32C7EE4F0DF7764455626EC9E1D7063D72C97`
+
+## 2026-07-17 双屏 Live 切换与上传延迟
+
+### 目标
+
+- 切换屏幕时优先显示目标屏最新画面，不因 5 秒延迟流刚好尚未就绪而停留在“正在切换屏幕”。
+- 双屏高频采集时优先传输最新帧，避免上传队列积压后某一屏长期比另一屏落后。
+
+### 实现方案
+
+- 主 Live 卡片与放大 Live 在切屏后同时探测目标屏 fresh 帧和延迟帧；延迟帧可用前持续使用 fresh 帧，确认可用后才恢复延迟流。
+- 切屏期间不读取另一块屏幕的图片，也不把历史截图当作 Live 首帧。
+- Agent 默认截图上传队列从 200 帧降为 8 帧。双屏 4fps 时只保留约最近 1 秒候选帧，队列满时继续按“丢弃最旧、保留最新”运行。
+- 新 Agent 版本为 `0.59.3`，使队列调整能经 Web 后台更新下发。
+
+### 边缘情况与偏离说明
+
+- Server 的延迟流仍保持 5 秒设计；本次只消除切屏期间的空白，未改变常态 Live 的延迟展示规则。
+- 网络或上传异常导致目标屏完全没有 fresh 帧时，界面仍保持加载提示，不显示另一屏或历史旧图冒充目标屏 Live。
+
+### 0.59.3 Agent 发布包
+
+- `monitor-agent.exe` size：`57190600`
+- `monitor-agent.exe` sha256：`822E223ED97D613FBE85295AA75A8F5F1D27B4E8B61F2FA37C0FA1F68FFD86C9`
+- `WindowsMonitorSetup.exe` size：`58550784`
+- `WindowsMonitorSetup.exe` sha256：`D674916A096810AF661F20E41371E577C6F96971ECEF55D4FDD21761963D434B`
