@@ -652,6 +652,103 @@ class TestScreenshot:
         assert rows[0]["matched_rule_type"] == "url_contains"
         assert "cn.tradingview.com" in rows[0]["foreground_url"]
 
+    def test_server_policy_does_not_apply_browser_url_rule_to_non_browser(self, client):
+        _register_agent(client, "non-browser-url-agent")
+        client.post("/api/screenshot-rules", json={
+            "rule_type": "url_contains",
+            "pattern": "www.bilibili.com",
+            "enabled": True,
+        })
+        base = datetime.now()
+        client.post("/api/browser_history", json={
+            "agent_name": "non-browser-url-agent",
+            "records": [{
+                "url": "https://www.bilibili.com/video/BV1xx",
+                "title": "Bilibili",
+                "last_visit": base.strftime("%Y-%m-%dT%H:%M:%S"),
+                "browser": "chrome",
+            }],
+        })
+
+        response = client.post("/api/screenshot", json={
+            "agent_name": "non-browser-url-agent",
+            "timestamp": (base + timedelta(seconds=20)).strftime("%Y-%m-%dT%H:%M:%S"),
+            "image_base64": _make_jpeg_b64(),
+            "monitor_index": 0,
+            "monitor_total": 1,
+            "foreground_process_name": "SpaceSniffer.exe",
+            "foreground_window_title": "SpaceSniffer",
+        })
+
+        assert response.json()["id"] is not None
+        rows = client.get("/api/screenshots?agent=non-browser-url-agent").json()
+        assert rows[0]["foreground_url"] == ""
+        assert rows[0]["save_policy_phase"] == "default"
+
+    def test_server_policy_url_session_does_not_restart_when_page_url_changes(self, client):
+        _register_agent(client, "url-session-agent")
+        client.post("/api/screenshot-rules", json={
+            "rule_type": "url_contains",
+            "pattern": "cn.tradingview.com",
+            "enabled": True,
+        })
+        base = datetime.now()
+        first = client.post("/api/screenshot", json={
+            "agent_name": "url-session-agent",
+            "timestamp": base.strftime("%Y-%m-%dT%H:%M:%S"),
+            "image_base64": _make_jpeg_b64(),
+            "foreground_process_name": "chrome.exe",
+            "foreground_url": "https://cn.tradingview.com/chart/first",
+        })
+        later = client.post("/api/screenshot", json={
+            "agent_name": "url-session-agent",
+            "timestamp": (base + timedelta(seconds=12)).strftime("%Y-%m-%dT%H:%M:%S"),
+            "image_base64": _make_jpeg_b64(),
+            "foreground_process_name": "chrome.exe",
+            "foreground_url": "https://cn.tradingview.com/chart/second",
+        })
+
+        assert first.json()["id"] is not None
+        assert later.json()["id"] is None
+        live = client.get("/api/screenshots/live/latest?agent=url-session-agent&monitor=0&fresh=true")
+        assert live.json()["save_policy_phase"] == "suppressed"
+
+    def test_server_policy_does_not_rewind_when_frames_arrive_out_of_order(self, client):
+        _register_agent(client, "out-of-order-policy-agent")
+        client.post("/api/screenshot-rules", json={
+            "rule_type": "process",
+            "pattern": "stellaris.exe",
+            "enabled": True,
+        })
+        base = datetime.now()
+        for offset in (0, 12):
+            client.post("/api/screenshot", json={
+                "agent_name": "out-of-order-policy-agent",
+                "timestamp": (base + timedelta(seconds=offset)).strftime("%Y-%m-%dT%H:%M:%S"),
+                "image_base64": _make_jpeg_b64(),
+                "foreground_process_name": "stellaris.exe",
+            })
+        delayed = client.post("/api/screenshot", json={
+            "agent_name": "out-of-order-policy-agent",
+            "timestamp": (base + timedelta(seconds=2)).strftime("%Y-%m-%dT%H:%M:%S"),
+            "image_base64": _make_jpeg_b64(),
+            "foreground_process_name": "stellaris.exe",
+        })
+
+        assert delayed.json()["id"] is None
+        live = client.get("/api/screenshots/live/latest?agent=out-of-order-policy-agent&monitor=0&fresh=true")
+        assert live.json()["save_policy_phase"] == "suppressed"
+
+    def test_screenshot_rule_rejects_executable_name_as_url(self, client):
+        response = client.post("/api/screenshot-rules", json={
+            "rule_type": "url_contains",
+            "pattern": "java.exe",
+            "enabled": True,
+        })
+
+        assert response.status_code == 400
+        assert "程序名" in response.json()["detail"]
+
     def test_browser_foreground_title_backfills_url_without_rule(self, client):
         _register_agent(client, "browser-title-url-agent")
         base = datetime.now()

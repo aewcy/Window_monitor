@@ -178,6 +178,12 @@ def _normalize_browser_window_title(browser_name: str, title: str) -> str:
     return text
 
 
+def _validate_screenshot_rule(rule_type: str, pattern: str):
+    """阻止把 Windows 程序名误填进网页 URL 规则。"""
+    if rule_type == "url_contains" and pattern.strip().lower().endswith(".exe"):
+        raise HTTPException(status_code=400, detail="网页 URL 规则不能填写程序名，请选择“程序名”")
+
+
 def _history_policy_context(agent_name: str, timestamp: str, data: dict, rules: list[dict]) -> dict:
     process_name = data.get("foreground_process_name", "") or ""
     window_title = data.get("foreground_window_title", "") or ""
@@ -189,9 +195,11 @@ def _history_policy_context(agent_name: str, timestamp: str, data: dict, rules: 
             process_name = event.get("process_name", "") or ""
             window_title = event.get("window_title", "") or ""
 
-    browser_record = None
     browser_name = _PROCESS_TO_BROWSER.get((process_name or "").strip().lower(), "")
-    if not foreground_url:
+    # 网址只能归属当前处于前台的浏览器，不能把旧浏览记录套到普通程序截图上。
+    if not browser_name:
+        foreground_url = ""
+    elif not foreground_url:
         browser_record = get_recent_browser_record(agent_name, timestamp, SERVER_POLICY_BROWSER_MAX_AGE_SECONDS)
         if browser_record:
             foreground_url = browser_record.get("url", "") or ""
@@ -206,7 +214,7 @@ def _history_policy_context(agent_name: str, timestamp: str, data: dict, rules: 
         if browser_record:
             foreground_url = browser_record.get("url", "") or ""
 
-    if _url_rule_patterns(rules) and not _url_matches_any_rule(foreground_url, rules):
+    if browser_name and _url_rule_patterns(rules) and not _url_matches_any_rule(foreground_url, rules):
         matched_record = find_recent_browser_record_matching_url(
             agent_name,
             timestamp,
@@ -259,11 +267,8 @@ def _history_policy_decision(agent_name: str, monitor_index: int, timestamp: str
     captured_at = _parse_iso_datetime(timestamp)
     rule_type = rule.get("rule_type") or ""
     pattern = rule.get("pattern") or ""
-    if rule_type == "url_contains":
-        identity = context.get("foreground_url", "")
-    else:
-        identity = (context.get("foreground_process_name", "") or "").strip().lower()
-    session_key = f"{rule.get('id')}:{rule_type}:{identity}"
+    # 同一条网址规则覆盖的页面视为连续会话，切换具体 URL 不重新获得预热保存期。
+    session_key = f"{rule.get('id')}:{rule_type}"
     state_key = (agent_name, int(monitor_index or 0))
     state = _history_policy_sessions.get(state_key)
     if not state or state.get("session_key") != session_key:
@@ -271,10 +276,16 @@ def _history_policy_decision(agent_name: str, monitor_index: int, timestamp: str
             "session_key": session_key,
             "started_at": captured_at,
             "last_saved_at": None,
+            "last_seen_at": captured_at,
         }
         _history_policy_sessions[state_key] = state
 
-    elapsed = (captured_at - state["started_at"]).total_seconds()
+    # 上传队列可能让旧帧晚到；策略时钟只能向前，不能因旧时间戳重新进入预热。
+    last_seen_at = state.get("last_seen_at", captured_at)
+    decision_at = max(captured_at, last_seen_at)
+    state["last_seen_at"] = decision_at
+
+    elapsed = (decision_at - state["started_at"]).total_seconds()
     last_saved_at = state.get("last_saved_at")
     if elapsed < SPECIAL_RULE_WARMUP_SECONDS:
         store_history = True
@@ -282,7 +293,7 @@ def _history_policy_decision(agent_name: str, monitor_index: int, timestamp: str
     elif last_saved_at is None:
         store_history = True
         phase = "post_warmup_first"
-    elif (captured_at - last_saved_at).total_seconds() >= SPECIAL_RULE_KEEPALIVE_SECONDS:
+    elif (decision_at - last_saved_at).total_seconds() >= SPECIAL_RULE_KEEPALIVE_SECONDS:
         store_history = True
         phase = "keepalive"
     else:
@@ -290,7 +301,7 @@ def _history_policy_decision(agent_name: str, monitor_index: int, timestamp: str
         phase = "suppressed"
 
     if store_history:
-        state["last_saved_at"] = captured_at
+        state["last_saved_at"] = decision_at
 
     return {
         **context,
@@ -549,6 +560,7 @@ async def add_screenshot_rule(data: dict):
         raise HTTPException(status_code=400, detail="不支持的规则类型")
     if not pattern:
         raise HTTPException(status_code=400, detail="规则内容不能为空")
+    _validate_screenshot_rule(rule_type, pattern)
     return {"item": create_screenshot_rule(rule_type, pattern, enabled)}
 
 
@@ -561,6 +573,10 @@ async def patch_screenshot_rule(rule_id: int, data: dict):
         raise HTTPException(status_code=400, detail="不支持的规则类型")
     if pattern is not None and not str(pattern).strip():
         raise HTTPException(status_code=400, detail="规则内容不能为空")
+    effective_rule_type = str(rule_type).strip() if rule_type is not None else ""
+    effective_pattern = str(pattern).strip() if pattern is not None else ""
+    if effective_rule_type and effective_pattern:
+        _validate_screenshot_rule(effective_rule_type, effective_pattern)
     item = update_screenshot_rule(
         rule_id,
         rule_type=str(rule_type).strip() if rule_type is not None else None,

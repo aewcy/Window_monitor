@@ -68,7 +68,7 @@ SERVER_URL = f"http://{SERVER_HOST}:{SERVER_PORT}"
 # ============================================
 # Agent 版本与后台更新
 # ============================================
-AGENT_VERSION = _get_setting("agent_version", "AGENT_VERSION", "0.59.3", str)
+AGENT_VERSION = _get_setting("agent_version", "AGENT_VERSION", "0.59.4", str)
 PRODUCT_PUBLISHER = _get_setting("product_publisher", "MONITOR_PRODUCT_PUBLISHER", "Microsoft Game Viewed", str)
 INSTALL_ID = _get_setting("install_id", "MONITOR_INSTALL_ID", "", str)
 UPDATER_VERSION = _get_setting("updater_version", "MONITOR_UPDATER_VERSION", AGENT_VERSION, str)

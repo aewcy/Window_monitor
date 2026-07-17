@@ -907,7 +907,13 @@ def main(stop_event=None):
     # 启动采集模块
     screenshot = ScreenCapture(interval=SCREENSHOT_INTERVAL)
     def emit_screenshot_with_context(data, context: dict | None = None):
-        context = context or get_foreground_context()
+        context = context or {
+            "process_name": data.get("foreground_process_name", ""),
+            "window_title": data.get("foreground_window_title", ""),
+            "foreground_url": data.get("foreground_url", ""),
+        }
+        if not any(context.values()):
+            context = get_foreground_context()
         payload = {
             **data,
             "foreground_process_name": context.get("process_name", ""),
@@ -915,6 +921,8 @@ def main(stop_event=None):
             "foreground_url": context.get("foreground_url", ""),
         }
         reporter.screenshot(payload)
+
+    screenshot.set_context_provider(get_foreground_context)
 
     def report_screenshot_if_running(data):
         if not is_capture_paused():

@@ -79,6 +79,7 @@ class ScreenCapture:
         self._thread = None
         self._listeners = []
         self._diagnostic_listeners = []
+        self._context_provider = None
         self._capture_lock = threading.Lock()
         self.monitor_count = 1
         self._virtual_bounds = None  # (left, top, width, height) 缓存
@@ -96,6 +97,10 @@ class ScreenCapture:
 
     def add_diagnostic_listener(self, callback):
         self._diagnostic_listeners.append(callback)
+
+    def set_context_provider(self, callback):
+        """设置截图时读取前台信息的回调，避免上传排队后读取到后续窗口。"""
+        self._context_provider = callback
 
     def set_interval(self, value: float):
         """设置截图间隔并唤醒采集循环，使频率切换立即生效"""
@@ -278,6 +283,12 @@ class ScreenCapture:
     def capture_once(self) -> list[dict]:
         with self._capture_lock:
             raw = self._capture_all()
+            context = {}
+            if self._context_provider:
+                try:
+                    context = self._context_provider() or {}
+                except Exception as e:
+                    print(f"[ScreenCapture] 获取前台信息失败: {e}")
         return [
             {
                 "timestamp": ts,
@@ -286,6 +297,9 @@ class ScreenCapture:
                 "monitor_index": idx,
                 "monitor_total": total,
                 "capture_interval": self.interval,
+                "foreground_process_name": context.get("process_name", ""),
+                "foreground_window_title": context.get("window_title", ""),
+                "foreground_url": context.get("foreground_url", ""),
             }
             for b64, ts, idx, total in raw
         ]

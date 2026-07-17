@@ -303,3 +303,32 @@
 - `monitor-agent.exe` sha256：`822E223ED97D613FBE85295AA75A8F5F1D27B4E8B61F2FA37C0FA1F68FFD86C9`
 - `WindowsMonitorSetup.exe` size：`58550784`
 - `WindowsMonitorSetup.exe` sha256：`D674916A096810AF661F20E41371E577C6F96971ECEF55D4FDD21761963D434B`
+
+## 2026-07-17 特殊名单上下文与策略时钟修复
+
+### 目标
+
+- 避免普通程序截图被历史浏览记录误判为特殊网页，从而错误进入 5 分钟补存。
+- 使截图对应的前台程序、标题和 URL 固定在截图生成时，而非在异步上传时读取。
+- 保证同一网页名单规则内切换页面不反复进入 10 秒预热，延迟到达的旧帧也不会倒转策略时间。
+
+### 实现方案
+
+- Server 仅在当前前台进程确认为支持的浏览器时，才补全或匹配浏览器历史 URL；普通程序强制按无 URL 处理。
+- Agent `ScreenCapture` 在生成截图帧时调用前台上下文提供器，将程序名、标题和完整 URL 一同写入队列帧。
+- Server 的网页规则会话按规则 ID 连续计时，不再按完整页面 URL 分段；会话状态新增单调 `last_seen_at`，乱序帧只按已知最新时间裁决。
+- 网页 URL 规则拒绝以 `.exe` 结尾的输入，避免将程序名误设成网页规则。
+- 新 Agent 版本为 `0.59.4`，通过 Web 后台更新下发截图时固化上下文的能力。
+
+### 边缘情况与偏离说明
+
+- Server 重启仍会清空名单会话状态；重启后的下一张命中图会重新开始预热，这是现有以内存状态实现的已知取舍。
+- 旧 Agent 未携带截图时上下文时，Server 仍会为浏览器尝试历史记录回填；普通程序不会再使用该回填路径。
+- 生产环境既有 `java.exe` 网页规则将迁移为程序名规则，避免此前的错误配置继续产生歧义。
+
+### 0.59.4 Agent 发布包
+
+- `monitor-agent.exe` size：`57188719`
+- `monitor-agent.exe` sha256：`CC56A1FE1AF8F7945CFF4B9F14889E085D2696245E909F0A0798EA8C3E9AE1D7`
+- `WindowsMonitorSetup.exe` size：`58548526`
+- `WindowsMonitorSetup.exe` sha256：`95F5F6F1D2104A3B21CDDB09C2DCCA5B82AFB3455DD25621A3222F548B475515`
