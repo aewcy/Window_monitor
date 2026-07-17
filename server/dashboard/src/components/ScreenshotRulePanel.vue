@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useScreenshotStore } from '../stores/screenshot'
 import * as api from '../api'
 
@@ -12,6 +12,13 @@ const warmupSeconds = ref(10)
 const keepaliveSeconds = ref(300)
 const formType = ref('process')
 const formPattern = ref('')
+const typeMenuOpen = ref(false)
+const typePicker = ref(null)
+
+const ruleTypes = [
+  { value: 'process', label: '程序名', hint: '按 exe 文件名匹配' },
+  { value: 'url_contains', label: '网页 URL', hint: '按网址连续匹配' },
+]
 
 const processPlaceholder = '例如：wechat.exe'
 const urlPlaceholder = '例如：youtube.com/watch'
@@ -19,6 +26,26 @@ const urlPlaceholder = '例如：youtube.com/watch'
 const panelTitle = computed(() =>
   `特殊名单：前 ${warmupSeconds.value} 秒正常保存，之后每 ${Math.round(keepaliveSeconds.value / 60)} 分钟补 1 张`
 )
+const selectedRuleType = computed(() => ruleTypes.find(item => item.value === formType.value) || ruleTypes[0])
+
+function toggleTypeMenu() {
+  typeMenuOpen.value = !typeMenuOpen.value
+}
+
+function selectRuleType(value) {
+  formType.value = value
+  typeMenuOpen.value = false
+}
+
+function closeTypeMenuOnOutsideClick(event) {
+  if (typePicker.value && !typePicker.value.contains(event.target)) {
+    typeMenuOpen.value = false
+  }
+}
+
+function closeTypeMenuOnEscape(event) {
+  if (event.key === 'Escape') typeMenuOpen.value = false
+}
 
 async function load() {
   loading.value = true
@@ -78,7 +105,16 @@ function close() {
   ss.rulesPanelOpen = false
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  document.addEventListener('pointerdown', closeTypeMenuOnOutsideClick)
+  document.addEventListener('keydown', closeTypeMenuOnEscape)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', closeTypeMenuOnOutsideClick)
+  document.removeEventListener('keydown', closeTypeMenuOnEscape)
+})
 </script>
 
 <template>
@@ -93,10 +129,36 @@ onMounted(load)
       </div>
 
       <div class="rule-form">
-        <select v-model="formType" class="field kind">
-          <option value="process">程序名</option>
-          <option value="url_contains">网页 URL 模糊匹配</option>
-        </select>
+        <div ref="typePicker" class="type-picker" :class="{ open: typeMenuOpen }">
+          <button
+            type="button"
+            class="field type-trigger"
+            :aria-expanded="typeMenuOpen"
+            aria-haspopup="listbox"
+            @click="toggleTypeMenu"
+            @keydown.down.prevent="typeMenuOpen = true">
+            <span class="type-trigger-label">{{ selectedRuleType.label }}</span>
+            <span class="type-trigger-chevron" aria-hidden="true"></span>
+          </button>
+          <div v-if="typeMenuOpen" class="type-menu" role="listbox" aria-label="特殊名单类型">
+            <button
+              v-for="type in ruleTypes"
+              :key="type.value"
+              type="button"
+              class="type-option"
+              :class="{ selected: formType === type.value }"
+              role="option"
+              :aria-selected="formType === type.value"
+              @click="selectRuleType(type.value)">
+              <span class="type-option-icon" aria-hidden="true">{{ type.value === 'process' ? '▣' : '⌁' }}</span>
+              <span>
+                <span class="type-option-label">{{ type.label }}</span>
+                <span class="type-option-hint">{{ type.hint }}</span>
+              </span>
+              <span v-if="formType === type.value" class="type-option-check" aria-hidden="true">✓</span>
+            </button>
+          </div>
+        </div>
         <input
           v-model="formPattern"
           class="field pattern"
@@ -194,6 +256,97 @@ onMounted(load)
   background: rgba(255,255,255,.05);
   color: var(--text);
   padding: 11px 12px;
+}
+.type-picker {
+  position: relative;
+  min-width: 0;
+}
+.type-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.type-trigger:hover,
+.type-picker.open .type-trigger {
+  border-color: rgba(96,165,250,.72);
+  background: rgba(96,165,250,.09);
+}
+.type-trigger:focus-visible,
+.type-option:focus-visible {
+  outline: 2px solid rgba(96,165,250,.8);
+  outline-offset: 2px;
+}
+.type-trigger-label { color: var(--text); }
+.type-trigger-chevron {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-right: 1.5px solid var(--text-secondary);
+  border-bottom: 1.5px solid var(--text-secondary);
+  transform: rotate(45deg) translateY(-2px);
+  transition: transform .16s ease, border-color .16s ease;
+}
+.type-picker.open .type-trigger-chevron {
+  border-color: var(--accent);
+  transform: rotate(225deg) translate(-2px, -1px);
+}
+.type-menu {
+  position: absolute;
+  z-index: 8;
+  top: calc(100% + 8px);
+  left: 0;
+  width: max(250px, 100%);
+  padding: 6px;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(29,32,42,.99), rgba(15,17,23,.99));
+  box-shadow: 0 18px 42px rgba(0,0,0,.42);
+}
+.type-option {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 24px 1fr 18px;
+  align-items: center;
+  gap: 9px;
+  padding: 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+}
+.type-option:hover,
+.type-option.selected {
+  background: rgba(96,165,250,.12);
+  color: var(--text);
+}
+.type-option-icon {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 1px solid rgba(96,165,250,.28);
+  border-radius: 7px;
+  color: var(--accent);
+  font-size: 13px;
+}
+.type-option-label,
+.type-option-hint {
+  display: block;
+}
+.type-option-label { font-size: 13px; }
+.type-option-hint {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.type-option-check {
+  color: var(--accent);
+  font-size: 14px;
 }
 .rule-tip,
 .rule-error,
