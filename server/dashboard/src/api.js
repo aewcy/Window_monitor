@@ -97,12 +97,25 @@ export const getLatestLiveScreenshot = (agent, monitor, options = {}) => {
 }
 export const getLiveScreenshotImage = (s) =>
   s?.image_base64 ? `data:image/${s.format || 'jpeg'};base64,${s.image_base64}` : null
-export const getScreenshots = (agent, limit = 50, offset = 0, monitor = null, dateFrom = null, dateTo = null) => {
-  let url = `/screenshots?agent=${encodeURIComponent(agent)}&limit=${limit}&offset=${offset}`
-  if (monitor !== null) url += `&monitor=${monitor}`
-  if (dateFrom) url += `&date_from=${encodeURIComponent(dateFrom)}`
-  if (dateTo) url += `&date_to=${encodeURIComponent(dateTo)}`
-  return request(url)
+export const getScreenshots = (agent, limit = 50, offset = 0, monitor = null, dateFrom = null, dateTo = null, filters = null) => {
+  const params = new URLSearchParams({ agent, limit: String(limit), offset: String(offset) })
+  if (monitor !== null) params.set('monitor', String(monitor))
+  if (dateFrom) params.set('date_from', dateFrom)
+  if (dateTo) params.set('date_to', dateTo)
+  if (filters?.active) {
+    params.set('filtered', 'true')
+    for (const process of filters.processes || []) params.append('process', process)
+    for (const browser of filters.browsers || []) params.append('browser', browser)
+    for (const domain of filters.domains || []) params.append('domain', domain)
+  }
+  return request(`/screenshots?${params.toString()}`)
+}
+export const getScreenshotFilterOptions = (agent, monitor = null, dateFrom = null, dateTo = null) => {
+  const params = new URLSearchParams({ agent })
+  if (monitor !== null) params.set('monitor', String(monitor))
+  if (dateFrom) params.set('date_from', dateFrom)
+  if (dateTo) params.set('date_to', dateTo)
+  return request(`/screenshots/filter-options?${params.toString()}`)
 }
 export const getScreenshotImage = (id) => appendTabSession(`/api/screenshots/image/${id}`)
 export const getScreenshotThumb = (id) => appendTabSession(`/api/screenshots/thumb/${id}`)

@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse
 
 from models import (
     init_db, upsert_agent, get_agents, delete_agent, rename_agent, get_db,
-    save_screenshot, get_screenshots, get_latest_screenshot,
+    save_screenshot, get_screenshots, get_screenshot_filter_options, get_latest_screenshot,
     get_screenshot_dates, get_screenshot_hours,
     ensure_screenshot_variant,
     delete_screenshot, delete_screenshots_batch, delete_screenshots_range,
@@ -732,9 +732,26 @@ async def list_screenshots(
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
     monitor: Optional[int] = Query(None),
+    process: Optional[list[str]] = Query(None),
+    browser: Optional[list[str]] = Query(None),
+    domain: Optional[list[str]] = Query(None),
+    filtered: bool = Query(False),
 ):
-    """截图列表，支持日期范围/显示器筛选"""
-    return get_screenshots(agent, limit, offset, date_from, date_to, monitor)
+    """截图列表，支持日期、屏幕、程序和网址筛选。"""
+    return get_screenshots(agent, limit, offset, date_from, date_to, monitor, process, browser, domain, filtered)
+
+
+@router.get("/screenshots/filter-options")
+async def screenshot_filter_options(
+    agent: str = Query(...),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    monitor: Optional[int] = Query(None),
+):
+    """返回指定网格范围的程序和浏览器域名筛选项。"""
+    return get_screenshot_filter_options(
+        agent, date_from, date_to, monitor, list(_PROCESS_TO_BROWSER.keys())
+    )
 
 
 @router.get("/screenshots/latest")

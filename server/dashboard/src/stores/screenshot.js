@@ -11,7 +11,7 @@ export const useScreenshotStore = defineStore('screenshot', () => {
   const gridOffset = ref(0)
   const gridLoading = ref(false)
   const gridExhausted = ref(false)
-  const gridQuery = ref({ monitor: null, dateFrom: null, dateTo: null })
+  const gridQuery = ref({ monitor: null, dateFrom: null, dateTo: null, filters: null })
   const liveOpen = ref(false)
   const liveInterval = ref(null)
   const rulesPanelOpen = ref(false)
@@ -118,6 +118,7 @@ export const useScreenshotStore = defineStore('screenshot', () => {
         query.monitor,
         query.dateFrom,
         query.dateTo,
+        query.filters,
       )
       if (!append) {
         gridItems.value = []
@@ -144,10 +145,11 @@ export const useScreenshotStore = defineStore('screenshot', () => {
     const expected = Math.max(0, Number(expectedCount || 0))
     const firstLimit = Math.max(BATCH, Math.min(MAX_GRID_PRELOAD, expected || MAX_GRID_PRELOAD))
     let received = await loadGrid(false, firstLimit)
-    while (!gridExhausted.value && expected > gridOffset.value && received > 0) {
-      received = await loadGrid(true, Math.min(MAX_GRID_PRELOAD, expected - gridOffset.value))
+    while (!gridExhausted.value && received > 0 && (!expected || expected > gridOffset.value)) {
+      const remaining = expected ? expected - gridOffset.value : MAX_GRID_PRELOAD
+      received = await loadGrid(true, Math.min(MAX_GRID_PRELOAD, remaining))
     }
-    gridExhausted.value = true
+    if (expected && expected <= gridOffset.value) gridExhausted.value = true
   }
 
   function setGridQuery(query = {}) {
@@ -155,6 +157,7 @@ export const useScreenshotStore = defineStore('screenshot', () => {
       monitor: query.monitor ?? null,
       dateFrom: query.dateFrom ?? null,
       dateTo: query.dateTo ?? null,
+      filters: query.filters ?? null,
     }
   }
 
@@ -164,6 +167,7 @@ export const useScreenshotStore = defineStore('screenshot', () => {
       monitor: Object.prototype.hasOwnProperty.call(query, 'monitor') ? query.monitor : agent.selectedMonitor,
       dateFrom: query.dateFrom ?? null,
       dateTo: query.dateTo ?? null,
+      filters: query.filters ?? null,
     })
     resetGrid()
     gridMode.value = true

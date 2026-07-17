@@ -819,6 +819,51 @@ class TestScreenshot:
 # ============================================================
 
 class TestScreenshotQuery:
+    def test_grid_filter_options_and_filters_are_applied_before_pagination(self, client):
+        """网格筛选必须在 LIMIT/OFFSET 前执行，避免时间段内漏掉匹配截图。"""
+        agent_name = "grid-filter-agent"
+        _register_agent(client, agent_name)
+        base = datetime.now().replace(microsecond=0)
+        frames = [
+            ("QQ.exe", "", 0),
+            ("chrome.exe", "https://www.bilibili.com/video/BV1", 3),
+            ("chrome.exe", "https://cn.tradingview.com/chart/ABC", 6),
+            # 最新一张不匹配 TradingView，用于验证后端先筛选再分页。
+            ("msedge.exe", "https://www.bilibili.com/video/BV2", 9),
+        ]
+        for process_name, url, seconds in frames:
+            response = client.post("/api/screenshot", json={
+                "agent_name": agent_name,
+                "timestamp": (base + timedelta(seconds=seconds)).isoformat(),
+                "image_base64": _make_jpeg_b64(),
+                "monitor_index": 0,
+                "monitor_total": 1,
+                "foreground_process_name": process_name,
+                "foreground_url": url,
+            })
+            assert response.json()["id"] is not None
+
+        options = client.get(f"/api/screenshots/filter-options?agent={agent_name}")
+        assert options.status_code == 200
+        body = options.json()
+        assert body["programs"] == [{"process_name": "QQ.exe", "count": 1}]
+        chrome = next(item for item in body["browsers"] if item["process_name"] == "chrome.exe")
+        assert {item["domain"] for item in chrome["domains"]} == {
+            "cn.tradingview.com", "www.bilibili.com",
+        }
+
+        trading = client.get(
+            f"/api/screenshots?agent={agent_name}&domain=cn.tradingview.com&limit=1"
+        )
+        assert trading.status_code == 200
+        assert len(trading.json()) == 1
+        assert trading.json()[0]["foreground_url"].startswith("https://cn.tradingview.com/")
+
+        combined = client.get(
+            f"/api/screenshots?agent={agent_name}&process=QQ.exe&domain=cn.tradingview.com"
+        )
+        assert {item["foreground_process_name"] for item in combined.json()} == {"QQ.exe", "chrome.exe"}
+
     def test_list_screenshots(self, client):
         _register_agent(client, "query-agent")
         _upload_screenshot(client, "query-agent")

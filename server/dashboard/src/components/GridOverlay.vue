@@ -3,7 +3,7 @@ import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useScreenshotStore } from '../stores/screenshot'
 import { useAgentStore } from '../stores/agent'
 import { useConfirm } from '../composables/useConfirm'
-import { getScreenshotImage, getScreenshotThumb, getScreenshotThumbsBatch, deleteScreenshots, getAppEvents } from '../api'
+import { getScreenshotImage, getScreenshotThumb, getScreenshotThumbsBatch, deleteScreenshots, getAppEvents, getScreenshotFilterOptions } from '../api'
 
 const ss = useScreenshotStore()
 const agent = useAgentStore()
@@ -31,6 +31,10 @@ const thumbDataUrls = ref(new Map())
 const gridScrollTop = ref(0)
 const gridViewportHeight = ref(0)
 const gridViewportWidth = ref(0)
+const filterOpen = ref(false)
+const filterLoading = ref(false)
+const filterOptions = ref({ programs: [], browsers: [] })
+const filterDraft = ref({ programs: [], browsers: [], domains: [] })
 const sweptIds = new Set()
 let gridResizeObserver = null
 let previewDragStart = null
@@ -103,8 +107,142 @@ const gridMonitorLabel = computed(() =>
   gridMonitorValue.value === 'all' ? '全部屏幕' : `屏${Number(gridMonitorValue.value) + 1}`
 )
 
+const allProgramNames = computed(() => filterOptions.value.programs.map(item => item.process_name))
+const allBrowserNames = computed(() => filterOptions.value.browsers.map(item => item.process_name))
+const filterAllSelected = computed(() =>
+  allProgramNames.value.every(name => filterDraft.value.programs.includes(name)) &&
+  allBrowserNames.value.every(name => filterDraft.value.browsers.includes(name)) &&
+  filterDraft.value.domains.length === 0
+)
+const activeFilterCount = computed(() => {
+  if (filterAllSelected.value) return 0
+  return filterDraft.value.programs.length + filterDraft.value.browsers.length + filterDraft.value.domains.length
+})
+
+function domainKey(processName, domain) {
+  return `${processName}::${domain}`
+}
+
+function browserOption(processName) {
+  return filterOptions.value.browsers.find(item => item.process_name === processName)
+}
+
+function browserFullySelected(processName) {
+  return filterDraft.value.browsers.includes(processName)
+}
+
+function domainSelected(processName, domain) {
+  return browserFullySelected(processName) || filterDraft.value.domains.includes(domainKey(processName, domain))
+}
+
+function browserPartiallySelected(processName) {
+  if (browserFullySelected(processName)) return false
+  const option = browserOption(processName)
+  return !!option?.domains.some(item => domainSelected(processName, item.domain))
+}
+
+function setDraft(next) {
+  filterDraft.value = {
+    programs: [...new Set(next.programs || [])],
+    browsers: [...new Set(next.browsers || [])],
+    domains: [...new Set(next.domains || [])],
+  }
+}
+
+function selectAllFilters() {
+  setDraft({ programs: allProgramNames.value, browsers: allBrowserNames.value, domains: [] })
+}
+
+function toggleAllFilters(event) {
+  if (event.target.checked) selectAllFilters()
+  else setDraft({ programs: [], browsers: [], domains: [] })
+}
+
+function toggleProgram(processName, event) {
+  const programs = new Set(filterDraft.value.programs)
+  if (event.target.checked) programs.add(processName)
+  else programs.delete(processName)
+  setDraft({ ...filterDraft.value, programs: [...programs] })
+}
+
+function toggleBrowser(processName, event) {
+  const browsers = new Set(filterDraft.value.browsers)
+  const domains = new Set(filterDraft.value.domains)
+  const option = browserOption(processName)
+  for (const item of option?.domains || []) domains.delete(domainKey(processName, item.domain))
+  if (event.target.checked) browsers.add(processName)
+  else browsers.delete(processName)
+  setDraft({ ...filterDraft.value, browsers: [...browsers], domains: [...domains] })
+}
+
+function toggleDomain(processName, domain, event) {
+  const browsers = new Set(filterDraft.value.browsers)
+  const domains = new Set(filterDraft.value.domains)
+  const option = browserOption(processName)
+  if (browsers.delete(processName)) {
+    for (const item of option?.domains || []) domains.add(domainKey(processName, item.domain))
+  }
+  const key = domainKey(processName, domain)
+  if (event.target.checked) domains.add(key)
+  else domains.delete(key)
+  setDraft({ ...filterDraft.value, browsers: [...browsers], domains: [...domains] })
+}
+
+function draftRequestFilters() {
+  if (filterAllSelected.value) return null
+  return {
+    active: true,
+    processes: filterDraft.value.programs,
+    browsers: filterDraft.value.browsers,
+    domains: filterDraft.value.domains.map(item => item.split('::').slice(1).join('::')),
+  }
+}
+
+async function loadFilterOptions() {
+  if (!agent.selectedAgent) return
+  filterLoading.value = true
+  try {
+    const { dateFrom, dateTo, monitor, filters } = ss.gridQuery
+    filterOptions.value = await getScreenshotFilterOptions(agent.selectedAgent, monitor, dateFrom, dateTo)
+    if (filters?.active) {
+      const knownDomains = new Set(filterOptions.value.browsers.flatMap(browser =>
+        browser.domains.map(item => domainKey(browser.process_name, item.domain))
+      ))
+      setDraft({
+        programs: filters.processes || [],
+        browsers: filters.browsers || [],
+        domains: (filters.domains || []).flatMap(domain => filterOptions.value.browsers
+          .filter(browser => browser.domains.some(item => item.domain === domain))
+          .map(browser => domainKey(browser.process_name, domain))
+        ).filter(key => knownDomains.has(key)),
+      })
+    } else {
+      selectAllFilters()
+    }
+  } catch {
+    filterOptions.value = { programs: [], browsers: [] }
+    setDraft({ programs: [], browsers: [], domains: [] })
+  } finally {
+    filterLoading.value = false
+  }
+}
+
+async function applyFilters() {
+  const { monitor, dateFrom, dateTo } = ss.gridQuery
+  closePreview()
+  activityLoadedKey.value = ''
+  ss.setGridQuery({ monitor, dateFrom, dateTo, filters: draftRequestFilters() })
+  ss.resetGrid()
+  await ss.loadGridComplete()
+  filterOpen.value = false
+  nextTick(() => {
+    if (scrollEl.value) scrollEl.value.scrollTop = 0
+    updateGridMetrics()
+  })
+}
+
 const activityRange = computed(() => {
-  const { dateFrom, dateTo } = ss.gridQuery
+  const { dateFrom, dateTo, filters } = ss.gridQuery
   if (dateFrom && dateTo) return { dateFrom, dateTo }
   if (!ss.gridItems.length) return { dateFrom: null, dateTo: null }
   const times = ss.gridItems.map(item => item.timestamp).filter(Boolean).sort()
@@ -557,9 +695,10 @@ async function changeGridMonitor(event) {
   closePreview()
   gridView.value = 'screenshots'
   activityLoadedKey.value = ''
-  ss.setGridQuery({ monitor, dateFrom, dateTo })
+  ss.setGridQuery({ monitor, dateFrom, dateTo, filters })
   ss.resetGrid()
   await ss.loadGrid(false)
+  await loadFilterOptions()
   nextTick(() => {
     if (scrollEl.value) scrollEl.value.scrollTop = 0
     updateGridMetrics()
@@ -685,12 +824,14 @@ watch(() => ss.gridMode, (v) => {
     ss.resetGrid()
     ss.loadGrid(false)
   }
+  if (v) loadFilterOptions()
   if (!v) {
     closePreview()
     gridView.value = 'screenshots'
     activityEvents.value = []
     activityLoadedKey.value = ''
     resetThumbPrefetchQueue()
+    filterOpen.value = false
     // 关闭网格时清除预加载数据，下次打开重新加载
     ss.resetGrid({ resetQuery: true })
   }
@@ -795,6 +936,48 @@ function scrollTo(date) {
           </label>
         </span>
         <div class="grid-actions">
+          <div v-if="gridView === 'screenshots'" class="grid-filter-wrap">
+            <button class="grid-filter-btn" :class="{ active: filterOpen || activeFilterCount }" @click="filterOpen = !filterOpen">
+              筛选 <span v-if="activeFilterCount" class="filter-badge">{{ activeFilterCount }}</span>
+            </button>
+            <div v-if="filterOpen" class="grid-filter-panel" @click.stop>
+              <div class="filter-panel-head">
+                <strong>筛选截图</strong>
+                <span>{{ filterLoading ? '读取中...' : filterAllSelected ? '全部内容' : `已选 ${activeFilterCount} 项` }}</span>
+              </div>
+              <label class="filter-all-row">
+                <input type="checkbox" :checked="filterAllSelected" @change="toggleAllFilters">
+                <span>全部</span>
+              </label>
+              <div v-if="!filterLoading" class="filter-list">
+                <div v-if="filterOptions.programs.length" class="filter-section">
+                  <span class="filter-section-label">程序</span>
+                  <label v-for="item in filterOptions.programs" :key="item.process_name" class="filter-option">
+                    <input type="checkbox" :checked="filterDraft.programs.includes(item.process_name)" @change="toggleProgram(item.process_name, $event)">
+                    <span>{{ item.process_name }}</span><em>{{ item.count }}</em>
+                  </label>
+                </div>
+                <div v-if="filterOptions.browsers.length" class="filter-section">
+                  <span class="filter-section-label">浏览器网址</span>
+                  <div v-for="browser in filterOptions.browsers" :key="browser.process_name" class="browser-filter-group">
+                    <label class="filter-option browser-parent">
+                      <input type="checkbox" :checked="browserFullySelected(browser.process_name)" :indeterminate="browserPartiallySelected(browser.process_name)" @change="toggleBrowser(browser.process_name, $event)">
+                      <span>{{ browser.process_name }}</span><em>{{ browser.count }}</em>
+                    </label>
+                    <label v-for="item in browser.domains" :key="item.domain" class="filter-option domain-option">
+                      <input type="checkbox" :checked="domainSelected(browser.process_name, item.domain)" @change="toggleDomain(browser.process_name, item.domain, $event)">
+                      <span>{{ item.domain }}</span><em>{{ item.count }}</em>
+                    </label>
+                  </div>
+                </div>
+                <div v-if="!filterOptions.programs.length && !filterOptions.browsers.length" class="filter-empty">当前范围没有可标记的截图</div>
+              </div>
+              <div class="filter-panel-foot">
+                <button class="filter-reset" @click="selectAllFilters">重置</button>
+                <button class="filter-apply" :disabled="filterLoading" @click="applyFilters">应用筛选</button>
+              </div>
+            </div>
+          </div>
           <div class="date-nav" v-if="grouped.length > 1">
             <button v-for="g in grouped" :key="g.date" class="date-chip" @click="scrollTo(g.date)">
               {{ g.date.substring(5) }} <span class="date-count">{{ g.items.length }}</span>
@@ -998,6 +1181,40 @@ function scrollTo(date) {
   cursor: pointer;
 }
 .grid-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.grid-filter-wrap { position: relative; }
+.grid-filter-btn {
+  min-height: 25px; padding: 3px 9px; border: 1px solid var(--hairline); border-radius: 6px;
+  background: rgba(255,255,255,.035); color: var(--text-secondary); cursor: pointer;
+  font-family: var(--font-mono); font-size: 10px; transition: all .15s;
+}
+.grid-filter-btn:hover, .grid-filter-btn.active { border-color: rgba(96,165,250,.6); color: #bfdbfe; background: rgba(96,165,250,.12); }
+.filter-badge { display: inline-grid; place-items: center; min-width: 14px; height: 14px; margin-left: 3px; border-radius: 7px; background: var(--blue); color: #07111f; font-size: 9px; font-weight: 700; }
+.grid-filter-panel {
+  position: absolute; z-index: 20; top: calc(100% + 8px); right: 0; width: min(330px, calc(80vw - 32px));
+  max-height: min(510px, 62vh); overflow: auto; border: 1px solid rgba(148,163,184,.25); border-radius: 10px;
+  background: #141b27; box-shadow: 0 18px 45px rgba(0,0,0,.52); padding: 10px;
+}
+.filter-panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 2px 2px 9px; border-bottom: 1px solid var(--hairline); }
+.filter-panel-head strong { color: var(--text); font-size: 12px; }
+.filter-panel-head span { color: var(--muted); font-family: var(--font-mono); font-size: 10px; }
+.filter-all-row, .filter-option { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.filter-all-row { padding: 9px 2px 7px; color: #dbeafe; font-size: 12px; font-weight: 600; }
+.filter-all-row input, .filter-option input { width: 14px; height: 14px; accent-color: var(--blue); flex: 0 0 auto; }
+.filter-section { padding: 8px 0; border-top: 1px solid rgba(255,255,255,.055); }
+.filter-section-label { display: block; margin: 0 2px 5px; color: var(--muted); font-family: var(--font-mono); font-size: 10px; }
+.filter-option { min-height: 27px; padding: 3px 5px; border-radius: 5px; color: var(--text-secondary); font-family: var(--font-mono); font-size: 11px; }
+.filter-option:hover { background: rgba(255,255,255,.055); color: var(--text); }
+.filter-option span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.filter-option em { margin-left: auto; color: var(--muted); font-size: 10px; font-style: normal; }
+.browser-filter-group + .browser-filter-group { margin-top: 3px; }
+.browser-parent { color: #dbeafe; font-weight: 600; }
+.domain-option { margin-left: 22px; color: var(--text-secondary); }
+.filter-empty { padding: 12px 4px; color: var(--muted); font-size: 11px; }
+.filter-panel-foot { display: flex; justify-content: flex-end; gap: 7px; padding-top: 9px; border-top: 1px solid var(--hairline); }
+.filter-reset, .filter-apply { padding: 5px 10px; border-radius: 6px; font-family: var(--font-mono); font-size: 10px; cursor: pointer; }
+.filter-reset { border: 1px solid var(--hairline); background: transparent; color: var(--text-secondary); }
+.filter-apply { border: 1px solid rgba(96,165,250,.55); background: rgba(96,165,250,.17); color: #dbeafe; }
+.filter-apply:disabled { opacity: .5; cursor: wait; }
 .date-nav { display: flex; gap: 4px; }
 .date-chip {
   font-family: var(--font-mono); font-size: 10px; font-weight: 500;

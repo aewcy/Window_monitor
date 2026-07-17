@@ -7,7 +7,7 @@ import sqlite3
 import threading
 import uuid
 from datetime import datetime, timedelta
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 from config import DB_PATH, SCREENSHOT_DIR
 
@@ -387,6 +387,9 @@ def init_db():
         db.commit()
     except sqlite3.OperationalError:
         pass
+    db.execute("""CREATE INDEX IF NOT EXISTS idx_screenshots_grid_scope
+                  ON screenshots(agent_name, monitor_index, timestamp DESC)""")
+    db.commit()
 
     # 向前兼容迁移: 为 agents 表添加 display_name 列（Web 端自定义显示名）
     try:
@@ -1406,14 +1409,11 @@ def save_screenshot(agent_name: str, timestamp: str, image_b64: str,
         return None
 
 
-def get_screenshots(agent_name: str = None, limit: int = 50, offset: int = 0,
-                    date_from: str = None, date_to: str = None,
-                    monitor_index: int = None) -> list[dict]:
-    """查询截图列表"""
-    db = get_db()
+def _build_screenshot_scope(agent_name: str = None, date_from: str = None,
+                            date_to: str = None, monitor_index: int = None) -> tuple[list[str], list]:
+    """构建截图范围条件，供列表和筛选项复用。"""
     conditions = []
     params = []
-
     if agent_name:
         conditions.append("agent_name = ?")
         params.append(agent_name)
@@ -1426,6 +1426,62 @@ def get_screenshots(agent_name: str = None, limit: int = 50, offset: int = 0,
     if monitor_index is not None:
         conditions.append("monitor_index = ?")
         params.append(monitor_index)
+    return conditions, params
+
+
+def _normalize_filter_values(values: list[str] | None) -> list[str]:
+    return sorted({str(value).strip().lower() for value in (values or []) if str(value).strip()})
+
+
+def _domain_sql_conditions(domains: list[str]) -> tuple[list[str], list[str]]:
+    """生成精确主机名匹配 SQL，避免子串匹配误把 fake 域名算进来。"""
+    conditions = []
+    params = []
+    for domain in domains:
+        prefixes = (f"http://{domain}", f"https://{domain}")
+        domain_conditions = []
+        for prefix in prefixes:
+            domain_conditions.extend([
+                "LOWER(foreground_url) = ?",
+                "LOWER(foreground_url) LIKE ?",
+                "LOWER(foreground_url) LIKE ?",
+            ])
+            params.extend([prefix, f"{prefix}/%", f"{prefix}?%"])
+        conditions.append("(" + " OR ".join(domain_conditions) + ")")
+    return conditions, params
+
+
+def get_screenshots(agent_name: str = None, limit: int = 50, offset: int = 0,
+                    date_from: str = None, date_to: str = None,
+                    monitor_index: int = None, process_names: list[str] | None = None,
+                    browser_process_names: list[str] | None = None,
+                    domains: list[str] | None = None,
+                    filter_active: bool = False) -> list[dict]:
+    """查询截图列表；筛选条件在分页前由数据库执行。"""
+    db = get_db()
+    conditions, params = _build_screenshot_scope(agent_name, date_from, date_to, monitor_index)
+
+    process_names = _normalize_filter_values(process_names)
+    browser_process_names = _normalize_filter_values(browser_process_names)
+    domains = _normalize_filter_values(domains)
+    selected_conditions = []
+    selected_params = []
+    for names in (process_names, browser_process_names):
+        if names:
+            selected_conditions.append(
+                "LOWER(COALESCE(foreground_process_name, '')) IN (" + ",".join("?" for _ in names) + ")"
+            )
+            selected_params.extend(names)
+    domain_conditions, domain_params = _domain_sql_conditions(domains)
+    if domain_conditions:
+        selected_conditions.append("(" + " OR ".join(domain_conditions) + ")")
+        selected_params.extend(domain_params)
+    if selected_conditions:
+        conditions.append("(" + " OR ".join(selected_conditions) + ")")
+        params.extend(selected_params)
+    elif filter_active:
+        # 用户取消全部选项时，明确返回空集而不是退回到未筛选结果。
+        conditions.append("1 = 0")
 
     where = "WHERE " + " AND ".join(conditions) if conditions else ""
     sql = f"""SELECT * FROM screenshots {where}
@@ -1434,6 +1490,57 @@ def get_screenshots(agent_name: str = None, limit: int = 50, offset: int = 0,
 
     rows = db.execute(sql, params).fetchall()
     return [enrich_screenshot_urls(dict(r)) for r in rows]
+
+
+def get_screenshot_filter_options(agent_name: str, date_from: str = None,
+                                  date_to: str = None, monitor_index: int = None,
+                                  browser_process_names: list[str] | None = None) -> dict:
+    """返回当前网格范围内可筛选的程序、浏览器和网址主域名。"""
+    db = get_db()
+    conditions, params = _build_screenshot_scope(agent_name, date_from, date_to, monitor_index)
+    where = "WHERE " + " AND ".join(conditions) if conditions else ""
+    rows = db.execute(
+        f"""SELECT foreground_process_name, foreground_url
+             FROM screenshots {where}""",
+        params,
+    ).fetchall()
+    browser_names = set(_normalize_filter_values(browser_process_names))
+    programs: dict[str, int] = {}
+    browsers: dict[str, dict] = {}
+    for row in rows:
+        process_name = str(row["foreground_process_name"] or "").strip()
+        process_key = process_name.lower()
+        if not process_name:
+            continue
+        if process_key not in browser_names:
+            programs[process_name] = programs.get(process_name, 0) + 1
+            continue
+        browser = browsers.setdefault(process_key, {
+            "process_name": process_name,
+            "count": 0,
+            "domains": {},
+        })
+        browser["count"] += 1
+        domain = (urlparse(str(row["foreground_url"] or "")).hostname or "").lower()
+        if domain:
+            browser["domains"][domain] = browser["domains"].get(domain, 0) + 1
+    return {
+        "programs": [
+            {"process_name": name, "count": count}
+            for name, count in sorted(programs.items(), key=lambda item: (-item[1], item[0].lower()))
+        ],
+        "browsers": [
+            {
+                "process_name": browser["process_name"],
+                "count": browser["count"],
+                "domains": [
+                    {"domain": domain, "count": count}
+                    for domain, count in sorted(browser["domains"].items(), key=lambda item: (-item[1], item[0]))
+                ],
+            }
+            for browser in sorted(browsers.values(), key=lambda item: item["process_name"].lower())
+        ],
+    }
 
 
 def delete_screenshot(screenshot_id: int) -> bool:
